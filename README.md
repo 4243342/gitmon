@@ -77,10 +77,10 @@ npm run dev
 # → http://127.0.0.1:5173
 ```
 
-首屏是**登录授权页**：GitHub 匿名接口只有 60 次/小时（扫四个仓库就用完），授权后 5000 次/小时。
-不登录也能点「先随便逛逛」直接玩，随时从顶栏补登录。
+首屏是**登录授权页**：三种进法——GitHub、Gitee、游客。匿名接口只有 60 次/小时（扫四个仓库就用完），
+登录后额度高得多，而且**不用再填仓库地址**：登录哪个平台，就自动读你名下每个项目，一箱卡包直接摆出来。
 
-输入任意地址试试——单个仓库是一包，账号主页是一整箱：
+游客进法和以前一样：自己贴地址，单仓库是一包，账号主页是一整箱：
 
 ```
 https://github.com/facebook/react      ← 一个卡包
@@ -90,12 +90,17 @@ https://gitee.com/mirrors/vue          ← Gitee 也行
 
 ## 登录授权
 
-首屏先连 GitHub，两种方式都是走平台授权，不收手填令牌：
+三个入口：GitHub / Gitee / 游客。登录后首页变成「我的卡箱」，不再有仓库输入框。
 
 | 方式 | 怎么做 | 适合 |
 |---|---|---|
-| **OAuth 授权** | 后端配 `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` 后，点「用 GitHub 授权登录」 | 正式部署 / 任何设备 |
-| **本机登录** | 本机已 `gh auth login` 并且后端跑在 `127.0.0.1` 时，点「用本机已登录的 @xxx 直接进入」 | 本地开发，不用建 OAuth App |
+| **GitHub OAuth** | 后端配 `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`，点「用 GitHub 授权登录」 | 正式部署 / 任何设备 |
+| **GitHub 本机登录** | 本机已 `gh auth login` 且后端跑在 `127.0.0.1`，点「用本机已登录的 @xxx 直接进入」 | 本地开发，不用建 OAuth App |
+| **Gitee 授权 / 私人令牌** | 配了 `GITEE_CLIENT_ID` / `GITEE_CLIENT_SECRET` 就走 OAuth；没配则页签里直接给令牌输入框（[一分钟生成](https://gitee.com/profile/personal_access_tokens)） | Gitee 用户 |
+| **游客** | 直接进入，手填仓库 / 账号地址 | 只想试玩 |
+
+规则很简单：**配了 OAuth 就只走授权，没配才露出令牌输入框**，不会让人在两条路之间犹豫。
+Gitee 目前默认没配应用，所以那个页签显示的是私人令牌框 —— 贴一次就能登。
 
 配 OAuth App 只需两分钟（<https://github.com/settings/developers> → New OAuth App）：
 
@@ -104,9 +109,21 @@ Homepage URL            http://127.0.0.1:8000
 Authorization callback  http://127.0.0.1:8000/api/auth/github/callback
 ```
 
-登录后令牌写在 `localStorage['gitmon:gh_token']`，`src/scan.js` 自动带上它直连 GitHub；
-后端会把令牌用 HMAC 流加密后存进本地 SQLite，浏览器只留一个 HttpOnly 会话 cookie。
-后端不可用时自动降级为"本地令牌"模式，扫描仍在浏览器里完成。
+Gitee 的 OAuth 应用在 <https://gitee.com/oauth/applications> 建，回调填
+`http://127.0.0.1:8000/api/auth/gitee/callback`（不建也能用私人令牌登录）。
+
+凭证写进 `backend/.env`（启动时自动加载，不用 export）：
+
+```ini
+GITHUB_CLIENT_ID=...
+GITHUB_CLIENT_SECRET=...
+GITEE_CLIENT_ID=...        # 可选
+GITEE_CLIENT_SECRET=...    # 可选
+```
+
+登录后令牌分别写在 `localStorage['gitmon:gh_token']` / `['gitmon:gitee_token']`，
+`src/scan.js` 自动带上它直连对应平台；后端会把令牌用 HMAC 流加密后存进本地 SQLite，
+浏览器只留一个 HttpOnly 会话 cookie。后端不可用时自动降级为"本地令牌"模式，扫描仍在浏览器里完成。
 
 ## 技术栈
 
@@ -194,8 +211,9 @@ AI 味 ≥50 → 词条「根基不稳」，≥75 → 「生成体」；根基�
 - [x] 离线 AI 味检测 CLI + 扫描钩子
 - [x] 竞技场对战：在线对手 / 同类型 / 随机宠物三种挑战 + 三档难度（`docs/BATTLE.md`）
 - [x] GitHub 登录授权：首屏授权页 + OAuth / 本机 gh 登录态（60 → 5000 次/小时）
+- [x] 三选一登录：GitHub / Gitee / 游客；登录后自动读账号全部项目开除整箱，不再手填仓库
 - [ ] 前端切到真实 API（判定仍在前端跑，扫描已用真实数据）
-- [ ] Gitee 登录授权（OAuth 已接，未配置应用时走游客）
+- [ ] Gitee OAuth 应用（当前已接，未配置时用私人令牌登录）
 - [ ] 精灵成长与每日同步的前端展示
 - [ ] AI 率按最近 90 天提交加权，让"补课"真能把词条洗掉
 - [ ] 全服排行榜页面

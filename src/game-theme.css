@@ -1244,3 +1244,93 @@ body::after {
 
 .ghost-btn:disabled { filter: grayscale(.75) brightness(.62); cursor: default; }
 @media (max-width: 640px) { .user-src { display: none; } }
+
+/* 自定义形象按钮：像素风化 */
+.sprite-tool {
+  border-radius: 0;
+  border-width: 2px;
+  font-family: 'Fusion Pixel', 'Press Start 2P', monospace;
+  letter-spacing: 1px;
+}
+.sprite-frame.drag-over { outline-style: dashed; }
+
+/* ---------- 令牌登录（OAuth 之外的备用通道） ---------- */
+.auth-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0 12px;
+  font-size: 10.5px;
+  letter-spacing: 2px;
+  color: #5d6b86;
+}
+.auth-or::before,
+.auth-or::after { content: ''; flex: 1; height: 1px; background: #2a3550; }
+
+.auth-label { display: block; margin-bottom: 8px; font-size: 11.5px; color: var(--dim); letter-spacing: .5px; }
+.auth-token-row { display: flex; gap: 10px; }
+.auth-token-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 14px;
+  border-radius: 11px;
+  border: 1px solid #2a3550;
+  background: #0a1220;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  outline: none;
+  transition: border-color .18s, box-shadow .18s;
+}
+.auth-token-row input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 203, 5, .13);
+}
+.auth-token-row button {
+  padding: 0 22px;
+  border: none;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #ffcb05, #ff9f1a);
+  color: #221a00;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: filter .16s, transform .16s;
+}
+.auth-token-row button:hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px); }
+.auth-token-row button:disabled { opacity: .55; cursor: progress; }
+
+.auth-help-toggle {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #8fb7ff;
+  font-family: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.auth-help-toggle:hover { color: #bcd4ff; }
+.auth-help {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 11.5px;
+  line-height: 1.9;
+  color: var(--dim);
+}
+.auth-help li { margin-bottom: 2px; }
+.auth-help a { color: #8fb7ff; }
+.auth-help code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #0a1220;
+  border: 1px solid #2a3550;
+  font-size: 11px;
+}
+
+@media (max-width: 640px) {
+  .auth-token-row { flex-direction: column; }
+  .auth-token-row button { padding: 10px 0; }
+}

@@ -247,7 +247,9 @@ export default function App() {
       if (!res.snaps.length) {
         throw new Error(res.rateLimited
           ? 'API 触发限流，稍后再试（登录后额度高得多）'
-          : '这个账号没有可孵化的公开项目')
+          : opts.self
+            ? '你名下还没有可孵化的项目（fork / 空仓库会被跳过）'
+            : '这个账号没有可孵化的公开项目')
       }
       setStep(3)
       const pets = res.snaps

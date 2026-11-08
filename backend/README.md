@@ -40,16 +40,19 @@ curl -X POST localhost:8000/api/hatch/sync \
   -d '{"repo":"https://github.com/facebook/react"}'
 ```
 
-## 登录授权（GitHub）
+## 登录授权（GitHub / Gitee）
 
 GitHub 匿名 API 只有 **60 次/小时**，一次扫描要 5~17 个请求，扫四个仓库就没了。
-登录授权后是 **5000 次/小时**，私有仓库也能孵化。两条路产出的东西一样，都是一个 GitHub token：
+登录授权后是 **5000 次/小时**（Gitee 同理，匿名还按 IP 限），私有仓库也能孵化。
+产出的东西一样：一个平台 access token，按平台分别落库。
 
 | 方式 | 需要什么 | 适合 |
 |---|---|---|
 | 本机一键登录 | 这台机器上 `gh auth login` 过（自动读 `gh auth token`） | 本地开发，点一下就进，零配置 |
-| OAuth 授权 | 注册一个 GitHub OAuth App（2 分钟） | 正式部署，用户点一下就登录 |
-| 个人访问令牌（PAT） | 用户自己去 GitHub 生成 `ghp_xxx` 贴进来 | 不想建应用、或换设备 |
+| GitHub OAuth | 注册一个 GitHub OAuth App（2 分钟） | 正式部署，用户点一下就登录 |
+| GitHub 个人访问令牌 | 用户自己去 GitHub 生成 `ghp_xxx` 贴进来 | 不想建应用、或换设备 |
+| Gitee OAuth | 注册一个 Gitee 应用（<https://gitee.com/oauth/applications>） | 正式部署 |
+| Gitee 私人令牌 | 用户在 <https://gitee.com/profile/personal_access_tokens> 生成 | 不建应用也能用（推荐先走这条） |
 
 **配 OAuth App**：<https://github.com/settings/developers> → New OAuth App
 
@@ -58,11 +61,22 @@ Homepage URL            http://127.0.0.1:8000
 Authorization callback  http://127.0.0.1:8000/api/auth/github/callback
 ```
 
-把 Client ID / Secret 写进环境变量 `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`，
+Gitee 的回调则是 `http://127.0.0.1:8000/api/auth/gitee/callback`。
+
+凭证写进 `backend/.env`（启动时自动加载，`KEY=VALUE` 一行一个，不覆盖已有环境变量）：
+
+```ini
+GITHUB_CLIENT_ID=...
+GITHUB_CLIENT_SECRET=...
+GITEE_CLIENT_ID=...        # 可选，不填就用私人令牌
+GITEE_CLIENT_SECRET=...
+```
+
 部署到域名时同时改 `GITMON_PUBLIC_URL=https://your.domain`（回调地址由它拼出来）。
 
-不配也能用。首页会按顺序降级：① 检测到本机 `gh` 已登录 → 显示"用本机已登录的 @xxx 直接进入"；
-② 配了 OAuth App → GitHub 授权按钮可用；③ 都没有 → 提示用个人访问令牌（额度同样是 5000 次/小时）。
+都不配也能用。首页按顺序降级：① 检测到本机 `gh` 已登录 → "用本机已登录的 @xxx 直接进入"；
+② 配了 OAuth App → 对应平台的授权按钮可用；③ 没配 → 用私人令牌登录（额度一样够用）；
+④ 都不想 → 游客进入，手填仓库地址。
 本机登录只对 `127.0.0.1` 请求生效，公网部署请设 `GITMON_LOCAL_LOGIN=0`。
 
 安全做法：令牌用 HMAC-SHA256 计数器模式流加密后落库（密钥来自 `GITMON_SECRET`，
@@ -92,8 +106,12 @@ GitHub API 扫描的。退出登录时会连同会话一起清掉，OAuth 令牌
 | GET | `/api/auth/github/start` | 302 跳 GitHub 授权页（`?next=` 指定回来后的路径） |
 | GET | `/api/auth/github/callback` | 授权回调：换 token → 建会话 → 回跳 `/?auth=ok` |
 | POST | `/api/auth/github/token` | 用个人访问令牌登录 `{"token":"ghp_..."}` |
-| GET | `/api/auth/me` | 当前登录用户（`?quota=1` 顺带查配额） |
-| GET | `/api/auth/token` | 取回令牌（仅登录态，供浏览器直连 GitHub） |
+| POST | `/api/auth/github/local` | 复用本机 `gh auth token` 登录（仅 127.0.0.1） |
+| GET | `/api/auth/gitee/start` | 302 跳 Gitee 授权页 |
+| GET | `/api/auth/gitee/callback` | Gitee 回调：换 token → 建会话 → 回跳 `/?auth=ok` |
+| POST | `/api/auth/gitee/token` | 用 Gitee 私人令牌登录 `{"token":"..."}` |
+| GET | `/api/auth/me` | 当前登录用户（`?quota=1` 顺带查配额，仅 GitHub） |
+| GET | `/api/auth/token` | 取回令牌 + `provider`（仅登录态，供浏览器直连平台） |
 | POST | `/api/auth/logout` | 退出登录 |
 
 README 里直接嵌：
@@ -138,6 +156,7 @@ issue / PR 计数与依赖清单（最多 6 份）——单次扫描 12~17 个�
 | 环境变量 | 默认 | 说明 |
 |---|---|---|
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | 空 | OAuth App 凭证；不配就只能用个人访问令牌登录 |
+| `GITEE_CLIENT_ID` / `GITEE_CLIENT_SECRET` | 空 | Gitee 应用凭证；不配就用 Gitee 私人令牌登录 |
 | `GITMON_PUBLIC_URL` | `http://127.0.0.1:8000` | 对外前缀，决定 OAuth 回调地址 |
 | `GITMON_WEB_URL` | 空（回 `/`） | 登录成功后跳回哪；vite 开发时设 `http://127.0.0.1:5173` |
 | `GITMON_SECRET` | 空（自动生成 `data/secret.key`） | 会话签名与令牌加密密钥 |

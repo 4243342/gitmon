@@ -88,11 +88,18 @@ function inspectRoot(names = []) {
   }
 }
 
+// 单个请求超过 15s 就放弃：没有这道闸，一个卡住的连接会让整箱扫描永远转圈
+const FETCH_TIMEOUT = 15000
+function withTimeout(init = {}) {
+  if (init.signal) return init
+  try { return { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT) } } catch { return init }
+}
+
 // 网络抖动重试一次：并发 5 个请求时偶发 socket 错误，不能让它静默变成"没有文件"
 async function safeFetch(url, init) {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const res = await fetch(url, init)
+      const res = await fetch(url, withTimeout(init))
       if (res.status >= 500 && attempt === 0) continue
       return res
     } catch {
@@ -120,9 +127,9 @@ async function scanGitHub(info, prefetched) {
   const base = 'https://api.github.com'
   let repo = prefetched
   if (!repo) {
-    const repoRes = await fetch(`${base}/repos/${info.owner}/${info.repo}`, {
+    const repoRes = await fetch(`${base}/repos/${info.owner}/${info.repo}`, withTimeout({
       headers: ghHeaders(),
-    })
+    }))
     if (repoRes.status === 404) throw new Error('仓库不存在或无权限访问')
     if (repoRes.status === 403) throw new Error(ghRateMessage())
     if (!repoRes.ok) throw new Error(`GitHub API 错误 ${repoRes.status}`)
@@ -156,7 +163,7 @@ async function scanGitHub(info, prefetched) {
   let hasCI = false
   if (hasCIRoot) {
     try {
-      const wf = await fetch(`${base}/repos/${info.owner}/${info.repo}/contents/.github/workflows`, { headers: ghHeaders() })
+      const wf = await fetch(`${base}/repos/${info.owner}/${info.repo}/contents/.github/workflows`, withTimeout({ headers: ghHeaders() }))
       hasCI = wf.ok
     } catch { /* ignore */ }
   }
@@ -234,14 +241,14 @@ async function scanGitee(info, prefetched) {
   const base = `${GITEE_BASE}/repos/${info.owner}/${info.repo}`
   let repo = prefetched
   if (!repo) {
-    const repoRes = await fetch(giteeUrl(`/repos/${info.owner}/${info.repo}`))
+    const repoRes = await fetch(giteeUrl(`/repos/${info.owner}/${info.repo}`), withTimeout())
     if (!repoRes.ok) throw new Error(giteeError(repoRes.status))
     repo = await repoRes.json()
   }
 
   const [rootRes, contribRes] = await Promise.all([
-    fetch(giteeUrl(`/repos/${info.owner}/${info.repo}/contents/`)).catch(() => null),
-    fetch(giteeUrl(`/repos/${info.owner}/${info.repo}/contributors`, { per_page: 1 })).catch(() => null),
+    fetch(giteeUrl(`/repos/${info.owner}/${info.repo}/contents/`), withTimeout()).catch(() => null),
+    fetch(giteeUrl(`/repos/${info.owner}/${info.repo}/contributors`, { per_page: 1 }), withTimeout()).catch(() => null),
   ])
 
   const rootNames = rootRes && rootRes.ok ? (await rootRes.json()).map((f) => f.name) : []
@@ -344,8 +351,8 @@ async function listGitHubOwner(owner, { self = false } = {}) {
     ? `${base}/user/repos?per_page=100&sort=pushed&affiliation=owner`
     : `${base}/users/${owner}/repos?per_page=100&sort=pushed&type=owner`
   const [userRes, reposRes] = await Promise.all([
-    fetch(userUrl, { headers: ghHeaders() }),
-    fetch(reposUrl, { headers: ghHeaders() }),
+    fetch(userUrl, withTimeout({ headers: ghHeaders() })),
+    fetch(reposUrl, withTimeout({ headers: ghHeaders() })),
   ])
   if (userRes.status === 401) throw new Error('GitHub 授权失效了，重新登录一次')
   if (userRes.status === 404) throw new Error(`GitHub 账号 @${owner} 不存在`)
@@ -370,7 +377,7 @@ async function listGiteeOwner(owner, { self = false } = {}) {
   const reposUrl = self
     ? giteeUrl('/user/repos', { per_page: 100, sort: 'updated', affiliation: 'owner' })
     : giteeUrl(`/users/${owner}/repos`, { per_page: 100, sort: 'updated', type: 'owner' })
-  const [userRes, reposRes] = await Promise.all([fetch(userUrl), fetch(reposUrl)])
+  const [userRes, reposRes] = await Promise.all([fetch(userUrl, withTimeout()), fetch(reposUrl, withTimeout())])
   if (userRes.status === 401) throw new Error('Gitee 授权失效了，重新登录一次')
   if (userRes.status === 404) throw new Error(`Gitee 账号 @${owner} 不存在`)
   if (!userRes.ok) throw new Error(giteeError(userRes.status))
