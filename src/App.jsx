@@ -18,6 +18,7 @@ import Battle from './components/Battle.jsx'
 import Training from './components/Training.jsx'
 import DecoSprite from './components/DecoSprite.jsx'
 import Manual from './components/Manual.jsx'
+import Leaderboard from './components/Leaderboard.jsx'
 import AdvancedPanel from './components/AdvancedPanel.jsx'
 import { bindWithLLM, clearLLMKey, evaluateWithLLM, loadLLMConfig, saveLLMConfig } from './llm.js'
 import { buildPetFromEvaluation } from './llmEval.js'
@@ -140,6 +141,8 @@ export default function App() {
   const [aiBusy, setAiBusy] = useState(false)
   const [bindState, setBindState] = useState(() => (llmConfig.binding && llmConfig.apiKey ? 'bound' : 'idle'))
   const [bindError, setBindError] = useState('')
+  // 右上角高级模式弹层开关
+  const [advOpen, setAdvOpen] = useState(false)
   // 登录态：loading 期间不闪首页，避免"先显示未登录再跳授权页"
   const [auth, setAuth] = useState(() => ({
     loading: true,
@@ -292,7 +295,7 @@ export default function App() {
     let cfg = llmConfig
     if (!cfg.binding || bindState !== 'bound' || !cfg.apiKey?.trim()) {
       if (!cfg.apiKey?.trim()) {
-        setError('先粘贴一枚 API Key 并点「自动绑定」；厂商和模型会自动识别')
+        setError('先粘贴一枚 API Key（右上角 BYOK）；厂商和模型会自动识别')
         sfx.error()
         setAiBusy(false)
         return
@@ -338,7 +341,8 @@ export default function App() {
   }
 
   // 单个项目 → 一个卡包
-  const runRepo = async () => {
+  const runRepo = async (forced) => {
+    const input = forced || url
     setMode('repo')
     setView('scan')
     setStep(0)
@@ -347,7 +351,7 @@ export default function App() {
       const t1 = setTimeout(() => setStep(1), 350)
       const t2 = setTimeout(() => setStep(2), 900)
       sfx.scanTick()
-      const snap = await scanRepo(url)
+      const snap = await scanRepo(input)
       clearTimeout(t1); clearTimeout(t2)
       setStep(2)
       await new Promise((r) => setTimeout(r, 300))
@@ -411,6 +415,14 @@ export default function App() {
     } catch (e) {
       fail(e)
     }
+  }
+
+  // 从排行榜把 GitHub 趋势仓库直接孵成精灵
+  const hatchRepo = (fullName) => {
+    const u = `https://github.com/${fullName}`
+    setUrl(u)
+    setError('')
+    runRepo(u)
   }
 
   // 登录用户：不用输仓库，直接把自己名下所有项目开成一整箱
@@ -491,7 +503,50 @@ export default function App() {
           <span className="logo">GitMon</span>
           <span className="tagline">你的仓库，是一只活着的精灵</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="adv-wrap">
+            <button
+              className={`adv-btn ${advanced ? 'on' : ''}`}
+              onClick={() => {
+                const turnOn = !advanced
+                setAdvanced(turnOn)
+                setAdvOpen(turnOn)
+              }}
+              title="高级模式（BYOK）：用自己的模型评测仓库，只需填一枚密钥"
+            >
+              <span className={`adv-dot ${bindState === 'bound' ? 'ok' : ''}`} />
+              BYOK
+            </button>
+            {advOpen && (
+              <>
+                <div className="adv-backdrop" onClick={() => setAdvOpen(false)} />
+                <div className="adv-pop">
+                  <AdvancedPanel
+                    config={llmConfig}
+                    onConfigChange={(next) => {
+                      setLLMConfig(next)
+                      if (!next.binding && bindState !== 'binding') { setBindState('idle'); setBindError('') }
+                    }}
+                    hint={llmHint}
+                    onHintChange={setLLMHint}
+                    onClearKey={() => {
+                      clearLLMKey()
+                      const next = { ...llmConfig, apiKey: '', binding: null }
+                      setLLMConfig(next)
+                      saveLLMConfig(next)
+                      setBindState('idle')
+                      setBindError('')
+                    }}
+                    busy={aiBusy}
+                    bindState={bindState}
+                    bindError={bindError}
+                    onBind={handleBind}
+                    onClose={() => setAdvOpen(false)}
+                  />
+                </div>
+              </>
+            )}
+          </div>
           <button className="mute-btn" onClick={() => setMuted(sfx.toggleMute())}>
             {muted ? '♪ OFF' : '♪ ON'}
           </button>
@@ -513,6 +568,9 @@ export default function App() {
           ) : view !== 'auth' && view !== 'boot' ? (
             <button className="mute-btn login-btn" onClick={() => setView('auth')}>登录</button>
           ) : null}
+          {view !== 'boot' && view !== 'auth' && (
+            <button className="mute-btn" onClick={() => { sfx.swoosh(); setView('leaderboard') }}>排行榜</button>
+          )}
           <a className="gh-link" href="https://github.com/4243342/gitmon" target="_blank" rel="noreferrer">GitHub</a>
         </div>
       </header>
@@ -583,32 +641,11 @@ export default function App() {
               贴一个仓库地址，得到一个卡包；贴一个账号主页，得到<b>一整箱</b>——
               <b>品种由技术栈决定</b>，<b>品质由代码质量决定</b>，<b>等级由工程量决定</b>。
             </p>
-            <div className="mode-switch">
-              <button className={advanced ? '' : 'active'} onClick={() => { setAdvanced(false); setError('') }}>普通扫描</button>
-              <button className={advanced ? 'active' : ''} onClick={() => { setAdvanced(true); setError('') }}>高级模式 · LLM 评测</button>
-            </div>
             {advanced && (
-              <AdvancedPanel
-                config={llmConfig}
-                onConfigChange={(next) => {
-                  setLLMConfig(next)
-                  if (!next.binding && bindState !== 'binding') { setBindState('idle'); setBindError('') }
-                }}
-                hint={llmHint}
-                onHintChange={setLLMHint}
-                onClearKey={() => {
-                  clearLLMKey()
-                  const next = { ...llmConfig, apiKey: '', binding: null }
-                  setLLMConfig(next)
-                  saveLLMConfig(next)
-                  setBindState('idle')
-                  setBindError('')
-                }}
-                busy={aiBusy}
-                bindState={bindState}
-                bindError={bindError}
-                onBind={handleBind}
-              />
+              <p className="adv-on-note">
+                高级模式已开启 · 评测全部交给你的模型（BYOK）
+                <button onClick={() => { setAdvanced(false); setAdvOpen(false); setError('') }}>关闭</button>
+              </p>
             )}
             <div className="input-row">
               <input
@@ -626,7 +663,7 @@ export default function App() {
             {advanced && error && (
               <p className="quota-note">
                 模型评测没成功，可以
-                <button onClick={() => { setAdvanced(false); setError('') }}>切回普通扫描 →</button>
+                <button onClick={() => { setAdvanced(false); setAdvOpen(false); setError('') }}>关闭高级模式 →</button>
               </p>
             )}
             {/限流|403|配额/.test(error) && (
@@ -687,6 +724,19 @@ export default function App() {
             </div>
             <button className="ghost-btn" onClick={() => { sfx.swoosh(); setView('training') }}>
               进入训练场
+            </button>
+          </section>
+
+          <section className="leaderboard-entry">
+            <div className="leaderboard-entry-copy">
+              <h3>GitHub 排行榜</h3>
+              <p>
+                GitHub 趋势榜实时拉取：<b>今日 / 本周 / 本月</b>最火仓库，按 Star 增长排序。
+                点「孵化」能直接把榜单上的仓库变成一只精灵，看看它是什么品种、什么品质。
+              </p>
+            </div>
+            <button className="ghost-btn" onClick={() => { sfx.swoosh(); setView('leaderboard') }}>
+              去看排行榜
             </button>
           </section>
 
@@ -795,6 +845,10 @@ export default function App() {
 
       {view === 'training' && (
         <Training onExit={() => setView('home')} />
+      )}
+
+      {view === 'leaderboard' && (
+        <Leaderboard onHatch={hatchRepo} />
       )}
 
       <footer className="footer">

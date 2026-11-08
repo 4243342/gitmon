@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import '../advanced.css'
 
-// 高级模式（BYOK）：只粘贴一枚密钥，后端自动识别厂商 / 接口 / 模型。
-// 自定义端点只作为自托管模型（Ollama / vLLM / 未收录厂商）的折叠兜底。
+// 高级模式（BYOK）：全程只填一枚密钥，后端自动识别厂商 / 接口 / 模型，无需点任何按钮。
+// 自定义端点与补充说明只在「更多选项」里，默认只显示一个密钥框。
 export default function AdvancedPanel({
   config, onConfigChange, hint, onHintChange, onClearKey, busy,
-  bindState = 'idle', bindError = '', onBind,
+  bindState = 'idle', bindError = '', onBind, onClose,
 }) {
   const [showCustom, setShowCustom] = useState(false)
   const set = (patch) => onConfigChange?.({ ...config, ...patch })
@@ -20,6 +20,17 @@ export default function AdvancedPanel({
   const bound = bindState === 'bound' && binding
   const keyReady = !!config.apiKey?.trim()
 
+  // 输入密钥后自动识别厂商 / 模型，不用单独点「自动绑定」
+  const onBindRef = useRef(onBind)
+  onBindRef.current = onBind
+  useEffect(() => {
+    const key = (config.apiKey || '').trim()
+    if (key.length >= 8 && bindState !== 'bound' && bindState !== 'binding' && bindState !== 'error') {
+      const t = setTimeout(() => onBindRef.current?.(), 700)
+      return () => clearTimeout(t)
+    }
+  }, [config.apiKey, bindState])
+
   return (
     <section className="llm-panel" aria-label="高级模式：模型评测配置">
       <header className="llm-head">
@@ -28,6 +39,9 @@ export default function AdvancedPanel({
           <strong>只填密钥 · 模型全权评测</strong>
           <span>自动识别厂商与模型；品质、六维、根基、词条、技能、等级、属性全部由模型给出，本地不跑规则引擎</span>
         </div>
+        {onClose && (
+          <button type="button" className="llm-close" onClick={onClose} aria-label="关闭">✕</button>
+        )}
       </header>
 
       <div className="llm-bind-row">
@@ -37,21 +51,13 @@ export default function AdvancedPanel({
             type="password"
             value={config.apiKey || ''}
             onChange={(e) => onKeyChange(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && keyReady && !busy) onBind?.() }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && keyReady && !busy) onBindRef.current?.() }}
             placeholder="sk-…  粘贴后自动识别，不用填地址和模型"
             autoComplete="off"
             spellCheck={false}
             disabled={busy}
           />
         </label>
-        <button
-          type="button"
-          className="llm-bind-btn"
-          onClick={() => onBind?.()}
-          disabled={!keyReady || busy || bindState === 'binding'}
-        >
-          {bindState === 'binding' ? '识别中…' : bound ? '重新识别' : '自动绑定'}
-        </button>
       </div>
 
       {bindState === 'binding' && (
@@ -70,11 +76,11 @@ export default function AdvancedPanel({
         </div>
       )}
       {!bound && bindState !== 'error' && bindState !== 'binding' && (
-        <p className="llm-bind-status">还没绑定密钥。绑定后卡片会盖上这枚模型专属的全息钢印。</p>
+        <p className="llm-bind-status">粘贴密钥后自动识别，无需其它操作。绑定后卡片会盖上这枚模型专属的全息钢印。</p>
       )}
 
       <details className="llm-custom" open={showCustom} onToggle={(e) => setShowCustom(e.currentTarget.open)}>
-        <summary>自定义端点（自托管 / 未收录厂商，可选）</summary>
+        <summary>更多选项（自定义端点 / 补充说明，可选）</summary>
         <div className="llm-custom-fields">
           <label>
             <span>Base URL</span>
@@ -106,19 +112,18 @@ export default function AdvancedPanel({
               disabled={busy}
             />
           </label>
+          <label className="llm-hint-field">
+            <span>补充说明 / 额外要求（可选）</span>
+            <textarea
+              value={hint}
+              onChange={(e) => onHintChange?.(e.target.value)}
+              placeholder="例如：按 2024 年的状态评、这是一个内部工具、把等级压低一点…"
+              rows={2}
+              disabled={busy}
+            />
+          </label>
         </div>
       </details>
-
-      <label className="llm-hint-field">
-        <span>补充说明 / 额外要求（可选）</span>
-        <textarea
-          value={hint}
-          onChange={(e) => onHintChange?.(e.target.value)}
-          placeholder="例如：按 2024 年的状态评、这是一个内部工具、把等级压低一点…"
-          rows={2}
-          disabled={busy}
-        />
-      </label>
 
       <footer className="llm-foot">
         <span>
