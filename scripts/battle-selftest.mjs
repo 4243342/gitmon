@@ -131,6 +131,34 @@ for (let i = 0; i < 120; i += 1) {
   if (state.winner) stats.winner[state.winner] += 1
 }
 
+// ---------- 3b. 自动托管（UI 默认路径：battleTurn(state, { type: 'auto' })） ----------
+{
+  const autoRun = (seed, difficulty, size) => {
+    const teamA = pickRivalTeam(pets.slice(0, 4), seed, difficulty).slice(0, size)
+    const teamB = pickRivalTeam(pets.slice(4, 8), seed + 5, difficulty).slice(0, size)
+    let { state } = createBattle({ playerTeam: teamA, enemyTeam: teamB, seed, difficulty })
+    let guard = 0
+    while (!state.winner && guard < 200) {
+      state = battleTurn(state, { type: 'auto' }).state
+      guard += 1
+    }
+    return { state, turns: guard }
+  }
+  let longest = 0
+  for (let i = 0; i < 60; i += 1) {
+    const seed = 5000 + i * 53
+    const difficulty = ['easy', 'normal', 'hard'][i % 3]
+    const size = (i % 3) + 1
+    const { state, turns } = autoRun(seed, difficulty, size)
+    longest = Math.max(longest, turns)
+    check('自动对战会结束', !!state.winner, `seed ${seed} / ${turns} 回合`)
+  }
+  const a = JSON.stringify(autoRun(9182, 'hard', 3).state.sides)
+  const b = JSON.stringify(autoRun(9182, 'hard', 3).state.sides)
+  check('自动托管同种子结果完全一致', a === b)
+  console.log(`自动托管 60 场 · 最长 ${longest} 回合`)
+}
+
 // ---------- 4. 可复现 ----------
 {
   const seed = 777

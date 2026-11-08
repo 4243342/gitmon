@@ -128,10 +128,11 @@ export default function PackOpening({ pet, onReveal, muted }) {
     } catch { /* 拿不到坐标就算了，声音会静默降级 */ }
   }
 
-  const autoOpen = () => {
+  const kick = (opener) => {
+    if (!opener?.autoSlice) { sfx.rip(); finish(); return }
     try {
       unlockAudio()
-      openerRef.current?.autoSlice?.()
+      opener.autoSlice()
       // 不设固定跳转：整段撕膜→掀盖→抽卡→落地演完由 revealed 事件接管。
       // 只留一个兜底，防止演出意外卡死（正常情况下 finish 先触发，这里不会走到）
       setTimeout(() => { if (!doneRef.current) { sfx.rip(); finish() } }, 12000)
@@ -139,6 +140,16 @@ export default function PackOpening({ pet, onReveal, muted }) {
       sfx.rip()
       finish()
     }
+  }
+
+  const autoOpen = () => {
+    // 库的 ready 事件可能早于 createPackOpener 返回，此时 ref 还没挂上实例。
+    // 等一拍再踢，避免「按钮已经能点，点了却没有任何反应」。
+    if (!openerRef.current?.autoSlice) {
+      setTimeout(() => { if (!doneRef.current) kick(openerRef.current) }, 150)
+      return
+    }
+    kick(openerRef.current)
   }
 
   const fallbackOpen = () => {

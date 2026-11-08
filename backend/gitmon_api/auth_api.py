@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from fastapi import APIRouter, Header, Query, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -47,6 +47,28 @@ def _safe_next(raw: str | None) -> str:
     if not value.startswith("/") or value.startswith("//"):
         return "/"
     return value[:300]
+
+
+def _start_target(request: Request, next_path: str) -> str:
+    """授权往返后的落点。
+
+    前后端分开跑时页面在 5173、回调落在 8000，相对路径一跳就把用户带离 dev
+    页面；这种情况把页面 origin 一起签进 state，回调时按绝对地址回去。
+    """
+    origin = auth.page_origin(request)
+    return f"{origin}{next_path}" if origin else next_path
+
+
+def _state_origin(state: str) -> str:
+    """从签名 state 里取回页面 origin；相对路径或验签失败返回空串。"""
+    try:
+        target = auth.verify_state(state)
+    except AuthError:
+        return ""
+    if not target.startswith(("http://", "https://")):
+        return ""
+    parts = urlsplit(target)
+    return f"{parts.scheme}://{parts.netloc}" if parts.netloc else ""
 
 
 class TokenLogin(BaseModel):
@@ -139,7 +161,7 @@ def token(request: Request) -> JSONResponse:
 
 @router.get("/github/start", summary="跳转 GitHub 授权页")
 def github_start(request: Request, next: str = Query(default="/", alias="next")) -> RedirectResponse:
-    state = auth.sign_state(_safe_next(next))
+    state = auth.sign_state(_start_target(request, _safe_next(next)))
     response = RedirectResponse(auth.authorize_url(state, request), status_code=302)
     response.headers["Cache-Control"] = "no-store"
     return response
@@ -153,7 +175,7 @@ def github_callback(
     error: str = Query(default=""),
     error_description: str = Query(default=""),
 ) -> RedirectResponse:
-    fallback = "/?auth=failed"
+    fallback = f"{_state_origin(state)}/?auth=failed"
     if error:
         reason = quote(error_description or error)
         return RedirectResponse(f"{fallback}&reason={reason}", status_code=302)
@@ -251,7 +273,7 @@ def github_token_login(payload: TokenLogin) -> JSONResponse:
 
 @router.get("/gitee/start", summary="跳转 Gitee 授权页")
 def gitee_start(request: Request, next: str = Query(default="/", alias="next")) -> RedirectResponse:
-    state = auth.sign_state(_safe_next(next))
+    state = auth.sign_state(_start_target(request, _safe_next(next)))
     response = RedirectResponse(auth.gitee_authorize_url(state, request), status_code=302)
     response.headers["Cache-Control"] = "no-store"
     return response
@@ -265,7 +287,7 @@ def gitee_callback(
     error: str = Query(default=""),
     error_description: str = Query(default=""),
 ) -> RedirectResponse:
-    fallback = "/?auth=failed"
+    fallback = f"{_state_origin(state)}/?auth=failed"
     if error:
         reason = quote(error_description or error)
         return RedirectResponse(f"{fallback}&reason={reason}", status_code=302)

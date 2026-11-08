@@ -5,10 +5,7 @@ import {
   STATUS_INFO,
   battleTurn,
   createBattle,
-  benchOf,
-  effectivenessLabel,
   hpPercent,
-  moveEffectiveness,
 } from '../battle.js'
 import {
   matchBuiltinOwnerTeam,
@@ -133,37 +130,6 @@ function UnitPanel({ unit, side, fx, shaking }) {
   )
 }
 
-const ROLE_ICON = { quick: '»', main: '✦', heavy: '◆', ultra: '★' }
-
-function MoveButton({ move, foe, disabled, onClick }) {
-  const mult = moveEffectiveness(move, foe)
-  const hint = mult === 0 ? '无效' : mult > 1 ? effectivenessLabel(mult) : mult < 1 ? '效果不佳' : ''
-  const ppPct = move.maxPp === Infinity ? 100 : Math.max(0, (move.pp / move.maxPp) * 100)
-  return (
-    <button
-      className={`move-btn ${move.category} ${disabled ? 'disabled' : ''} ${mult === 0 ? 'no-effect' : ''}`}
-      onClick={onClick}
-      disabled={disabled}
-      title={!move.unlocked ? `Lv.${move.unlockLevel} 解锁` : move.pp <= 0 ? 'PP 用尽' : `${move.label} · 威力 ${move.power}`}
-    >
-      <span className="move-icon" aria-hidden="true">{ROLE_ICON[move.role] || '◆'}</span>
-      <span className="move-head">
-        <span className="move-name">{move.name}</span>
-        <span className="move-type">{move.label}</span>
-        {hint && <span className={`move-hint ${mult > 1 ? 'good' : mult === 0 ? 'none' : 'bad'}`}>{hint}</span>}
-      </span>
-      <span className="move-meta">
-        <span>威力 <b>{move.power}</b></span>
-        <span>命中 <b>{move.acc}</b></span>
-        <span>PP <b>{move.pp}/{move.maxPp}</b></span>
-      </span>
-      {!move.unlocked
-        ? <span className="move-lock">Lv.{move.unlockLevel} 解锁</span>
-        : <span className="pp-track"><span className="pp-fill" style={{ width: `${ppPct}%` }} /></span>}
-    </button>
-  )
-}
-
 function EmptyState({ onExit }) {
   return (
     <div className="picker-empty">
@@ -179,7 +145,7 @@ function ModePicker({ pets, onPick, onExit }) {
     <div className="battle-picker">
       <div className="picker-head">
         <h2>竞技场</h2>
-        <p>挑一种挑战方式。在线对手打的是对方仓库的真实实力；同类型和随机宠物可以自己定难度。</p>
+        <p>挑一种挑战方式。在线对手打的是对方仓库的真实实力；同类型和随机宠物可以自己定难度。开战后双方自动出招，无需点技能。</p>
       </div>
 
       {pets.length === 0 ? (
@@ -442,7 +408,6 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
   const [busy, setBusy] = useState(false)
   const [fx, setFx] = useState({ player: null, enemy: null })
   const [shake, setShake] = useState({ player: false, enemy: false })
-  const [showBench, setShowBench] = useState(false)
   const [reward, setReward] = useState(0)
   const [lunging, setLunging] = useState(null)
   const [hurt, setHurt] = useState({ player: false, enemy: false })
@@ -617,7 +582,6 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
     setState(built.state)
     setLog(built.events.map((e) => e.text))
     setPhase('fight')
-    setShowBench(false)
     // 开战按钮是用户手势，在这里起 BGM 才能解锁 AudioContext
     bgm.startBattle()
   }
@@ -633,7 +597,6 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
   const act = async (action) => {
     if (!state || state.winner || busy) return
     setBusy(true)
-    setShowBench(false)
     timersRef.current.forEach(clearTimeout)
     timersRef.current = []
 
@@ -696,37 +659,24 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
     setBusy(false)
   }
 
-  const switchTo = (index) => {
-    act({ type: 'switch', index })
-  }
+  // 自动对战：进入战斗后按节奏自动出招 / 换人，直到分出胜负，全程无需点击
+  useEffect(() => {
+    if (phase !== 'fight' || !state || state.winner || busy) return undefined
+    const t = setTimeout(() => act({ type: 'auto' }), fast ? 160 : 780)
+    return () => clearTimeout(t)
+  }, [phase, state, busy, fast])
 
-  const bench = state ? benchOf(state, 'player') : []
-  const benchIndexes = state
-    ? state.sides.player.team.map((u, i) => ({ u, i })).filter(({ u, i }) => i !== state.sides.player.active && !u.fainted)
-    : []
-
-  // 键盘操作：1–4 出招 / B 换人面板 / F 快进 / Esc 收起换人（输入框里不抢键）
+  // 键盘：F 切换快进（输入框里不抢键）
   useEffect(() => {
     if (phase !== 'fight' || !state || state.winner) return undefined
     const onKey = (e) => {
       const tag = e.target?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || e.metaKey || e.ctrlKey || e.altKey) return
-      if (e.key === 'f' || e.key === 'F') { toggleFast(); return }
-      if (showBench && e.key === 'Escape') { setShowBench(false); return }
-      if (busy || showBench) return
-      if (/^[1-4]$/.test(e.key)) {
-        const i = Number(e.key) - 1
-        const unit = state.sides.player.team[state.sides.player.active]
-        const move = unit?.moves?.[i]
-        if (move && move.unlocked && move.pp > 0) { e.preventDefault(); act({ type: 'move', index: i }) }
-      } else if (e.key === 'b' || e.key === 'B') {
-        const hasBench = state.sides.player.team.some((u, i) => i !== state.sides.player.active && !u.fainted)
-        if (hasBench) { e.preventDefault(); setShowBench((v) => !v) }
-      }
+      if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFast() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [phase, state, busy, showBench, fast])
+  }, [phase, state, fast])
 
   if (phase === 'mode') {
     return (
@@ -851,56 +801,31 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
         </div>
       )}
 
-      <div className="battle-controls">
+      <div className="battle-controls auto-controls">
         <div className="control-head">
           <span className="control-title">
-            {busy ? '结算中…' : state.winner ? '战斗结束' : '选择招式'}
+            {state.winner ? '战斗结束' : busy ? '自动结算中…' : '自动对战中'}
           </span>
-          <span className="control-hint">
-            <kbd>1</kbd>–<kbd>4</kbd> 出招 · <kbd>B</kbd> 换人 · <kbd>F</kbd> 快进
+          <span className="control-hint">AI 自动挑招式 / 换人 · <kbd>F</kbd> 快进</span>
+        </div>
+        <div className="auto-status">
+          <span className={`auto-pulse ${state.winner ? 'done' : ''}`} aria-hidden="true" />
+          <span className="auto-unit">
+            <b>{playerUnit.name}</b>
+            <small>Lv.{playerUnit.level} · 战力 {playerUnit.combatPower} · HP {playerUnit.hp}/{playerUnit.maxHp}</small>
+          </span>
+          <span className="auto-vs">VS</span>
+          <span className="auto-unit foe">
+            <b>{enemyUnit.name}</b>
+            <small>Lv.{enemyUnit.level} · 战力 {enemyUnit.combatPower} · HP {enemyUnit.hp}/{enemyUnit.maxHp}</small>
           </span>
         </div>
-        <div className="move-grid" style={{ '--mv': playerUnit.element.color }}>
-          {playerUnit.moves.map((move, i) => (
-            <MoveButton
-              key={move.name + i}
-              move={move}
-              foe={enemyUnit}
-              disabled={busy || !!state.winner || !move.unlocked || move.pp <= 0}
-              onClick={() => act({ type: 'move', index: i })}
-            />
-          ))}
-        </div>
-
         <div className="battle-side-actions">
-          <button
-            className="ghost-btn"
-            disabled={busy || !!state.winner || benchIndexes.length === 0}
-            onClick={() => setShowBench((v) => !v)}
-          >
-            换人（{bench.length}）
-          </button>
           <span className="battle-tip">
             {[enemyUnit.element.name, enemyUnit.elementSecondary?.name].filter(Boolean).join('/')}系 · 我方速度 {Math.round(playerUnit.stats.spe * (playerUnit.passive === 'static' ? 1.15 : 1))}
             {mode !== 'online' && ` · ${modeLabel(mode)}`}
           </span>
         </div>
-
-        {showBench && (
-          <div className="bench-panel">
-            {benchIndexes.map(({ u, i }) => (
-              <button key={u.key} className="bench-card" onClick={() => switchTo(i)}>
-                <b>{u.name}</b>
-                <small>Lv.{u.level} · {u.element.name}系</small>
-                <div className="hpbar-track slim">
-                  <div className={`hpbar-fill ${hpPercent(u) <= 25 ? 'hp-red' : hpPercent(u) <= 50 ? 'hp-yellow' : 'hp-green'}`} style={{ width: `${hpPercent(u)}%` }} />
-                </div>
-                <span className="bench-hp">{u.hp}/{u.maxHp}</span>
-              </button>
-            ))}
-            {benchIndexes.length === 0 && <p className="bench-empty">没有可换的精灵了</p>}
-          </div>
-        )}
       </div>
     </main>
   )

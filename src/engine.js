@@ -10,6 +10,9 @@ import {
   traitsOf,
   xpMultiplier,
 } from './traits.js'
+import { stageFromLevel } from './evolution.js'
+
+export { EVOLUTION, MAX_STAGE, stageFromLevel, stageInfo, stageName, isHumanoid, nextStage, stageProgress } from './evolution.js'
 
 // ---------- 种子 ----------
 export function hashSeed(str) {
@@ -219,10 +222,9 @@ export function levelFromEngineering(score) {
   return Math.max(1, Math.min(999, Math.round(1 + (score / 100) * 998)))
 }
 
-export function stageFromLevel(level, milestonesOk) {
-  if (level >= 500 && milestonesOk) return 3
-  if (level >= 150) return 2
-  return 1
+export function stageFromLevelLegacy(level, milestonesOk) {
+  // 兼容旧调用：现在阶段只由等级决定（见 evolution.js）
+  return stageFromLevel(level)
 }
 
 // 成长曲线（文档 §7.1）：next_exp = 100 × level^1.5
@@ -230,23 +232,110 @@ export function expForLevel(level) {
   return Math.round(100 * Math.pow(level, 1.5))
 }
 
-// ---------- 六维（§6.1） ----------
-function buildStats(snap, qualityKey, rng) {
-  const boost = { N: 0.72, R: 0.88, SR: 1.0, SSR: 1.12 }[qualityKey]
-  const push = snap.daysSincePush
-  const base = {
-    攻击: 30 + logNorm(snap.commits, 8000) * 0.45 + rng() * 18,
-    防御: (snap.hasTests ? 55 : 28) + (snap.hasCI ? 20 : 0) + rng() * 15,
-    速度: clamp(100 - Math.min(100, push) * 0.7, 10, 100) * 0.7 + rng() * 20,
-    特攻: 25 + logNorm(snap.languages.length * 400 + snap.sizeKb, 30000) * 0.45 + rng() * 15,
-    特防: (snap.hasDocs ? 45 : 22) + (snap.license ? 15 : 0) + rng() * 22,
-    HP: 30 + logNorm(snap.ageMonths, 120) * 0.4 + logNorm(snap.contributors, 200) * 0.3 + rng() * 15,
-  }
-  const GRADE = (v) => (v >= 90 ? 'S' : v >= 75 ? 'A' : v >= 60 ? 'B' : v >= 40 ? 'C' : 'D')
-  return Object.entries(base).map(([name, v]) => {
-    const value = clamp(Math.round(v * boost), 5, 100)
-    return { name, value, grade: GRADE(value) }
+// ---------- 六维 / 战力系统（§6.1） ----------
+// 采用业界最通用的「正常战力系统」：种族值(base stats) + 个体值(IV, 0–31) + 等级成长，
+// 数值公式沿用 Pokémon 第三代（无努力值）标准。这样等级、品质、个体都会实打实地改变数值，
+// 而不是一堆互不相关的随机量。
+export const STAT_ORDER = ['攻击', '防御', '速度', '特攻', '特防', 'HP']
+
+// 种族值：每个生态类型一套六维，数值落在完全进化宝可梦的常见区间（总和 439–525）
+export const BASE_STATS = {
+  beast:   { 攻击: 85, 防御: 75, 速度: 72, 特攻: 80, 特防: 78, HP: 80 }, // 均衡偏物攻
+  bird:    { 攻击: 82, 防御: 55, 速度: 110, 特攻: 70, 特防: 62, HP: 60 }, // 高速脆皮
+  element: { 攻击: 70, 防御: 90, 速度: 60, 特攻: 75, 特防: 88, HP: 95 }, // 肉盾均衡
+  dragon:  { 攻击: 95, 防御: 85, 速度: 70, 特攻: 105, 特防: 80, HP: 90 }, // 强力特攻
+  flying:  { 攻击: 78, 防御: 68, 速度: 105, 特攻: 78, 特防: 72, HP: 70 }, // 高速均衡
+  phantom: { 攻击: 80, 防御: 115, 速度: 55, 特攻: 70, 特防: 95, HP: 100 }, // 防御墙
+  fairy:   { 攻击: 55, 防御: 75, 速度: 80, 特攻: 100, 特防: 105, HP: 85 }, // 特攻辅助
+}
+
+// 属性微调：在种族值上轻推个别维度，给元素一点性格，但不喧宾夺主（±4~10）
+export const ELEMENT_BIAS = {
+  water:   { HP: 8, 特防: 4, 攻击: -4 },
+  thunder: { 速度: 8, 特攻: 4, 防御: -4 },
+  steel:   { 防御: 8, 特防: 4, 特攻: -4 },
+  earth:   { 防御: 6, HP: 4, 速度: -4 },
+  rock:    { 防御: 10, 特防: 4, 速度: -6 },
+  fire:    { 攻击: 8, 特攻: 4, 特防: -4 },
+  wind:    { 速度: 8, 特防: 4, 攻击: -4 },
+  grass:   { HP: 6, 特防: 4, 攻击: -4 },
+  normal:  {},
+}
+
+const IV_MAX = 31
+const IV_FLOOR = { N: 0, R: 8, SR: 16, SSR: 24 } // 品质决定个体值下限，稀有度才有意义
+const MAX_BASE = 130 // UI 归一化的理论上限（含属性微调后的最大值）
+
+export function baseFor(speciesKey, elementKey) {
+  const b = { ...(BASE_STATS[speciesKey] || BASE_STATS.element) }
+  const bias = ELEMENT_BIAS[elementKey] || {}
+  for (const k of STAT_ORDER) b[k] = (b[k] || 0) + (bias[k] || 0)
+  return b
+}
+
+// 个体值：同种子必得同一组（0..31），品质抬高低限
+export function rollIVs(seed, qualityKey = 'N') {
+  const rng = makeRng((seed >>> 0) ^ 0x9e3779b9)
+  const floorVal = IV_FLOOR[qualityKey] ?? 0
+  return STAT_ORDER.map(() => Math.min(IV_MAX, Math.floor(rng() * (IV_MAX + 1 - floorVal)) + floorVal))
+}
+
+// 某等级下单个维度能到达的理论上限（用于评级与 UI 归一化）
+export function statCapAtLevel(level, isHP = false) {
+  const lv = Math.max(1, Math.min(999, Number(level) || 1))
+  return isHP
+    ? Math.floor((2 * MAX_BASE + IV_MAX) * lv / 100) + lv + 10
+    : Math.floor((2 * MAX_BASE + IV_MAX) * lv / 100) + 5
+}
+
+function gradeOfRatio(ratio) {
+  if (ratio >= 0.9) return 'S'
+  if (ratio >= 0.72) return 'A'
+  if (ratio >= 0.5) return 'B'
+  if (ratio >= 0.3) return 'C'
+  return 'D'
+}
+
+// 核心：种族值 + 个体值 + 等级 → 六维 + 最大HP + 战力(CP)
+// traits 仅以「百分比」修正（词条在设计文档 §6.4 里本就是相对强弱），保证任何等级下都有意义。
+export function computeStats({ speciesKey, elementKey, qualityKey, ivs, level, traits = [] }) {
+  const base = baseFor(speciesKey, elementKey)
+  const lv = Math.max(1, Math.min(999, Number(level) || 1))
+  const raw = STAT_ORDER.map((name, i) => {
+    const b = base[name] || 50
+    const iv = ivs?.[i] ?? 0
+    if (name === 'HP') return Math.floor((2 * b + iv) * lv / 100) + lv + 10
+    return Math.floor((2 * b + iv) * lv / 100) + 5
   })
+  const withTraits = applyTraits(
+    STAT_ORDER.map((name, i) => ({ name, value: raw[i] })),
+    traits,
+  )
+  const maxHp = withTraits.find((s) => s.name === 'HP').value
+  // 战力：攻防特攻特防速度之和 + 60% 血量，再乘等级系数（0.5 起，随等级线性上升）
+  const offense = withTraits.reduce((a, s) => a + s.value, 0) - maxHp + Math.round(maxHp * 0.6)
+  const combatPower = Math.floor(offense * (0.5 + lv / 200))
+  const statCap = statCapAtLevel(lv, true)
+  const stats = withTraits.map((s) => {
+    const cap = statCapAtLevel(lv, s.name === 'HP')
+    const ratio = cap > 0 ? s.value / cap : 0
+    return { ...s, grade: gradeOfRatio(ratio) }
+  })
+  return { stats, maxHp, combatPower, statCap, base }
+}
+
+// 升级后按新等级重算（保留既有的个体值与词条），旧存档缺字段时返回空对象以保持兼容
+export function recomputePetStats(pet, level) {
+  if (!pet || !pet.ivs || !pet.species || !pet.element) return {}
+  const r = computeStats({
+    speciesKey: pet.species.key,
+    elementKey: pet.element.key,
+    qualityKey: pet.qualityKey,
+    ivs: pet.ivs,
+    level,
+    traits: pet.traits || [],
+  })
+  return { stats: r.stats, maxHp: r.maxHp, combatPower: r.combatPower, statCap: r.statCap }
 }
 
 // ---------- 技能（§6.2） ----------
@@ -275,15 +364,22 @@ export function judge(snap) {
   const qualityKey = quality.score >= 80 ? 'SSR' : quality.score >= 60 ? 'SR' : quality.score >= 40 ? 'R' : 'N'
   const level = levelFromEngineering(engineering.score)
   const milestones = (snap.releaseCount >= 1 ? 1 : 0) + (snap.contributors >= 5 ? 1 : 0) + (snap.stars >= 100 ? 1 : 0)
-  const evolutionStage = stageFromLevel(level, milestones >= 2)
-  const stats = buildStats(snap, qualityKey, rng)
+  const evolutionStage = stageFromLevel(level)
+  const ivs = rollIVs(seed, qualityKey)
   const skills = buildSkills(primary, level, rng)
 
   // §6.3 / §6.4：根基与性格词条（前端 mock；后端接入后以 API 为准）
   const aiRate = snap.aiRate ?? null
   const foundation = foundationOf(snap, aiRate)
   const petTraits = traitsOf(snap, { aiRate })
-  const finalStats = applyTraits(stats, petTraits)
+  const { stats, maxHp, combatPower, statCap, base: baseStats } = computeStats({
+    speciesKey: species.key,
+    elementKey: primary.key,
+    qualityKey,
+    ivs,
+    level,
+    traits: petTraits,
+  })
 
   return {
     ...snap,
@@ -302,7 +398,11 @@ export function judge(snap) {
     exp: expForLevel(level),
     evolutionStage,
     milestones,
-    stats: finalStats,
+    stats,
+    ivs,
+    baseStats,
+    combatPower,
+    statCap,
     skills,
     foundation: foundation.score,
     foundationDims: foundation.dims,
@@ -312,7 +412,7 @@ export function judge(snap) {
     traitHints: traitHints(petTraits),
     xpMultiplier: xpMultiplier(petTraits),
     expToNext: Math.round(expForLevel(level) * xpMultiplier(petTraits)),
-    maxHp: finalStats.find((s) => s.name === 'HP').value * 10,
+    maxHp,
     status: snap.daysSincePush > 30 ? 'sleeping' : 'active',
     bond: 0,
     createdAt: Date.now(),

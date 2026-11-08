@@ -65,6 +65,7 @@
 - ⬆️ **养成**：commit +2 XP、合并 PR +10 XP、发 release +50 XP
 - 🧬 **进化**：8 个节点、9 个形态，Lv.10 起每跨一个台阶换一次外形，**Lv.500 起化为人形态**（详见下节）
 - ⚔️ **对战**：1–3 只组队上竞技场，属性克制 + 先制 + 异常状态 + 换人，3v3 回合制
+- 🏋️ **训练场**：竞技场下方的 AI 编程工具入口，六款软件点一下直达，去过自动打卡（详见下节）
 - 💥 **攻击特效**：pixelfx 代码绘制的像素特效——9 属性 × 4 档威力各有一套，会心有整屏冲击帧
 - 😴 **沉睡**：30 天不维护，精灵会睡过去 —— 别让它睡
 - 🖼️ **自定义形象**：不喜欢默认立绘？在卡片上直接上传 / 拖一张图（GIF 动图也行）换成你想要的形象，卡面、图鉴、对战、分享卡全场景生效，IndexedDB 本地保存，一键还原
@@ -181,7 +182,7 @@ monstrjs 手绘部件拼装精灵（种子确定性）· 自研战斗引擎（�
 | `src/sprite.js` | 种子 → 像素精灵（[monstrjs](https://github.com/vcgtz/monstrjs) 手绘部件拼装：8 体型 × 眼嘴腮红耳尾四肢配饰，双属性配色 + 进化阶段配饰） |
 | `src/customSprite.js` | 每只精灵的自定义形象：上传 / 拖拽 → 方形裁剪 → IndexedDB，全场景优先显示 |
 | `src/assets/species/` | 种族立绘素材（可选）：`<种族>/<属性>.png` 放进去自动生效，规格见 [`docs/ASSETS.md`](docs/ASSETS.md) |
-| `src/components/` | 卡包、精灵卡片、雷达图、竞技场 |
+| `src/components/` | 卡包、精灵卡片、雷达图、竞技场、训练场 |
 
 > 每个库与每份素材的出处、许可证、以及"取了哪一部分"都在下方 [参考与借鉴（来源总表）](#参考与借鉴来源总表) 里逐条列出。
 
@@ -221,6 +222,21 @@ npm run test:parity   # 与官方 Showdown 引擎逐项对拍：81 组克制 + 1
 
 > `test:parity` 用 `@pkmn/sim`（Pokémon Showdown 官方模拟器，MIT）当标准答案：把我们的属性表和自定义种族/招式灌进它的 Dex 跑真实对局，再把同样输入喂给 `src/battle.js` 比对。它只在 devDependencies 里，不进前端包体——Showdown 解包 46MB，作为运行时引擎无法接受（原因见 `docs/BATTLE.md` §0）。
 
+## 训练场
+
+首页「竞技场」入口正下方的功能区：把常用的 AI 编程工具当成教练，点卡片在**新标签页**直达对应软件。不消耗体力、不写入对战战绩；点过的工具会在本机 `localStorage` 记一次打卡，页面顶部显示 `已打卡 N / 6`。
+
+| 工具 | 厂商 | 形态 | 直达地址 |
+| --- | --- | --- | --- |
+| Trae | 字节跳动 | AI IDE（国内版） | `https://www.trae.cn/`（卡片附国际版） |
+| WorkBuddy | 腾讯 | AI 工作台 | `https://www.workbuddy.cn/`（附产品文档） |
+| Codex | OpenAI | 编程智能体 | `https://chatgpt.com/codex`（附产品页） |
+| Cursor | Anysphere | AI 编辑器 | `https://www.cursor.com/` |
+| Claude Code | Anthropic | 终端 Agent | `https://claude.ai/code`（附官方文档） |
+| Grok Bot | xAI | 云端 Bot | `https://x.ai/bot`（附上手指南） |
+
+实现：`src/training-tools.js`（链接清单，改地址只动这一个文件）、`src/components/Training.jsx`、`src/training.css`；`src/App.jsx` 增加 `training` 视图与首页入口。所有外链都带 `target="_blank" rel="noopener noreferrer"`。
+
 ## 离线 AI 味检测（aitrace）
 
 不联网、不调模型，只看本地代码的措辞 / 结构 / 命名 / 生成痕迹 / 提交历史，给一个 0–100 的"AI 味"区间。结果只喂给**根基**，不对外展示原始分。
@@ -249,6 +265,7 @@ AI 味 ≥50 → 词条「根基不稳」，≥75 → 「生成体」；根基�
 - [x] 根基与性格词条（含"根基不稳"减益与修复提示）
 - [x] 离线 AI 味检测 CLI + 扫描钩子
 - [x] 竞技场对战：在线对手 / 同类型 / 随机宠物三种挑战 + 三档难度（`docs/BATTLE.md`）
+- [x] 训练场：六款 AI 编程工具直达入口 + 本机打卡（`src/training-tools.js`）
 - [x] GitHub 登录授权：首屏授权页 + OAuth / 本机 gh 登录态（60 → 5000 次/小时）
 - [x] 三选一登录：GitHub / Gitee / 游客；登录后自动读账号全部项目开除整箱，不再手填仓库
 - [ ] 前端切到真实 API（判定仍在前端跑，扫描已用真实数据）

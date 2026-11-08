@@ -115,6 +115,8 @@ def create_app(settings: Settings | None = None, *, start_queue: bool = True) ->
 
     app.include_router(api_router)
     app.include_router(auth_router)
+    from .llm_api import router as llm_router
+    app.include_router(llm_router)
     install_error_handlers(app)
 
     # 前端构建产物（单容器部署）：必须在 API 路由之后挂载

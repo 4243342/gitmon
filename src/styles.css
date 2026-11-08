@@ -97,16 +97,88 @@ body {
 .q-N { color: #a7a7a7; } .q-R { color: #64b5f6; } .q-SR { color: #c07ee0; } .q-SSR { color: #ffc53d; }
 
 /* ---------- 判定说明 ---------- */
-.howto { margin-top: 34px; }
-.howto h3 { font-size: 15px; margin-bottom: 14px; color: var(--dim); font-weight: 600; }
-.howto-grid { display: grid; gap: 10px; }
-.howto-grid > div {
-  display: grid; grid-template-columns: 62px 1fr; gap: 14px; align-items: start;
-  background: rgba(18, 25, 40, .6); border: 1px solid var(--line);
-  border-radius: 12px; padding: 14px 16px; font-size: 12.5px; line-height: 1.7;
+/* ---------- 使用说明书 ---------- */
+.manual { margin-top: 34px; text-align: left; }
+.manual-head {
+  width: 100%;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 14px;
+  background: rgba(18, 25, 40, .6); border: 1px solid var(--line); border-radius: 10px;
+  color: inherit; font: inherit; text-align: left; cursor: pointer;
+  transition: border-color .18s, background .18s;
 }
-.howto-grid b { color: var(--accent); font-size: 12.5px; }
-.howto-grid span { color: var(--dim); }
+.manual.open .manual-head { margin-bottom: 14px; }
+.manual-head:hover { border-color: var(--accent); background: rgba(18, 25, 40, .85); }
+.manual-title { display: flex; align-items: baseline; gap: 12px; }
+.manual-head h3 { font-size: 15px; color: var(--dim); font-weight: 600; margin: 0; }
+.manual-title small { font-size: 11px; color: #5d6b88; }
+.manual-toggle { font-size: 11.5px; color: var(--accent); white-space: nowrap; }
+.manual-peek {
+  width: 100%; margin-top: 8px; padding: 10px 14px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  background: transparent; border: 1px dashed rgba(90, 110, 150, .45); border-radius: 10px;
+  color: var(--dim); font: inherit; font-size: 11.5px; text-align: left; cursor: pointer;
+  transition: border-color .18s, color .18s;
+}
+.manual-peek span { color: var(--accent); white-space: nowrap; }
+.manual-peek:hover { border-color: var(--accent); color: var(--text); }
+.manual-wrap { display: grid; grid-template-columns: 168px 1fr; gap: 14px; }
+.manual-tabs { display: flex; flex-direction: column; gap: 8px; align-content: start; }
+.manual-tab {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; font-size: 12.5px; color: var(--dim); cursor: pointer;
+  background: rgba(18, 25, 40, .6); border: 1px solid var(--line); border-radius: 10px;
+  text-align: left; font-family: inherit;
+  transition: color .18s, border-color .18s, background .18s;
+}
+.manual-tab:hover { color: var(--text); border-color: var(--accent); }
+.manual-tab i { font-style: normal; font-size: 10px; opacity: .7; font-family: var(--font-arcade); }
+.manual-tab.active {
+  color: #221a00; background: linear-gradient(135deg, #ffcb05, #ff9f1a);
+  border-color: #ffcb05; font-weight: 700;
+}
+.manual-tab.active i { opacity: .85; }
+.manual-page {
+  background: rgba(18, 25, 40, .6); border: 1px solid var(--line);
+  border-radius: 12px; padding: 18px 20px; min-height: 210px;
+}
+.manual-page-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+.manual-page-head span { font-family: var(--font-arcade); font-size: 11px; color: var(--accent); }
+.manual-page-head h4 { font-size: 15px; color: var(--text); margin: 0; }
+.manual-page h4 {
+  font-size: 12.5px; color: var(--accent); margin: 14px 0 6px;
+  padding-left: 9px; border-left: 3px solid var(--accent);
+}
+.manual-page h4:first-of-type { margin-top: 2px; }
+.manual-page p, .manual-page ol, .manual-page ul { font-size: 12.5px; line-height: 1.85; color: var(--dim); }
+.manual-page p { margin: 0 0 10px; }
+.manual-page ol, .manual-page ul { margin: 0 0 10px; padding-left: 20px; }
+.manual-page li { margin-bottom: 3px; }
+.manual-page b { color: var(--text); font-weight: 700; }
+.manual-page code {
+  font-family: var(--font-arcade); font-size: 10px; color: #ffd86b;
+  background: rgba(0, 0, 0, .28); padding: 1px 4px;
+}
+.manual-tip {
+  margin-top: 12px !important; padding: 8px 10px;
+  background: rgba(255, 203, 5, .07); border-left: 3px solid rgba(255, 203, 5, .6);
+  font-size: 12px !important;
+}
+.manual-tiers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0 4px; }
+.manual-tiers > div {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 9px 8px; background: rgba(10, 16, 28, .6);
+  border: 1px solid #2c3855; border-radius: 8px; text-align: center;
+}
+.manual-tiers b { font-family: var(--font-arcade); font-size: 11px; color: #ffd86b; }
+.manual-tiers span { font-size: 12.5px; color: var(--text); }
+.manual-tiers em { font-style: normal; font-size: 10px; color: #6d7893; line-height: 1.5; }
+@media (max-width: 640px) {
+  .manual-wrap { grid-template-columns: 1fr; }
+  .manual-tabs { flex-direction: row; overflow-x: auto; padding-bottom: 4px; }
+  .manual-tab { flex: none; white-space: nowrap; }
+  .manual-tiers { grid-template-columns: repeat(2, 1fr); }
+}
 
 /* ---------- 扫描进度 ---------- */
 .scan { text-align: center; padding: 40px 0; }
@@ -291,6 +363,16 @@ body {
 }
 .skill.locked { color: #59647e; border-style: dashed; }
 .skill-dot { width: 6px; height: 6px; border-radius: 50%; }
+.skill-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 高级模式：威力由模型给出，颜色取技能属性 */
+.skill-power {
+  flex: none;
+  font-family: var(--font-pixel, monospace);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--skill-color, #ffd166);
+  text-shadow: 0 0 6px var(--skill-color, rgba(255, 209, 102, .6));
+}
 
 .quality-dims {
   display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px;
@@ -306,6 +388,22 @@ body {
   border-top: 1px solid rgba(255,255,255,.06); font-size: 10.5px; color: #6d7893;
   position: relative; z-index: 2;
 }
+/* 右下角改成完整仓库地址：过长时省略，但不能把星数挤掉 */
+.pet-card .card-foot { align-items: baseline; }
+.pet-card .card-foot > span:first-child { flex: none; }
+.pet-card .card-foot-right {
+  display: inline-flex; align-items: baseline; justify-content: flex-end;
+  gap: 5px; min-width: 0; max-width: 68%;
+}
+.pet-card .card-repo-url {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: #8391b3; text-decoration: none; cursor: pointer;
+}
+.pet-card .card-repo-url:hover,
+.pet-card .card-repo-url:focus-visible {
+  color: var(--q-color, #ffd23e); text-decoration: underline;
+}
+.pet-card .card-foot-stars { flex: none; white-space: nowrap; }
 
 /* ---------- 养成面板 ---------- */
 .grow {

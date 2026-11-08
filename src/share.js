@@ -2,6 +2,7 @@
 // 与 PetCard / game-theme.css 同一套视觉：像素切角、星级段位、六边形宝石品质标、
 // HP / 进化 / 根基条、六维雷达 + 分段条、技能剑牌、性格词条、品质五维、页脚
 import { petArtwork } from './sprite.js'
+import { sealData } from './modelSeal.js'
 import { starRank } from './starBadge.jsx'
 import { MAX_STAGE, nextStage, stageInfo, stageProgress } from './evolution.js'
 import swordYellowUrl from './assets/kenney/tiles/sword-yellow.png'
@@ -274,6 +275,158 @@ function drawQualityGem(ctx, q, x, y, w, h) {
   ctx.restore()
 }
 
+// ---------- 模型全息钢印（AI 推测卡专属） ----------
+// 参考 holographic foil 做法：conic-gradient 彩虹底 + 斜向高光带 + color-dodge 反光。
+// 导出是静态 PNG，所以用画布把「某一帧反光」烘进去，并与 DOM 版 .model-seal 同构图。
+const FOIL = ['#FF61D2', '#FE9090', '#FFD076', '#9DFFB0', '#67CFFF', '#B78BFF', '#FF61D2']
+
+function fitFont(ctx, text, maxW, px, minPx, family) {
+  let size = px
+  while (size > minPx) {
+    ctx.font = `${size}px ${family}`
+    if (ctx.measureText(text).width <= maxW) return size
+    size -= 0.5 * S
+  }
+  ctx.font = `${minPx}px ${family}`
+  return minPx
+}
+
+// 模型给的技能描述长度不可控，按可用宽度截断，避免压到威力数字或溢出技能牌
+function clipText(ctx, text, maxW) {
+  if (ctx.measureText(text).width <= maxW) return text
+  let t = String(text)
+  while (t.length > 1 && ctx.measureText(`${t}…`).width > maxW) t = t.slice(0, -1)
+  return `${t}…`
+}
+
+function glint(ctx, x, y, r, alpha = 1) {
+  ctx.save()
+  ctx.globalAlpha = alpha
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r)
+  g.addColorStop(0, 'rgba(255,255,255,1)')
+  g.addColorStop(.28, 'rgba(255,255,255,.55)')
+  g.addColorStop(1, 'rgba(255,255,255,0)')
+  ctx.fillStyle = g
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill()
+  ctx.fillStyle = '#ffffff'
+  ctx.beginPath()
+  ctx.moveTo(x, y - r); ctx.lineTo(x + r * .22, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r * .22, y)
+  ctx.closePath(); ctx.fill()
+  ctx.beginPath()
+  ctx.moveTo(x - r, y); ctx.lineTo(x, y - r * .22); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r * .22)
+  ctx.closePath(); ctx.fill()
+  ctx.restore()
+}
+
+function drawModelSeal(ctx, pet, cx, cy, R) {
+  const { family, variant, provider, modelId } = sealData(pet)
+  ctx.save()
+
+  // 章体外阴影（不裁切时画）
+  ctx.shadowColor = 'rgba(0,0,0,.62)'
+  ctx.shadowBlur = 12 * S
+  ctx.shadowOffsetY = 5 * S
+  ctx.fillStyle = '#0a1222'
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.fill()
+  ctx.shadowColor = 'transparent'
+
+  // 全部内容裁进圆里
+  ctx.beginPath(); ctx.arc(cx, cy, R - 0.5 * S, 0, 7); ctx.clip()
+
+  // 1) 彩虹 foil 底：conic-gradient 的画布等价物
+  const foil = ctx.createConicGradient(-45 * Math.PI / 180, cx, cy)
+  FOIL.forEach((c, i) => foil.addColorStop(i / (FOIL.length - 1), c))
+  ctx.fillStyle = foil
+  ctx.fillRect(cx - R, cy - R, R * 2, R * 2)
+
+  // 2) 内芯：只把 foil 留成外圈，中间压暗以承载文字
+  const innerR = R * 0.81
+  const core = ctx.createRadialGradient(cx - innerR * .35, cy - innerR * .4, 2, cx, cy, innerR)
+  core.addColorStop(0, '#2a3d60')
+  core.addColorStop(.62, '#111c31')
+  core.addColorStop(1, '#070d1a')
+  ctx.fillStyle = core
+  ctx.beginPath(); ctx.arc(cx, cy, innerR, 0, 7); ctx.fill()
+
+  // 3) 金属内外圈 + 证书虚线环
+  ctx.strokeStyle = 'rgba(255,255,255,.62)'
+  ctx.lineWidth = 1.6 * S
+  ctx.beginPath(); ctx.arc(cx, cy, R - 1.5 * S, 0, 7); ctx.stroke()
+  ctx.strokeStyle = 'rgba(6,10,20,.8)'
+  ctx.lineWidth = 1.2 * S
+  ctx.beginPath(); ctx.arc(cx, cy, innerR, 0, 7); ctx.stroke()
+  ctx.setLineDash([1.6 * S, 2.4 * S])
+  ctx.strokeStyle = 'rgba(255,215,120,.32)'
+  ctx.lineWidth = 1 * S
+  ctx.beginPath(); ctx.arc(cx, cy, innerR - 1.6 * S, 0, 7); ctx.stroke()
+  ctx.setLineDash([])
+
+  // 4) 文字：标题保持水平，不沿弧逐字旋转（否则「测」等字会歪）
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  const sealTitle = '✦ AI 推测 ✦'
+  fitFont(ctx, sealTitle, R * 0.92, 5.2 * S, 3 * S, PX)
+  ctx.fillStyle = '#ffd166'
+  ctx.shadowColor = 'rgba(0,0,0,.8)'
+  ctx.shadowBlur = 3 * S
+  ctx.fillText(sealTitle, cx, cy - R * 0.62)
+  ctx.shadowColor = 'transparent'
+
+  fitFont(ctx, family, R * 1.42, 10.5 * S, 5.5 * S, AR)
+  ctx.shadowColor = 'rgba(0,0,0,.9)'
+  ctx.shadowOffsetY = 1.5 * S
+  ctx.shadowBlur = 5 * S
+  ctx.fillStyle = '#f6faff'
+  ctx.fillText(family, cx, cy - R * 0.20)
+  ctx.shadowColor = 'rgba(130,205,255,.85)'
+  ctx.shadowBlur = 9 * S
+  ctx.shadowOffsetY = 0
+  ctx.fillText(family, cx, cy - R * 0.20)
+  ctx.shadowColor = 'transparent'
+
+  const variantGrad = ctx.createLinearGradient(cx - R * .5, 0, cx + R * .5, 0)
+  FOIL.slice(0, 5).forEach((c, i) => variantGrad.addColorStop(i / 4, c))
+  fitFont(ctx, variant, R * 1.35, 7.4 * S, 4.5 * S, AR)
+  ctx.fillStyle = variantGrad
+  ctx.fillText(variant, cx, cy + R * 0.10)
+
+  fitFont(ctx, provider, R * 1.2, 5.8 * S, 4 * S, PX)
+  ctx.fillStyle = '#9fd8ff'
+  ctx.fillText(provider, cx, cy + R * 0.30)
+
+  // 最底一行必须留在暗色内芯里，不能溢到彩虹外圈上
+  fitFont(ctx, modelId, R * 0.94, 4 * S, 2.2 * S, AR)
+  ctx.fillStyle = '#9badd0'
+  ctx.fillText(modelId, cx, cy + R * 0.48)
+
+  // 5) 斜向镭射反光带（screen 混合，模拟 foil 的镜面反射）
+  ctx.globalCompositeOperation = 'screen'
+  const sweep = ctx.createLinearGradient(cx - R, cy - R, cx + R, cy + R)
+  sweep.addColorStop(0, 'rgba(255,255,255,0)')
+  sweep.addColorStop(.34, 'rgba(255,255,255,.04)')
+  sweep.addColorStop(.47, 'rgba(255,255,255,.55)')
+  sweep.addColorStop(.53, 'rgba(255,240,200,.32)')
+  sweep.addColorStop(.62, 'rgba(160,220,255,.06)')
+  sweep.addColorStop(1, 'rgba(255,255,255,0)')
+  ctx.fillStyle = sweep
+  ctx.fillRect(cx - R, cy - R, R * 2, R * 2)
+
+  // 6) 左上点状高光 + 一圈冷色反光
+  const sheen = ctx.createRadialGradient(cx - R * .42, cy - R * .46, 1, cx, cy, R * 1.15)
+  sheen.addColorStop(0, 'rgba(255,255,255,.42)')
+  sheen.addColorStop(.32, 'rgba(180,225,255,.10)')
+  sheen.addColorStop(1, 'rgba(0,0,0,0)')
+  ctx.fillStyle = sheen
+  ctx.fillRect(cx - R, cy - R, R * 2, R * 2)
+  ctx.globalCompositeOperation = 'source-over'
+
+  // 7) 星芒
+  glint(ctx, cx + R * .78, cy - R * .63, 4.2 * S, .95)
+  glint(ctx, cx - R * .72, cy + R * .28, 2.8 * S, .7)
+  glint(ctx, cx + R * .18, cy + R * .78, 2.2 * S, .55)
+  ctx.restore()
+}
+
 // ---------- 主流程 ----------
 export async function exportShareCard(pet) {
   await Promise.all([
@@ -333,7 +486,13 @@ export async function exportShareCard(pet) {
   ctx.font = `${10 * S}px ${PX}`
   ctx.fillStyle = '#8e9ab1'
   const dual = pet.elementSecondary ? `/${pet.elementSecondary.name}` : ''
-  ctx.fillText(`${pet.element.name}系${dual} · ${pet.species.name} · ${stageInfo(pet.evolutionStage).name}`, PXD, subY)
+  const sub = `${pet.element.name}系${dual} · ${pet.species.name} · ${stageInfo(pet.evolutionStage).name}`
+  ctx.fillText(sub, PXD, subY)
+  if (pet.aiEvaluated) {
+    ctx.fillStyle = '#f5c542'
+    ctx.fillText(' · AI 推测', PXD + ctx.measureText(sub).width, subY)
+    ctx.fillStyle = '#8e9ab1'
+  }
   if (pet.status === 'sleeping') {
     ctx.fillStyle = '#7f8ca5'
     ctx.fillText('沉睡', PXD + ctx.measureText(`${pet.element.name}系${dual} · ${pet.species.name} · ${stageInfo(pet.evolutionStage).name}`).width + 8 * S, subY)
@@ -363,6 +522,11 @@ export async function exportShareCard(pet) {
   ctx.imageSmoothingEnabled = !pixelated
   ctx.drawImage(pic, spX + (spW - art) / 2, spY + (spH - art) / 2, art, art)
   ctx.imageSmoothingEnabled = true
+
+  // AI 推测卡：在立绘框右下角盖一枚模型专属全息钢印
+  if (pet.aiEvaluated) {
+    drawModelSeal(ctx, pet, RIGHT - 46 * S, spY + spH - 36 * S, 31 * S)
+  }
 
   // ---------- Lv / HP ----------
   const rowY = 199 * S
@@ -432,7 +596,7 @@ export async function exportShareCard(pet) {
     ctx.fillText(s.grade, listX + listW - 4 * S, y)
   })
 
-  // ---------- 技能 2×2 ----------
+  // ---------- 技能 2×2（高级模式：名字 / 描述 / 威力 / 解锁等级均由模型按项目制定） ----------
   const skTop = 372 * S
   const colW = (RIGHT - PXD - 4 * S) / 2
   const chipH = 20 * S
@@ -456,9 +620,36 @@ export async function exportShareCard(pet) {
     ctx.drawImage(img, x + 6 * S, y + (chipH - 13 * S) / 2, 13 * S, 13 * S)
     ctx.globalAlpha = 1
     ctx.imageSmoothingEnabled = true
-    ctx.font = `${9 * S}px ${PX}`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-    ctx.fillStyle = s.unlocked ? '#f2f6ff' : '#59647e'
-    ctx.fillText(s.unlocked ? s.name : `Lv.${s.unlockLevel}`, x + 6 * S + 13 * S + 4 * S, y + chipH / 2)
+
+    const tx = x + 6 * S + 13 * S + 4 * S
+    const hasPower = s.unlocked && typeof s.power === 'number'
+    const textW = colW - (tx - x) - (hasPower ? 17 * S : 6 * S)
+    ctx.textBaseline = 'middle'
+
+    if (hasPower) {
+      ctx.font = `${8 * S}px ${AR}`; ctx.textAlign = 'right'
+      ctx.fillStyle = s.element?.color || '#ffd166'
+      ctx.fillText(String(s.power), x + colW - 5 * S, y + chipH / 2)
+    }
+
+    ctx.textAlign = 'left'
+    if (!s.unlocked) {
+      ctx.font = `${9 * S}px ${PX}`
+      ctx.fillStyle = '#59647e'
+      ctx.fillText(`Lv.${s.unlockLevel}`, tx, y + chipH / 2)
+      return
+    }
+
+    const name = String(s.name || '')
+    const desc = String(s.desc || '')
+    fitFont(ctx, name, textW, 8.5 * S, 5 * S, PX)
+    ctx.fillStyle = '#f2f6ff'
+    ctx.fillText(clipText(ctx, name, textW), tx, desc ? y + chipH * 0.36 : y + chipH / 2)
+    if (desc) {
+      fitFont(ctx, desc, textW, 5 * S, 3.2 * S, PX)
+      ctx.fillStyle = '#8ea3c6'
+      ctx.fillText(clipText(ctx, desc, textW), tx, y + chipH * 0.72)
+    }
   })
 
   // ---------- 性格词条 ----------
@@ -518,7 +709,18 @@ export async function exportShareCard(pet) {
   ctx.textAlign = 'left'
   ctx.fillText(`品质 ${pet.qualityScore} · 工程量 ${pet.engineeringScore}`, PXD, footTop + 7 * S)
   ctx.textAlign = 'right'
-  ctx.fillText(`${pet.platform === 'gitee' ? 'Gitee' : 'GitHub'} · ★${pet.stars}`, RIGHT, footTop + 7 * S)
+  if (pet.aiEvaluated) {
+    // 分享出去要能溯源：把实际使用的模型写在页脚，卡面另有全息钢印
+    const modelText = `模型 ${pet.aiModel || '未标注'}${pet.aiProviderLabel ? ` · ${pet.aiProviderLabel}` : ''}`
+    ctx.fillStyle = '#f5c542'
+    fitFont(ctx, modelText, RIGHT - PXD - 150 * S, 7.5 * S, 5 * S, PX)
+    ctx.fillText(modelText, RIGHT - 46 * S, footTop + 7 * S)
+    ctx.fillStyle = '#6d7893'
+    ctx.font = `${7.5 * S}px ${PX}`
+    ctx.fillText(`★${pet.stars}`, RIGHT, footTop + 7 * S)
+  } else {
+    ctx.fillText(`${pet.platform === 'gitee' ? 'Gitee' : 'GitHub'} · ★${pet.stars}`, RIGHT, footTop + 7 * S)
+  }
 
   // 品质描边（最后画，盖住边缘内容）
   ctx.strokeStyle = q.color

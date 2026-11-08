@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { parseRepoInput, scanOwnerBox, scanRepo } from './scan.js'
-import { expForLevel, judge } from './engine.js'
+import { expForLevel, judge, recomputePetStats } from './engine.js'
 import {
   cachedProfile, clearGuest, consumeAuthQuery, fetchMe, fetchProviders,
   guestSkipped, logout, PROVIDER_LABEL, quotaText, skipLogin,
@@ -15,9 +15,15 @@ import PackBox from './components/PackBox.jsx'
 import Collection from './components/Collection.jsx'
 import GrowPanel from './components/GrowPanel.jsx'
 import Battle from './components/Battle.jsx'
+import Training from './components/Training.jsx'
 import DecoSprite from './components/DecoSprite.jsx'
+import Manual from './components/Manual.jsx'
+import AdvancedPanel from './components/AdvancedPanel.jsx'
+import { bindWithLLM, clearLLMKey, evaluateWithLLM, loadLLMConfig, saveLLMConfig } from './llm.js'
+import { buildPetFromEvaluation } from './llmEval.js'
 import './styles.css'
 import './game-theme.css'
+import './training.css'
 
 const RANK = { SSR: 4, SR: 3, R: 2, N: 1 }
 
@@ -40,6 +46,36 @@ const DIALOGS_OWNER = [
   '逐个评估代码质量，装包...',
   '整箱卡包已就绪！',
 ]
+
+// 高级模式：仓库不扫描，全部评测由模型给出
+const STEPS_AI = ['连接模型', '推测仓库画像', '模型完成全部评测', '生成精灵卡']
+const DIALOGS_AI = [
+  '带上评测规则，连接你的模型...',
+  '模型正在凭知识推测这个项目的画像...',
+  '品质 / 六维 / 根基 / 词条 / 等级，连 4 个技能的名字 / 威力 / 解锁等级，全部按项目交给模型制定...',
+  '把模型的结果填进卡面...',
+  'AI 推测卡包已就绪！',
+]
+
+// 揭晓 / 详情：明确告诉用户这不是真实扫描
+function AiNote({ pet }) {
+  if (!pet?.aiEvaluated) return null
+  return (
+    <div className="ai-note">
+      <b>AI 推测</b> · 非真实扫描，品质 / 六维 / 根基 / 词条 / 等级，以及 4 个技能的
+      名称 / 属性 / 威力 / 解锁等级 / 描述，全部由模型
+      <b> {pet.aiModel || '（未标注）'} </b>
+      {pet.aiProviderLabel && <b>（{pet.aiProviderLabel}）</b>}
+      按项目制定，本地未运行规则引擎{pet.aiHint ? `；补充要求：${pet.aiHint}` : ''}。
+      分享卡上会盖上这枚模型的全息钢印。
+      {pet.aiComment && <span className="ai-comment">「{pet.aiComment}」</span>}
+      {pet.aiEvidence && <span className="ai-comment">推测依据：{pet.aiEvidence}</span>}
+      {pet.aiWarnings?.length > 0 && (
+        <span className="ai-warn">模型输出有 {pet.aiWarnings.length} 项不完整，已做安全兜底：{pet.aiWarnings.slice(0, 2).join('；')}</span>
+      )}
+    </div>
+  )
+}
 
 // 全局芯片音效总线：按钮点击/悬停自动发声
 function useSfxBus() {
@@ -84,7 +120,7 @@ function useTypewriter(lines, speed = 34) {
 }
 
 export default function App() {
-  const [view, setView] = useState('boot') // boot | auth | home | scan | box | pack | reveal | detail | battle
+  const [view, setView] = useState('boot') // boot | auth | home | scan | box | pack | reveal | detail | battle | training
   const [url, setUrl] = useState('')
   const [error, setError] = useState('')
   const [pet, setPet] = useState(null)
@@ -97,6 +133,13 @@ export default function App() {
   const [progress, setProgress] = useState(null)
   const [battleInitial, setBattleInitial] = useState(null)
   const [muted, setMuted] = useState(sfx.muted)
+  // 高级模式：自填 LLM，所有评测交给模型
+  const [advanced, setAdvanced] = useState(false)
+  const [llmConfig, setLLMConfig] = useState(loadLLMConfig)
+  const [llmHint, setLLMHint] = useState('')
+  const [aiBusy, setAiBusy] = useState(false)
+  const [bindState, setBindState] = useState(() => (llmConfig.binding && llmConfig.apiKey ? 'bound' : 'idle'))
+  const [bindError, setBindError] = useState('')
   // 登录态：loading 期间不闪首页，避免"先显示未登录再跳授权页"
   const [auth, setAuth] = useState(() => ({
     loading: true,
@@ -109,7 +152,7 @@ export default function App() {
   const autoScanned = useRef('')
 
   useSfxBus()
-  const typed = useTypewriter(view === 'scan' ? (mode === 'owner' ? DIALOGS_OWNER : DIALOGS) : [])
+  const typed = useTypewriter(view === 'scan' ? (advanced ? DIALOGS_AI : mode === 'owner' ? DIALOGS_OWNER : DIALOGS) : [])
 
   // 扫描阶段推进：每亮一格给一声，音高上行
   useEffect(() => {
@@ -171,8 +214,11 @@ export default function App() {
         exp -= expForLevel(level)
         level += 1
       }
+      // 升级后按新等级重算六维 / 最大HP / 战力（个体值与词条保持不变）
+      const recomputed = recomputePetStats(p, level)
       return {
         ...p,
+        ...recomputed,
         exp,
         level,
         bond: Math.min(100, (p.bond || 0) + (won ? 4 : 1)),
@@ -195,7 +241,8 @@ export default function App() {
   }
 
   const run = () => {
-    if (!url.trim()) { setError('请输入仓库或账号地址'); sfx.error(); return }
+    if (!url.trim()) { setError(advanced ? '请输入仓库地址或项目名' : '请输入仓库或账号地址'); sfx.error(); return }
+    if (advanced) { runAdvanced(); return }
     const info = parseRepoInput(url)
     if (!info) { setError('无法识别的地址：仓库链接、账号主页都行'); sfx.error(); return }
     setError('')
@@ -205,6 +252,89 @@ export default function App() {
     setProgress(null)
     if (info.kind === 'owner') runOwner(info)
     else runRepo()
+  }
+
+  // 只输密钥的自动绑定：厂商 / Base URL / 模型由后端探测，结果写回配置
+  const applyBinding = async (cfg) => {
+    setBindState('binding')
+    setBindError('')
+    try {
+      const binding = await bindWithLLM({ apiKey: cfg.apiKey, custom: cfg.custom })
+      const next = { ...cfg, binding, baseUrl: binding.baseUrl, model: binding.model }
+      setLLMConfig(next)
+      saveLLMConfig(next)
+      setBindState('bound')
+      return next
+    } catch (e) {
+      const msg = e.message || '自动绑定失败'
+      setBindState('error')
+      setBindError(msg)
+      setError(msg)
+      sfx.error()
+      return null
+    }
+  }
+
+  const handleBind = () => {
+    if (!llmConfig.apiKey?.trim() || aiBusy || bindState === 'binding') return
+    setError('')
+    applyBinding(llmConfig).then((ok) => { if (ok) sfx.blip() })
+  }
+
+  // 高级模式：不调 GitHub/Gitee API，也不跑 judge() —— 评测整体交给模型
+  const runAdvanced = async () => {
+    const input = url.trim()
+    const platform = /gitee\.com/i.test(input) ? 'gitee' : 'github'
+    setError('')
+    setAiBusy(true)
+
+    // 没绑定就先自动绑定一次，用户不必记得点按钮
+    let cfg = llmConfig
+    if (!cfg.binding || bindState !== 'bound' || !cfg.apiKey?.trim()) {
+      if (!cfg.apiKey?.trim()) {
+        setError('先粘贴一枚 API Key 并点「自动绑定」；厂商和模型会自动识别')
+        sfx.error()
+        setAiBusy(false)
+        return
+      }
+      const bound = await applyBinding(cfg)
+      if (!bound) { setAiBusy(false); return }
+      cfg = bound
+    }
+    saveLLMConfig(cfg)
+
+    setBox(null)
+    setOpened(new Set())
+    setRevealedAll(false)
+    setProgress(null)
+    setMode('repo')
+    setView('scan')
+    setStep(0)
+    const t1 = setTimeout(() => setStep(1), 350)
+    const t2 = setTimeout(() => setStep(2), 900)
+    sfx.scanTick()
+    try {
+      const data = await evaluateWithLLM({ repo: input, config: cfg, hint: llmHint, platform })
+      clearTimeout(t1); clearTimeout(t2)
+      setStep(2)
+      const next = buildPetFromEvaluation(data.evaluation, {
+        input,
+        platform,
+        hint: llmHint,
+        model: data.meta?.model || cfg.model,
+        warnings: data.meta?.warnings || [],
+        binding: cfg.binding,
+      })
+      await new Promise((r) => setTimeout(r, 300))
+      setStep(3)
+      setPet(next)
+      setView('pack')
+    } catch (e) {
+      clearTimeout(t1); clearTimeout(t2)
+      fail(e)
+    } finally {
+      setAiBusy(false)
+    }
   }
 
   // 单个项目 → 一个卡包
@@ -246,11 +376,20 @@ export default function App() {
         onProgress: (p) => { setProgress(p); setStep(2) },
       })
       if (!res.snaps.length) {
-        throw new Error(res.rateLimited
-          ? 'API 触发限流，稍后再试（登录后额度高得多）'
-          : opts.self
-            ? '你名下还没有可孵化的项目（fork / 空仓库会被跳过）'
-            : '这个账号没有可孵化的公开项目')
+        const total = res.owner?.repos?.length ?? 0
+        const plat = res.owner?.platform === 'gitee' ? 'Gitee' : 'GitHub'
+        if (res.rateLimited) throw new Error('API 触发限流，稍后再试（登录后额度高得多）')
+        // 三种空结果要分开说，不然永远看不出是接口没给数据、还是被过滤掉了
+        if (!total) throw new Error(`${plat} 接口没有返回任何项目（仓库可能全是私有的，或授权没带上仓库权限）`)
+        if (!res.listed) {
+          // 把原始字段摊开，才知道是 fork 判错还是空仓库判错
+          const sample = (res.owner?.repos || []).slice(0, 3)
+            .map((r) => `${r.name}［fork=${r.raw?.fork} parent=${!!r.raw?.parent} empty_repo=${r.raw?.empty_repo} size=${r.raw?.size}］`)
+            .join('；')
+          throw new Error(`名下有 ${total} 个项目，但都被判为 fork 或空仓库：${sample}`)
+        }
+        const first = res.failed[0]
+        throw new Error(`${res.listed} 个项目全部扫描失败：${first?.reason || '未知原因'}`)
       }
       setStep(3)
       const pets = res.snaps
@@ -444,17 +583,52 @@ export default function App() {
               贴一个仓库地址，得到一个卡包；贴一个账号主页，得到<b>一整箱</b>——
               <b>品种由技术栈决定</b>，<b>品质由代码质量决定</b>，<b>等级由工程量决定</b>。
             </p>
+            <div className="mode-switch">
+              <button className={advanced ? '' : 'active'} onClick={() => { setAdvanced(false); setError('') }}>普通扫描</button>
+              <button className={advanced ? 'active' : ''} onClick={() => { setAdvanced(true); setError('') }}>高级模式 · LLM 评测</button>
+            </div>
+            {advanced && (
+              <AdvancedPanel
+                config={llmConfig}
+                onConfigChange={(next) => {
+                  setLLMConfig(next)
+                  if (!next.binding && bindState !== 'binding') { setBindState('idle'); setBindError('') }
+                }}
+                hint={llmHint}
+                onHintChange={setLLMHint}
+                onClearKey={() => {
+                  clearLLMKey()
+                  const next = { ...llmConfig, apiKey: '', binding: null }
+                  setLLMConfig(next)
+                  saveLLMConfig(next)
+                  setBindState('idle')
+                  setBindError('')
+                }}
+                busy={aiBusy}
+                bindState={bindState}
+                bindError={bindError}
+                onBind={handleBind}
+              />
+            )}
             <div className="input-row">
               <input
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && run()}
-                placeholder="仓库：github.com/owner/repo　　账号：github.com/owner"
+                onKeyDown={(e) => e.key === 'Enter' && !aiBusy && run()}
+                placeholder={advanced ? '仓库地址或项目名，例如 dify、Odoo、github.com/facebook/react' : '仓库：github.com/owner/repo　　账号：github.com/owner'}
                 spellCheck={false}
               />
-              <button onClick={run}>孵化</button>
+              <button onClick={run} disabled={aiBusy}>
+                {aiBusy ? '模型评测中…' : advanced ? '让模型评测并孵化' : '孵化'}
+              </button>
             </div>
             {error && <p className="error">! {error}</p>}
+            {advanced && error && (
+              <p className="quota-note">
+                模型评测没成功，可以
+                <button onClick={() => { setAdvanced(false); setError('') }}>切回普通扫描 →</button>
+              </p>
+            )}
             {/限流|403|配额/.test(error) && (
               <p className="quota-note">
                 匿名额度很容易打满
@@ -491,7 +665,7 @@ export default function App() {
               <h3>竞技场</h3>
               <p>
                 三种打法：<b>在线对手</b>（输入对方仓库，按真实实力 1v1）、<b>同类型对战</b>（找同属性仓库）、<b>随机宠物</b>（抽到谁打谁）。
-                后两种可调难度——属性克制、先制、异常状态和换人决定胜负，等级高不一定赢。
+                开战后<b>全自动</b>，不用点技能；可调难度的是后两种——属性克制、先制、异常状态和换人决定胜负，等级高不一定赢。
               </p>
             </div>
             <button
@@ -503,14 +677,20 @@ export default function App() {
             </button>
           </section>
 
-          <section className="howto">
-            <h3>怎么判定</h3>
-            <div className="howto-grid">
-              <div><b>品种</b><span>主语言 → 元素属性（Python 水系 / JS 雷系 / Rust 钢系…）× 项目类型 → 生态型（AI 龙型 / CLI 鸟型 / Web 兽型…）</span></div>
-              <div><b>品质</b><span>测试 25% + 工程质量 20% + 文档 20% + 维护 20% + 社区 15% → N / R / SR / SSR</span></div>
-              <div><b>等级</b><span>代码规模 + commit + 贡献者 + 活跃时长，对数归一化 → Lv.1–999</span></div>
+          <section className="training-entry">
+            <div className="training-entry-copy">
+              <h3>训练场</h3>
+              <p>
+                六位 AI 教练随时待命：<b>Trae / WorkBuddy / Codex / Cursor / Claude Code / Grok Bot</b>。
+                点一下直达对应软件，不耗体力、不影响竞技场战绩，去过的自动打卡。
+              </p>
             </div>
+            <button className="ghost-btn" onClick={() => { sfx.swoosh(); setView('training') }}>
+              进入训练场
+            </button>
           </section>
+
+          <Manual />
         </main>
       )}
 
@@ -523,7 +703,7 @@ export default function App() {
             </p>
           </div>
           <ul className="scan-steps">
-            {(mode === 'owner' ? STEPS_OWNER : STEPS).map((s, i) => (
+            {(advanced ? STEPS_AI : mode === 'owner' ? STEPS_OWNER : STEPS).map((s, i) => (
               <li key={s} className={i < step ? 'done' : i === step ? 'active' : ''}>
                 <span className="dot" />
                 {s}
@@ -566,6 +746,7 @@ export default function App() {
           <h2 className={`reveal-title quality-text-${pet.quality.key}`}>
             {pet.quality.name} · {pet.element.name}系{pet.species.name} 登场
           </h2>
+          <AiNote pet={pet} />
           <PetCard pet={pet} revealed />
           <div className="actions">
             {box ? (
@@ -585,6 +766,7 @@ export default function App() {
 
       {view === 'detail' && pet && (
         <main className="detail-stage">
+          <AiNote pet={pet} />
           <PetCard pet={pet} />
           <div className="actions">
             <button className="primary-btn" onClick={() => exportShareCard(pet)}>导出分享卡</button>
@@ -609,6 +791,10 @@ export default function App() {
             onReward={grantBattleXp}
           />
         </main>
+      )}
+
+      {view === 'training' && (
+        <Training onExit={() => setView('home')} />
       )}
 
       <footer className="footer">

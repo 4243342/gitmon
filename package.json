@@ -8,6 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:battle": "node scripts/battle-selftest.mjs",
+    "art:prompts": "node scripts/art-prompts.mjs",
+    "art:check": "node scripts/art-check.mjs",
     "test:parity": "node scripts/showdown-parity.mjs"
   },
   "dependencies": {

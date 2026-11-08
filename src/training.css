@@ -1,0 +1,99 @@
+/* ---------- 训练场：首页入口（紧跟竞技场卡片） ---------- */
+.training-entry {
+  display: flex; align-items: center; justify-content: space-between; gap: 18px;
+  margin-top: 14px; padding: 18px 20px; border-radius: 16px;
+  border: 1px solid #2c3855;
+  background:
+    radial-gradient(400px 160px at 88% 0%, rgba(58, 141, 255, .14), transparent 70%),
+    linear-gradient(150deg, rgba(24, 36, 58, .9), rgba(13, 22, 38, .92));
+}
+.training-entry-copy h3 { font-size: 15px; margin-bottom: 6px; letter-spacing: .5px; }
+.training-entry-copy p { font-size: 12px; color: var(--dim); line-height: 1.7; max-width: 460px; }
+.training-entry-copy b { color: var(--text); }
+.training-entry .ghost-btn { padding: 10px 20px; font-size: 12.5px; white-space: nowrap; }
+
+/* ---------- 训练场页面 ---------- */
+.training-stage { max-width: 1000px; margin: 0 auto; padding: 8px 0 24px; }
+.training-head {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: start; gap: 20px;
+  padding: 20px 22px; margin-bottom: 20px;
+  border: 1px solid var(--line); border-radius: 16px;
+  background:
+    radial-gradient(420px 180px at 92% 0%, rgba(58, 141, 255, .13), transparent 70%),
+    linear-gradient(150deg, rgba(24, 35, 56, .9), rgba(12, 20, 34, .94));
+}
+.training-back { padding: 8px 14px; font-size: 12px; white-space: nowrap; }
+.training-eyebrow {
+  display: block; font-size: 10px; letter-spacing: 2px; color: #6fa8ff;
+  font-family: var(--font-arcade, monospace); margin-bottom: 8px;
+}
+.training-title h2 { margin: 0 0 8px; font-size: 24px; letter-spacing: 2px; }
+.training-title p { margin: 0; font-size: 12.5px; color: var(--dim); line-height: 1.8; max-width: 600px; }
+.training-counter {
+  min-width: 92px; text-align: center; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: 12px; background: rgba(10, 17, 30, .7);
+}
+.training-counter b { font-size: 24px; color: var(--accent); font-family: var(--font-arcade, monospace); }
+.training-counter span { font-size: 13px; color: var(--dim); }
+.training-counter small { display: block; margin-top: 2px; font-size: 10px; color: var(--dim); letter-spacing: 1px; }
+
+.training-grid {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px;
+}
+.tool-card {
+  position: relative; display: flex; flex-direction: column; overflow: hidden;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: linear-gradient(160deg, rgba(28, 39, 60, .88), rgba(13, 21, 35, .94));
+  transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+.tool-card::before {
+  content: ''; position: absolute; inset: 0 0 auto 0; height: 3px;
+  background: var(--tool-color); opacity: .85;
+}
+.tool-card:hover {
+  transform: translateY(-4px); border-color: var(--tool-color);
+  box-shadow: 0 16px 34px -20px var(--tool-color);
+}
+.tool-card.is-done { border-color: color-mix(in srgb, var(--tool-color) 45%, var(--line)); }
+.tool-main { display: flex; flex-direction: column; flex: 1; padding: 20px 18px 14px; text-decoration: none; color: inherit; }
+.tool-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.tool-badge {
+  display: grid; place-items: center; width: 44px; height: 44px; border-radius: 9px;
+  font-family: var(--font-arcade, monospace); font-size: 15px; letter-spacing: 1px;
+  color: #0b101c; background: var(--tool-color);
+  box-shadow: 0 5px 0 color-mix(in srgb, var(--tool-color) 45%, #000);
+}
+.tool-no { font-size: 10px; letter-spacing: 1.5px; color: var(--dim); font-family: var(--font-arcade, monospace); }
+.tool-main h3 { margin: 0 0 4px; font-size: 18px; letter-spacing: .5px; }
+.tool-meta { font-size: 11px; color: var(--tool-color); margin-bottom: 12px; }
+.tool-desc { margin: 0 0 18px; font-size: 12px; line-height: 1.75; color: var(--dim); flex: 1; }
+.tool-cta {
+  display: inline-block; align-self: flex-start; font-size: 11.5px; font-weight: 700;
+  color: var(--text); padding: 7px 12px; border: 1px solid var(--line); border-radius: 8px;
+  background: rgba(255, 255, 255, .03);
+  transition: color .16s, border-color .16s, background .16s;
+}
+.tool-card:hover .tool-cta { color: #0b101c; background: var(--tool-color); border-color: var(--tool-color); }
+.tool-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 10px 18px; border-top: 1px solid var(--line); font-size: 10.5px;
+  background: rgba(9, 15, 27, .6);
+}
+.tool-foot a { color: var(--dim); text-decoration: none; }
+.tool-foot a:hover { color: var(--accent); }
+.tool-done { color: #6ee7a8; }
+.tool-pending, .tool-host { color: var(--dim); }
+.training-note { margin: 20px 2px 0; font-size: 11.5px; color: var(--dim); line-height: 1.7; }
+
+@media (max-width: 860px) {
+  .training-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .training-head { grid-template-columns: auto 1fr; }
+  .training-counter { grid-column: 1 / -1; min-width: 0; }
+}
+@media (max-width: 560px) {
+  .training-entry { flex-direction: column; align-items: flex-start; }
+  .training-grid { grid-template-columns: 1fr; }
+  .training-head { grid-template-columns: 1fr; gap: 12px; }
+  .training-back { justify-self: start; }
+  .training-counter { grid-column: auto; }
+}

@@ -483,7 +483,9 @@ export function scaleRival(pet, factor = 1) {
   return {
     ...pet,
     level: clampNum((Number(pet.level) || 1) * f, 1, 999),
-    stats: (pet.stats || []).map((s) => ({ ...s, value: clampNum((Number(s.value) || 0) * f, 6, 150) })),
+    stats: (pet.stats || []).map((s) => ({ ...s, value: clampNum((Number(s.value) || 0) * f, 1, 99999) })),
+    maxHp: clampNum((Number(pet.maxHp) || 100) * f, 1, 999999),
+    combatPower: clampNum((Number(pet.combatPower) || 0) * f, 1, 999999),
     scaled: f,
   }
 }

@@ -1,0 +1,369 @@
+/* 高级模式（BYOK / LLM 评测）与模型全息钢印：独立样式表，避免和主体样式相互覆盖 */
+
+.llm-panel {
+  width: min(760px, 100%);
+  margin: 4px auto 18px;
+  padding: 16px 18px 14px;
+  text-align: left;
+  border: 1px solid rgba(245, 197, 66, .38);
+  border-radius: 14px;
+  background: linear-gradient(160deg, rgba(30, 41, 66, .92), rgba(14, 21, 36, .95));
+  box-shadow: 0 0 32px rgba(245, 197, 66, .08), inset 0 1px 0 rgba(255, 255, 255, .05);
+}
+
+.llm-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.llm-badge {
+  flex: none;
+  padding: 5px 9px;
+  border: 1px solid #f5c542;
+  border-radius: 6px;
+  color: #f5c542;
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  letter-spacing: 1px;
+  background: rgba(245, 197, 66, .09);
+}
+.llm-head-text { display: flex; flex-direction: column; gap: 4px; }
+.llm-head-text strong { font-size: 14px; color: #eef2fa; }
+.llm-head-text span { font-size: 11.5px; line-height: 1.5; color: #93a1bd; }
+
+/* ---------- 只输密钥 + 自动绑定 ---------- */
+.llm-bind-row { display: flex; align-items: flex-end; gap: 10px; }
+.llm-bind-row .llm-key-field { flex: 1; min-width: 0; }
+.llm-panel label { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.llm-panel label > span { font-size: 11px; color: #a9b7d0; }
+.llm-panel input,
+.llm-panel textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid rgba(150, 170, 205, .28);
+  border-radius: 7px;
+  outline: none;
+  background: rgba(8, 14, 26, .72);
+  color: #eaf1ff;
+  font-size: 12.5px;
+  font-family: inherit;
+  resize: vertical;
+}
+.llm-panel input:focus,
+.llm-panel textarea:focus { border-color: #f5c542; box-shadow: 0 0 0 2px rgba(245, 197, 66, .14); }
+.llm-panel input:disabled,
+.llm-panel textarea:disabled { opacity: .6; }
+.llm-panel input::placeholder,
+.llm-panel textarea::placeholder { color: #5e6c88; }
+
+.llm-bind-btn {
+  flex: none;
+  height: 35px;
+  padding: 0 16px;
+  border: 1px solid #f5c542;
+  border-radius: 7px;
+  background: rgba(245, 197, 66, .14);
+  color: #f5c542;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.llm-bind-btn:hover:not(:disabled) { background: rgba(245, 197, 66, .26); box-shadow: 0 0 16px rgba(245, 197, 66, .2); }
+.llm-bind-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.llm-bind-status {
+  margin: 9px 0 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: #8d9bb7;
+}
+.llm-bind-status.busy { color: #f5c542; }
+.llm-bind-status.error { color: #ff9a9a; }
+
+.llm-bound {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(74, 217, 160, .35);
+  border-radius: 8px;
+  background: rgba(74, 217, 160, .07);
+  font-size: 11.5px;
+  color: #b9c6de;
+}
+.llm-bound-dot { width: 7px; height: 7px; border-radius: 50%; background: #4ad9a0; box-shadow: 0 0 8px #4ad9a0; }
+.llm-bound strong { color: #7fe3b8; }
+.llm-bound code {
+  padding: 2px 6px;
+  border: 1px solid rgba(245, 197, 66, .4);
+  border-radius: 4px;
+  color: #f5c542;
+  background: rgba(245, 197, 66, .08);
+  font-size: 11px;
+}
+.llm-bound-url {
+  min-width: 0;
+  max-width: 46%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #7f8daa;
+}
+.llm-bound-ok { margin-left: auto; color: #7fe3b8; font-size: 10.5px; white-space: nowrap; }
+
+.llm-custom {
+  margin-top: 11px;
+  border: 1px solid rgba(150, 170, 205, .2);
+  border-radius: 8px;
+  background: rgba(8, 14, 26, .35);
+}
+.llm-custom summary {
+  padding: 8px 11px;
+  font-size: 11.5px;
+  color: #9aa9c4;
+  cursor: pointer;
+  user-select: none;
+}
+.llm-custom summary:hover { color: #eef2fa; }
+.llm-custom-fields {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1.3fr;
+  gap: 9px;
+  padding: 2px 11px 11px;
+}
+
+.llm-hint-field { margin-top: 11px; }
+.llm-hint-field textarea { min-height: 62px; }
+
+.llm-foot {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 12px; padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, .07);
+  font-size: 11px; line-height: 1.5; color: #7f8daa;
+}
+.llm-foot > span { flex: 1; }
+.llm-clear {
+  flex: none;
+  padding: 4px 9px;
+  border: 1px solid rgba(150, 170, 205, .35);
+  border-radius: 6px;
+  background: transparent;
+  color: #b9c6de;
+  font-size: 11px;
+  cursor: pointer;
+}
+.llm-clear:hover { border-color: #f5c542; color: #f5c542; }
+.llm-anchor {
+  margin: 8px 0 0;
+  font-size: 11px; line-height: 1.5;
+  color: #d8b75a;
+}
+
+/* ---------- 首页模式切换 ---------- */
+.mode-switch { display: flex; justify-content: center; gap: 8px; margin: 0 0 14px; }
+.mode-switch button {
+  padding: 7px 16px;
+  border: 1px solid rgba(150, 170, 205, .3);
+  border-radius: 8px;
+  background: rgba(12, 20, 34, .7);
+  color: #9aa9c4;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.mode-switch button:hover { color: #eef2fa; border-color: rgba(245, 197, 66, .5); }
+.mode-switch button.active {
+  border-color: #f5c542;
+  color: #f5c542;
+  background: rgba(245, 197, 66, .1);
+  box-shadow: 0 0 18px rgba(245, 197, 66, .12);
+}
+
+/* ---------- 卡片 / 揭晓页的 AI 推测标记 ---------- */
+.ai-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border: 1px solid rgba(245, 197, 66, .6);
+  border-radius: 4px;
+  color: #f5c542;
+  font-size: 9px;
+  vertical-align: 1px;
+}
+.ai-note {
+  width: min(680px, 100%);
+  margin: 0 auto 14px;
+  padding: 9px 12px;
+  border: 1px solid rgba(245, 197, 66, .3);
+  border-radius: 9px;
+  background: rgba(245, 197, 66, .06);
+  color: #c9b473;
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: left;
+}
+.ai-note b { color: #f5c542; }
+.ai-note .ai-comment { display: block; margin-top: 3px; color: #e2e8f5; }
+.ai-note .ai-warn { display: block; margin-top: 3px; color: #d99a76; }
+
+/* ================================================================
+   模型全息钢印（DOM 版，与 share.js 导出的 PNG 同款构图）
+   彩色反光：conic-gradient 彩虹 foil + hue-rotate + screen/color-dodge 高光
+   鼠标位置复用 .pet-card 上的 --mx / --my / --angle
+   ================================================================ */
+.model-seal {
+  position: absolute;
+  right: -14px;
+  bottom: -11px;
+  z-index: 5;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  /* 钢印与卡面文字都保持水平；倾斜感由彩虹 foil 本身提供，避免整章文字歪斜 */
+  overflow: hidden;
+  background: #0a1222;
+  box-shadow:
+    0 7px 18px rgba(0, 0, 0, .6),
+    0 0 0 2px rgba(255, 255, 255, .22),
+    0 0 18px rgba(120, 200, 255, .28),
+    inset 0 0 12px rgba(255, 255, 255, .18);
+  pointer-events: auto;
+}
+.model-seal__foil {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 315deg,
+    #FF61D2 0%, #FE9090 18%, #FFD076 36%, #9DFFB0 55%, #67CFFF 74%, #B78BFF 88%, #FF61D2 100%);
+  filter: saturate(1.4) brightness(1.05);
+  animation: seal-hue 9s linear infinite;
+}
+@keyframes seal-hue {
+  0% { filter: saturate(1.4) brightness(1.05) hue-rotate(0deg); }
+  100% { filter: saturate(1.4) brightness(1.05) hue-rotate(360deg); }
+}
+/* 斜向镭射反光带 */
+.model-seal__foil::after {
+  content: '';
+  position: absolute;
+  inset: -40%;
+  background: linear-gradient(115deg,
+    transparent 28%, rgba(255, 255, 255, .08) 40%, rgba(255, 255, 255, .75) 48%,
+    rgba(255, 255, 255, .1) 56%, transparent 70%);
+  mix-blend-mode: screen;
+  animation: seal-sweep 6s ease-in-out infinite;
+}
+@keyframes seal-sweep {
+  0%, 100% { transform: translateX(-26%) rotate(-6deg); }
+  50% { transform: translateX(26%) rotate(6deg); }
+}
+/* 内芯：把 foil 只留成外圈 */
+.model-seal__inner {
+  position: absolute;
+  inset: 8px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  overflow: hidden;
+  text-align: center;
+  background:
+    radial-gradient(circle at 30% 24%, rgba(46, 66, 102, .95), rgba(9, 16, 30, .98) 72%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .24), inset 0 0 16px rgba(0, 0, 0, .7);
+}
+/* 内圈虚线证书环 */
+.model-seal__inner::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border: 1px dashed rgba(255, 215, 120, .45);
+  border-radius: 50%;
+  pointer-events: none;
+}
+/* 随鼠标移动的彩色反光 */
+.model-seal__sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at var(--mx, 50%) var(--my, 50%),
+      rgba(255, 255, 255, .85), rgba(255, 210, 120, .22) 22%, transparent 55%),
+    conic-gradient(from 0deg, rgba(255, 97, 210, .16), rgba(103, 207, 255, .16), rgba(157, 255, 176, .16), rgba(255, 97, 210, .16));
+  mix-blend-mode: color-dodge;
+  opacity: .5;
+}
+.model-seal__top {
+  position: relative;
+  color: #ffd166;
+  font-family: var(--font-pixel, monospace);
+  font-size: 6.5px;
+  letter-spacing: .5px;
+  text-shadow: 0 0 6px rgba(255, 209, 102, .8);
+}
+.model-seal__name {
+  position: relative;
+  max-width: 96%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #f5f9ff;
+  font-family: var(--font-arcade, var(--font-pixel, monospace));
+  font-size: 11px;
+  letter-spacing: -.3px;
+  line-height: 1.3;
+  text-shadow: 0 1px 0 #000, 0 0 9px rgba(150, 210, 255, .85);
+}
+.model-seal__variant {
+  position: relative;
+  max-width: 92%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #ff61d2, #ffd076, #67cfff);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  font-family: var(--font-pixel, monospace);
+  font-size: 8px;
+  font-weight: 700;
+  filter: brightness(1.35);
+}
+.model-seal__provider {
+  position: relative;
+  max-width: 92%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #9fd8ff;
+  font-size: 7.5px;
+  line-height: 1.3;
+}
+.model-seal__id {
+  position: relative;
+  max-width: 90%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #6d7893;
+  font-family: var(--font-pixel, monospace);
+  font-size: 6px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .model-seal__foil, .model-seal__foil::after { animation: none; }
+}
+
+@media (max-width: 620px) {
+  .llm-bind-row { flex-direction: column; align-items: stretch; }
+  .llm-bind-btn { width: 100%; }
+  .llm-custom-fields { grid-template-columns: 1fr; }
+  .llm-bound-url { max-width: 100%; }
+  .llm-bound-ok { margin-left: 0; }
+  .model-seal { width: 84px; height: 84px; right: -10px; bottom: -9px; }
+  .model-seal__inner { inset: 7px; }
+  .model-seal__name { font-size: 9.5px; }
+}

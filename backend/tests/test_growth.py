@@ -81,7 +81,8 @@ def test_settle_sleeps_when_stale(weak_snapshot) -> None:
 
 
 def test_settle_never_downgrades_stage(good_snapshot) -> None:
-    pet = {"level": 700, "exp": 0, "evolution_stage": 3,
+    # Lv.700 对应第 7 阶（人形态），结算不会把阶段降下来
+    pet = {"level": 700, "exp": 0, "evolution_stage": 7,
            "metrics": good_snapshot.metrics(), "bond": 50}
     result = growth.settle(pet, good_snapshot)
-    assert result["evolution_stage"] == 3
+    assert result["evolution_stage"] >= 7

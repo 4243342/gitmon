@@ -1,4 +1,5 @@
 import PixelSprite from './PixelSprite.jsx'
+import { StarBadge } from '../starBadge.jsx'
 
 // 我的图鉴（文档 §9 P1）
 export default function Collection({ list, onPick }) {
@@ -17,11 +18,13 @@ export default function Collection({ list, onPick }) {
             style={{ '--q-color': p.quality.color, '--q-glow': p.quality.glow }}
             onClick={() => onPick(p)}
           >
+            <span className="ci-star"><StarBadge stars={p.stars} size={14} compact /></span>
             <div className="ci-sprite"><PixelSprite pet={p} size={70} animate={false} /></div>
             <div className="ci-name">{p.repo}</div>
             <div className="ci-meta">
               <span className={`mini-q q-${p.quality.key}`}>{p.quality.key}</span>
               <span>Lv.{p.level}</span>
+              <span className="ci-cp">战力 {p.combatPower ?? '—'}</span>
             </div>
           </button>
         ))}

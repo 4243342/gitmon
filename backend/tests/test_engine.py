@@ -116,7 +116,24 @@ def test_sprite_seed_matches_frontend_algorithm() -> None:
     assert sprite_seed == engine.fnv1a32(f"{seed}facebook/react")
 
 
-def test_stage_gating_requires_milestone(weak_snapshot) -> None:
-    # 弱仓库没有 release、只有 1 位贡献者，等级再高也只能停在幼体
-    assert engine.evolution_stage(600, weak_snapshot) == 1
-    assert engine.evolution_stage(600, None) == 3
+def test_stage_ladder_by_level(weak_snapshot) -> None:
+    """阶段只看等级：10/50/100/200/300/500/800/999 八个节点，Lv.500+ 人形态。"""
+    cases = [
+        (1, 1), (9, 1),
+        (10, 2), (49, 2),
+        (50, 3), (99, 3),
+        (100, 4), (199, 4),
+        (200, 5), (299, 5),
+        (300, 6), (499, 6),
+        (500, 7), (799, 7),
+        (800, 8), (998, 8),
+        (999, 9),
+    ]
+    for level, stage in cases:
+        assert engine.evolution_stage(level) == stage, level
+        # snapshot 参数保留兼容，不影响结果
+        assert engine.evolution_stage(level, weak_snapshot) == stage, level
+    assert engine.is_humanoid(7) and engine.is_humanoid(9)
+    assert not engine.is_humanoid(6)
+    assert engine.next_stage_level(6) == 500
+    assert engine.next_stage_level(9) is None

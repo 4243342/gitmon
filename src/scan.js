@@ -319,6 +319,14 @@ function ghToken() {
   try { return localStorage.getItem('gitmon:gh_token') || '' } catch { return '' }
 }
 
+// 空仓库判定：Gitee 的 size 在列表接口里常缺省/为 0，拿它判空会把有代码的仓库
+// 全当成空仓库跳过。Gitee 只信它自己的 empty_repo，没这个字段就不排除。
+function isEmptyRepo(r, platform) {
+  if (typeof r.empty_repo === 'boolean') return r.empty_repo
+  if (platform === 'gitee') return false
+  return (r.size || 0) === 0
+}
+
 function normalizeRepo(r, platform, owner) {
   const name = r.name || r.path || ''
   const fullName = r.full_name || `${owner}/${name}`
@@ -336,7 +344,8 @@ function normalizeRepo(r, platform, owner) {
     pushedAt: r.pushed_at || r.updated_at,
     archived: !!r.archived,
     fork: !!r.fork || !!r.parent,
-    empty: (r.size || 0) === 0,
+    // Gitee 的 size 常缺省为 0，判断空仓库要用它自己的 empty_repo 字段
+    empty: isEmptyRepo(r, platform),
     license: platform === 'github' ? (r.license?.spdx_id || null) : (r.license || null),
     homepage: r.homepage || '',
     url: r.html_url || (platform === 'gitee' ? `https://gitee.com/${fullName}` : `https://github.com/${fullName}`),
@@ -359,7 +368,12 @@ async function listGitHubOwner(owner, { self = false } = {}) {
   if (userRes.status === 403) throw new Error('GitHub 配额用尽，稍后重试或重新登录')
   if (!userRes.ok) throw new Error(`GitHub API 错误 ${userRes.status}`)
   const user = await userRes.json()
-  const repos = reposRes.ok ? await reposRes.json() : []
+  // 列表接口失败不能当成"没有仓库"——403/限流会被误报成「你名下没有可孵化的项目」
+  if (!reposRes.ok) {
+    if (reposRes.status === 403) throw new Error('GitHub 配额用尽（仓库列表接口），稍后重试或重新登录')
+    throw new Error(`GitHub 仓库列表拉取失败 ${reposRes.status}`)
+  }
+  const repos = await reposRes.json()
   return {
     platform: 'github',
     owner: user.login || owner,
@@ -382,7 +396,9 @@ async function listGiteeOwner(owner, { self = false } = {}) {
   if (userRes.status === 404) throw new Error(`Gitee 账号 @${owner} 不存在`)
   if (!userRes.ok) throw new Error(giteeError(userRes.status))
   const user = await userRes.json()
-  const repos = reposRes.ok ? await reposRes.json() : []
+  // 同上：Gitee 的 403（按 IP 限流）最容易被静默吞成"空清单"
+  if (!reposRes.ok) throw new Error(giteeError(reposRes.status))
+  const repos = await reposRes.json()
   return {
     platform: 'gitee',
     owner: user.login || owner,
@@ -401,14 +417,16 @@ export async function loadOwner(input, { self = false } = {}) {
   const info = typeof input === 'string' ? parseRepoInput(input) : input
   if (!info || info.kind !== 'owner') throw new Error('请输入账号地址，例如 github.com/4243342')
 
-  const key = `gitmon:owner:${info.platform}/${info.owner}${self ? ':self' : ''}`
+  // v2：旧缓存里可能存着「空清单」（多半是限流被静默吞掉），换前缀让它自动作废
+  const key = `gitmon:owner:v2:${info.platform}/${info.owner}${self ? ':self' : ''}`
   const cached = readCache(key)
   if (cached) return { ...cached, cached: true }
 
   const owner = info.platform === 'gitee'
     ? await listGiteeOwner(info.owner, { self })
     : await listGitHubOwner(info.owner, { self })
-  writeCache(key, owner)
+  // 空清单不落缓存：一次限流不该让用户接下来 6 小时都认为"自己没有项目"
+  if (owner.repos.length) writeCache(key, owner)
   return { ...owner, cached: false }
 }
 
@@ -418,8 +436,11 @@ export async function scanOwnerBox(input, { limit, onProgress, self = false } = 
   const platform = owner.platform
 
   // 排除 fork / 空仓库：那不是"他拥有的项目"
+  // Gitee 的列表接口既不给 size 也不给 empty_repo，判不了空仓库 —— 与其凭缺失
+  // 字段把人家有代码的仓库当成空的跳过，不如都扫一遍，空仓库在扫描阶段自然会
+  // 拿到极低的工程量，不需要在这里提前掐掉。
   const candidates = owner.repos
-    .filter((r) => !r.fork && !r.empty)
+    .filter((r) => !r.fork && (platform === 'gitee' || !r.empty))
     .sort((a, b) => new Date(b.pushedAt || 0) - new Date(a.pushedAt || 0))
 
   // 每项目约 5 个请求：匿名额度只开最近几个，登录后放开

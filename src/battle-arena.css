@@ -577,6 +577,38 @@
 }
 .battle-stage .battle-side-actions .ghost-btn:disabled { opacity: .4; filter: none; }
 
+/* 自动对战状态条：技能选择已移除，只保留双方实时状态 */
+.battle-stage .auto-status {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  border: 2px solid var(--arena-line);
+  border-radius: 12px;
+  background: rgba(10, 17, 30, .72);
+}
+.battle-stage .auto-pulse {
+  width: 10px; height: 10px; flex: none;
+  background: #4cd8a0;
+  box-shadow: 0 0 10px rgba(76, 216, 160, .8);
+  animation: auto-blink 1.2s ease-in-out infinite;
+}
+.battle-stage .auto-pulse.done { background: #6b7c99; box-shadow: none; animation: none; }
+@keyframes auto-blink { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+.battle-stage .auto-unit {
+  display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1;
+}
+.battle-stage .auto-unit.foe { text-align: right; }
+.battle-stage .auto-unit b {
+  font-size: 13px; color: #e7f0ff;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.battle-stage .auto-unit small { font-size: 10.5px; color: #7d8fae; white-space: nowrap; }
+.battle-stage .auto-vs {
+  font-family: 'Press Start 2P', monospace; font-size: 10px; color: #ffcb05; flex: none;
+}
+.battle-stage .auto-controls .battle-side-actions { justify-content: flex-end; }
+
 /* ---------------------------------------------------------------- 响应式 */
 @media (max-width: 760px) {
   .battle-stage .battle-field { min-height: 400px; padding: 14px 12px 16px; border-radius: 18px; }

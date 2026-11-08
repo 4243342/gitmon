@@ -1,6 +1,8 @@
 // 8-bit 芯片音效：WebAudio 方波合成，零素材依赖
 // 参考 FC/GB 掌机音源风格；首次交互后自动解锁 AudioContext
 
+import { bgm } from './bgm.js'
+
 let ctx = null
 let muted = localStorage.getItem('gitmon:muted') === '1'
 
@@ -72,6 +74,8 @@ export const sfx = {
   toggleMute() {
     muted = !muted
     localStorage.setItem('gitmon:muted', muted ? '1' : '0')
+    // 静音要连 BGM 一起掐，否则背景音乐还在响
+    bgm.setMuted(muted)
     if (!muted) sfx.blip()
     return muted
   },
