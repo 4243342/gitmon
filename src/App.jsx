@@ -132,6 +132,7 @@ export default function App() {
         fetchProviders().catch(() => null),
       ])
       if (!alive) return
+      if (me.notice) setAuthNotice((prev) => prev || me.notice)
       const profile = me.profile || (me.online ? null : cachedProfile())
       setProviders(providerInfo)
       setAuth({ loading: false, online: me.online, profile })

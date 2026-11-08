@@ -63,11 +63,33 @@
 - 🔊 **过场音效**：双层音轨——pack-opener-js 的礼成采样（指尖铝箔、掀盖、抽卡风声、落地一击，SSR 落得最重）+ WebAudio 合成的芯片音（卡包登场、整箱琶音、翻格连打、收图鉴铃音）
 - 📦 **整箱**：输入账号主页 = 该账号每个项目一包，一键全开、批量收图鉴
 - ⬆️ **养成**：commit +2 XP、合并 PR +10 XP、发 release +50 XP
-- 🧬 **进化**：幼体 → 成长体（Lv.150+）→ 完全体（Lv.500+）
+- 🧬 **进化**：8 个节点、9 个形态，Lv.10 起每跨一个台阶换一次外形，**Lv.500 起化为人形态**（详见下节）
 - ⚔️ **对战**：1–3 只组队上竞技场，属性克制 + 先制 + 异常状态 + 换人，3v3 回合制
 - 💥 **攻击特效**：pixelfx 代码绘制的像素特效——9 属性 × 4 档威力各有一套，会心有整屏冲击帧
 - 😴 **沉睡**：30 天不维护，精灵会睡过去 —— 别让它睡
+- 🖼️ **自定义形象**：不喜欢默认立绘？在卡片上直接上传 / 拖一张图（GIF 动图也行）换成你想要的形象，卡面、图鉴、对战、分享卡全场景生效，IndexedDB 本地保存，一键还原
 - 📇 **图鉴**：收集你所有仓库的精灵
+
+## 进化系统
+
+进化**只看等级**，不看仓库大小也不看 star —— 养它就变强。8 个节点、9 个形态：
+
+| 阶段 | 起始等级 | 形态名 | 形态 |
+| --- | --- | --- | --- |
+| 1 | Lv.1 | 幼体 | 兽形 / 元素形（种族决定，见下） |
+| 2 | **Lv.10** | 初生体 | 同上，体型长大一号 |
+| 3 | **Lv.50** | 成长体 | 同上，长出耳 / 角 / 尾等特征 |
+| 4 | **Lv.100** | 成熟体 | 同上，配饰与花纹开始密集 |
+| 5 | **Lv.200** | 强化体 | 同上，体型接近成体 |
+| 6 | **Lv.300** | 完全体 | 同上，兽形最终阶 |
+| 7 | **Lv.500** | 人形态 | **开始直立人形**：人类身体 + 种族/属性特征（兽耳、龙角、羽翼、元素光环…） |
+| 8 | **Lv.800** | 人形态·觉醒 | 人形态 + 强化装束 / 光效 |
+| 9 | **Lv.999** | 人形态·神话 | 满级终形 |
+
+- **Lv.500 以上一律是人形态**，只有华丽度差异；**500 以下是自由形态**——具体长相由「种族 × 属性」组合决定（7 种族 × 9 属性，见 [`docs/ASSETS.md`](docs/ASSETS.md)），不逐阶固定
+- 卡片上的进化条显示 `当前阶/9` 与下一节点等级；进度条是**当前阶段内**的进度，不是全局等级
+- 立绘规则：自备素材按 `<种族>/<属性>-s<阶>.png` 命名，没有就逐级回落到通用图，再没有就用生成的像素精灵
+- 阶段只由等级推导（`src/evolution.js` / 后端 `engine.evolution_stage`），后端每日结算**只会升不会降**
 
 ## 快速开始
 
@@ -96,11 +118,14 @@ https://gitee.com/mirrors/vue          ← Gitee 也行
 |---|---|---|
 | **GitHub OAuth** | 后端配 `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`，点「用 GitHub 授权登录」 | 正式部署 / 任何设备 |
 | **GitHub 本机登录** | 本机已 `gh auth login` 且后端跑在 `127.0.0.1`，点「用本机已登录的 @xxx 直接进入」 | 本地开发，不用建 OAuth App |
-| **Gitee 授权 / 私人令牌** | 配了 `GITEE_CLIENT_ID` / `GITEE_CLIENT_SECRET` 就走 OAuth；没配则页签里直接给令牌输入框（[一分钟生成](https://gitee.com/profile/personal_access_tokens)） | Gitee 用户 |
+| **Gitee OAuth** | 后端配 `GITEE_CLIENT_ID` / `GITEE_CLIENT_SECRET`，点「用 Gitee 授权登录」 | Gitee 用户 |
+| **私人令牌（兜底）** | 平台没配 OAuth 应用时，页签里才出现令牌输入框（[一分钟生成](https://gitee.com/profile/personal_access_tokens)） | 没建应用时 |
 | **游客** | 直接进入，手填仓库 / 账号地址 | 只想试玩 |
 
 规则很简单：**配了 OAuth 就只走授权，没配才露出令牌输入框**，不会让人在两条路之间犹豫。
-Gitee 目前默认没配应用，所以那个页签显示的是私人令牌框 —— 贴一次就能登。
+本机 `backend/.env` 里 GitHub、Gitee 两个应用都已配好，所以两个页签现在都只有授权按钮。
+Gitee 的 `access_token` **只有 1 天有效期**：后端把 `refresh_token` 一起加密存库，
+取令牌时校验一次（缓存 10 分钟），过期就静默刷新；刷新不了才让你重新点一次授权。
 
 配 OAuth App 只需两分钟（<https://github.com/settings/developers> → New OAuth App）：
 
@@ -110,15 +135,20 @@ Authorization callback  http://127.0.0.1:8000/api/auth/github/callback
 ```
 
 Gitee 的 OAuth 应用在 <https://gitee.com/oauth/applications> 建，回调填
-`http://127.0.0.1:8000/api/auth/gitee/callback`（不建也能用私人令牌登录）。
+`http://127.0.0.1:8000/api/auth/gitee/callback`，权限勾 `user_info` + `projects`。
+**回调地址必须和上面一字不差**，否则授权时 Gitee 会报 redirect_uri 不一致 ——
+也就是说请始终用 `http://127.0.0.1:8000` 打开，别用 `localhost`。
+后端会按当前访问的 host 拼回调；若不得不用别的地址，可在 `.env` 写
+`GITEE_CALLBACK_URL=<完整回调地址>` 强制固定。
+（不建应用也能用私人令牌登录；把 `.env` 里 Gitee 两行留空，页签会自动切回令牌框。）
 
 凭证写进 `backend/.env`（启动时自动加载，不用 export）：
 
 ```ini
 GITHUB_CLIENT_ID=...
 GITHUB_CLIENT_SECRET=...
-GITEE_CLIENT_ID=...        # 可选
-GITEE_CLIENT_SECRET=...    # 可选
+GITEE_CLIENT_ID=...        # 留空则页签回退到私人令牌
+GITEE_CLIENT_SECRET=...    # 同上
 ```
 
 登录后令牌分别写在 `localStorage['gitmon:gh_token']` / `['gitmon:gitee_token']`，
@@ -142,6 +172,8 @@ monstrjs 手绘部件拼装精灵（种子确定性）· 自研战斗引擎（�
 | `src/rivals.js` | 内置 36 个知名仓库的离线快照 → 对手精灵；在线扫描 / 同类型 / 随机三种挑选 |
 | `src/vfx.js` | 攻击特效层：按属性×威力选 [pixelfx](https://github.com/patch-gg/pixelfx) 特效并贴到精灵身上（懒加载分包） |
 | `src/sprite.js` | 种子 → 像素精灵（[monstrjs](https://github.com/vcgtz/monstrjs) 手绘部件拼装：8 体型 × 眼嘴腮红耳尾四肢配饰，双属性配色 + 进化阶段配饰） |
+| `src/customSprite.js` | 每只精灵的自定义形象：上传 / 拖拽 → 方形裁剪 → IndexedDB，全场景优先显示 |
+| `src/assets/species/` | 种族立绘素材（可选）：`<种族>/<属性>.png` 放进去自动生效，规格见 [`docs/ASSETS.md`](docs/ASSETS.md) |
 | `src/components/` | 卡包、精灵卡片、雷达图、竞技场 |
 
 > 每个库与每份素材的出处、许可证、以及"取了哪一部分"都在下方 [参考与借鉴（来源总表）](#参考与借鉴来源总表) 里逐条列出。
@@ -213,7 +245,7 @@ AI 味 ≥50 → 词条「根基不稳」，≥75 → 「生成体」；根基�
 - [x] GitHub 登录授权：首屏授权页 + OAuth / 本机 gh 登录态（60 → 5000 次/小时）
 - [x] 三选一登录：GitHub / Gitee / 游客；登录后自动读账号全部项目开除整箱，不再手填仓库
 - [ ] 前端切到真实 API（判定仍在前端跑，扫描已用真实数据）
-- [ ] Gitee OAuth 应用（当前已接，未配置时用私人令牌登录）
+- [x] Gitee OAuth 应用已配置：授权码换 token + refresh_token 静默续期（1 天有效期）
 - [ ] 精灵成长与每日同步的前端展示
 - [ ] AI 率按最近 90 天提交加权，让"补课"真能把词条洗掉
 - [ ] 全服排行榜页面

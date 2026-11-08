@@ -33,11 +33,13 @@ function storeToken(provider, token) {
   } catch { /* ignore */ }
 }
 
+function dropProviderToken(provider) {
+  try { localStorage.removeItem(TOKEN_KEY[provider] || GH_TOKEN_KEY) } catch { /* ignore */ }
+}
+
 function dropTokens() {
-  try {
-    localStorage.removeItem(GH_TOKEN_KEY)
-    localStorage.removeItem(GT_TOKEN_KEY)
-  } catch { /* ignore */ }
+  dropProviderToken('github')
+  dropProviderToken('gitee')
 }
 
 export function localToken(provider = 'github') {
@@ -85,6 +87,11 @@ async function api(path, init) {
 export async function fetchMe({ quota = true } = {}) {
   try {
     const profile = await api(`/api/auth/me?quota=${quota ? 1 : 0}`)
+    if (profile.notice) {
+      // 后端判定令牌已失效且无法刷新：清掉本地那串废令牌，别让 scan.js 拿去直连平台
+      dropProviderToken(profile.noticeProvider || 'gitee')
+      cacheProfile(null)
+    }
     if (profile.authenticated) {
       // 会话存在 → 取回令牌给 scan.js 用（按平台分别存）
       try {
@@ -93,10 +100,10 @@ export async function fetchMe({ quota = true } = {}) {
       } catch { /* 令牌取不到就退回本地已有值 */ }
       cacheProfile(profile)
     }
-    return { online: true, profile }
+    return { online: true, profile, notice: profile.notice || '' }
   } catch (e) {
-    if (e.status) return { online: true, profile: { authenticated: false, oauth: false } }
-    return { online: false, profile: null }
+    if (e.status) return { online: true, profile: { authenticated: false, oauth: false }, notice: '' }
+    return { online: false, profile: null, notice: '' }
   }
 }
 

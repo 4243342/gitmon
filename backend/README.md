@@ -19,7 +19,7 @@ backend/
 │   ├── queue.py         # 进程内扫描队列（单 worker 串行）
 │   ├── repo.py          # 仓库地址解析
 │   └── scanner/         # GitHub / Gitee 扫描器 + 文件树分析 + 依赖清单解析
-└── tests/               # 90 个用例：判定、养成、立绘、登录授权、API 全链路
+└── tests/               # 103 个用例：判定、养成、立绘、登录授权（含 Gitee 续期）、API 全链路
 ```
 
 ## 快速开始
@@ -51,8 +51,8 @@ GitHub 匿名 API 只有 **60 次/小时**，一次扫描要 5~17 个请求，�
 | 本机一键登录 | 这台机器上 `gh auth login` 过（自动读 `gh auth token`） | 本地开发，点一下就进，零配置 |
 | GitHub OAuth | 注册一个 GitHub OAuth App（2 分钟） | 正式部署，用户点一下就登录 |
 | GitHub 个人访问令牌 | 用户自己去 GitHub 生成 `ghp_xxx` 贴进来 | 不想建应用、或换设备 |
-| Gitee OAuth | 注册一个 Gitee 应用（<https://gitee.com/oauth/applications>） | 正式部署 |
-| Gitee 私人令牌 | 用户在 <https://gitee.com/profile/personal_access_tokens> 生成 | 不建应用也能用（推荐先走这条） |
+| Gitee OAuth | 注册一个 Gitee 应用（<https://gitee.com/oauth/applications>） | 正式部署；本机 `.env` 已配好 |
+| Gitee 私人令牌 | 用户在 <https://gitee.com/profile/personal_access_tokens> 生成 | 不建应用也能用 |
 
 **配 OAuth App**：<https://github.com/settings/developers> → New OAuth App
 
@@ -61,16 +61,27 @@ Homepage URL            http://127.0.0.1:8000
 Authorization callback  http://127.0.0.1:8000/api/auth/github/callback
 ```
 
-Gitee 的回调则是 `http://127.0.0.1:8000/api/auth/gitee/callback`。
+Gitee 的回调则是 `http://127.0.0.1:8000/api/auth/gitee/callback`（**必须与应用后台填的完全一致**），
+权限勾 `user_info` + `projects`。Gitee 授权页对已授权用户会直接回调，但 `scope` 必须与上次一致，
+所以 `auth.GITEE_SCOPES` 不要随手改。
+
+`auth._callback_base()` 在回环地址上按本次请求的 `Host` 拼回调（`127.0.0.1` / `localhost`
+都能对上后台登记的那一个），公网部署仍以 `GITMON_PUBLIC_URL` 为准，避免被 Host 头带偏。
+要完全固定，就设 `GITEE_CALLBACK_URL` / `GITHUB_CALLBACK_URL` 为完整回调地址。
 
 凭证写进 `backend/.env`（启动时自动加载，`KEY=VALUE` 一行一个，不覆盖已有环境变量）：
 
 ```ini
 GITHUB_CLIENT_ID=...
 GITHUB_CLIENT_SECRET=...
-GITEE_CLIENT_ID=...        # 可选，不填就用私人令牌
+GITEE_CLIENT_ID=...        # 留空则该平台回退到私人令牌登录
 GITEE_CLIENT_SECRET=...
 ```
+
+**Gitee 令牌只有 1 天有效期**：`POST /oauth/token` 返回的 `refresh_token` 会和 access token 一起
+加密存进 `users.refresh_cipher`（老库启动时自动补列）。`/api/auth/me` 与 `/api/auth/token` 会走
+`auth.ensure_gitee_token()`：结果缓存 10 分钟，发现 401 就用 refresh token 换新的并把新 refresh 写回，
+换不出来才结束会话、让前端提示重新授权。私人令牌没有过期问题，跳过这套检查。
 
 部署到域名时同时改 `GITMON_PUBLIC_URL=https://your.domain`（回调地址由它拼出来）。
 
@@ -82,7 +93,8 @@ GITEE_CLIENT_SECRET=...
 安全做法：令牌用 HMAC-SHA256 计数器模式流加密后落库（密钥来自 `GITMON_SECRET`，
 留空则自动生成 `data/secret.key`，权限 0600）；浏览器只持有 HttpOnly 会话 cookie
 （库里存它的 sha256），令牌通过同源 `/api/auth/token` 单次下发，因为前端是浏览器直连
-GitHub API 扫描的。退出登录时会连同会话一起清掉，OAuth 令牌还会调 GitHub 撤销。
+对应平台 API 扫描的。退出登录时会连同会话一起清掉；只有 GitHub OAuth 令牌会调撤销端点，
+Gitee 没有对应接口，绝不把 Gitee 令牌发到 `api.github.com`。
 
 ## 端点
 
@@ -131,7 +143,7 @@ README 里直接嵌：
 | 初始等级 | 工程量分分段映射到 Lv.1–999（§5.2） | `engine.level_from_engineering` |
 | 六维 | 提交频率 / CI+测试 / 活跃度 / 依赖广度 / 文档+复杂度 / 年龄 | `engine.stats_for` |
 | XP | commit +2（日上限 20）、关 issue +5、合并 PR +10、release +50、star +1 | `growth.XP_RULES` |
-| 进化 | Lv.150 且（有 release 或 ≥5 贡献者）→ 成长体；Lv.500 且（≥100 star 或 ≥10 release）→ 完全体 | `engine.evolution_stage` |
+| 进化 | 只看等级：Lv.10/50/100/200/300/500/800/999 八个节点共 9 阶，**Lv.500 起人形态** | `engine.evolution_stage` / `STAGE_NAMES` |
 | 沉睡 | 30 天无提交 → `sleeping`，停止成长 | `growth.status_for` |
 
 **确定性**：`seed = fnv1a("platform/owner/repo")`，`spriteSeed = fnv1a(seed + fullName)`，

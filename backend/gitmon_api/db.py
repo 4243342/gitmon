@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS users (
     avatar        TEXT NOT NULL DEFAULT '',
     email         TEXT NOT NULL DEFAULT '',
     token_cipher  TEXT NOT NULL DEFAULT '',
+    refresh_cipher TEXT NOT NULL DEFAULT '',
     scopes        TEXT NOT NULL DEFAULT '',
     source        TEXT NOT NULL DEFAULT 'oauth',
     created_at    TEXT NOT NULL,
@@ -109,19 +110,24 @@ def utcnow_iso() -> str:
 
 
 # 老库平滑升级：CREATE TABLE IF NOT EXISTS 不会补列，这里补一次
-_ADDED_COLUMNS = (
-    ("foundation", "REAL NOT NULL DEFAULT 0"),
-    ("foundation_dims", "TEXT NOT NULL DEFAULT '{}'"),
-    ("traits", "TEXT NOT NULL DEFAULT '[]'"),
-    ("ai_rate", "REAL"),
-)
+_ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
+    "pets": (
+        ("foundation", "REAL NOT NULL DEFAULT 0"),
+        ("foundation_dims", "TEXT NOT NULL DEFAULT '{}'"),
+        ("traits", "TEXT NOT NULL DEFAULT '[]'"),
+        ("ai_rate", "REAL"),
+    ),
+    # Gitee OAuth 的 access_token 只有 1 天，refresh_token 必须一起存下来
+    "users": (("refresh_cipher", "TEXT NOT NULL DEFAULT ''"),),
+}
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
-    existing = {row[1] for row in conn.execute("PRAGMA table_info(pets)")}
-    for name, ddl in _ADDED_COLUMNS:
-        if name not in existing:
-            conn.execute(f"ALTER TABLE pets ADD COLUMN {name} {ddl}")
+    for table, columns in _ADDED_COLUMNS.items():
+        existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        for name, ddl in columns:
+            if name not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
 
 
 class Database:
