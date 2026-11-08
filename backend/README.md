@@ -54,20 +54,23 @@ GitHub 匿名 API 只有 **60 次/小时**，一次扫描要 5~17 个请求，�
 | Gitee OAuth | 注册一个 Gitee 应用（<https://gitee.com/oauth/applications>） | 正式部署；本机 `.env` 已配好 |
 | Gitee 私人令牌 | 用户在 <https://gitee.com/profile/personal_access_tokens> 生成 | 不建应用也能用 |
 
-**配 OAuth App**：<https://github.com/settings/developers> → New OAuth App
+**应用后台两栏，只有回调地址有硬性要求**（`localhost` ≠ `127.0.0.1`，整串精确匹配）：
 
-```
-Homepage URL            http://127.0.0.1:8000
-Authorization callback  http://127.0.0.1:8000/api/auth/github/callback
-```
+| 平台 | 主页（仅展示） | 回调地址 |
+|---|---|---|
+| GitHub | `http://127.0.0.1:8000` | `http://127.0.0.1:8000/api/auth/github/callback` |
+| Gitee | `http://127.0.0.1:8000` | `http://127.0.0.1:8000/api/auth/gitee/callback` |
 
-Gitee 的回调则是 `http://127.0.0.1:8000/api/auth/gitee/callback`（**必须与应用后台填的完全一致**），
-权限勾 `user_info` + `projects`。Gitee 授权页对已授权用户会直接回调，但 `scope` 必须与上次一致，
+Gitee 权限勾 `user_info` + `projects`；授权页对已授权用户会直接回调，但 `scope` 必须与上次一致，
 所以 `auth.GITEE_SCOPES` 不要随手改。
 
-`auth._callback_base()` 在回环地址上按本次请求的 `Host` 拼回调（`127.0.0.1` / `localhost`
-都能对上后台登记的那一个），公网部署仍以 `GITMON_PUBLIC_URL` 为准，避免被 Host 头带偏。
-要完全固定，就设 `GITEE_CALLBACK_URL` / `GITHUB_CALLBACK_URL` 为完整回调地址。
+> ⚠️ 回调地址**不能是仓库地址**（如 `https://github.com/4243342/gitmon`）：平台会把授权码拼成
+> `?code=...&state=...` 跳过去，那里没有后端接收，code 直接丢失，登录必然失败。
+
+`auth._callback_base()` 在回环地址上按本次请求的 `Host` 拼回调，公网部署以 `GITMON_PUBLIC_URL`
+为准，避免被 Host 头带偏。本机 `.env` 已设 `GITHUB_CALLBACK_URL` / `GITEE_CALLBACK_URL`
+把两个回调**完全固定**，用哪个 host 打开都一致；部署到公网时同步改这三处。
+`node scripts/check-oauth.mjs` 可一键核对「providers 报的回调」与「授权跳转实际带的 redirect_uri」是否一致。
 
 凭证写进 `backend/.env`（启动时自动加载，`KEY=VALUE` 一行一个，不覆盖已有环境变量）：
 

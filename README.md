@@ -127,20 +127,27 @@ https://gitee.com/mirrors/vue          ← Gitee 也行
 Gitee 的 `access_token` **只有 1 天有效期**：后端把 `refresh_token` 一起加密存库，
 取令牌时校验一次（缓存 10 分钟），过期就静默刷新；刷新不了才让你重新点一次授权。
 
-配 OAuth App 只需两分钟（<https://github.com/settings/developers> → New OAuth App）：
+GitHub 在 <https://github.com/settings/developers>，Gitee 在 <https://gitee.com/oauth/applications>。
+两个应用后台都有两栏，**只有「回调地址」这一栏有硬性要求**：
 
-```
-Homepage URL            http://127.0.0.1:8000
-Authorization callback  http://127.0.0.1:8000/api/auth/github/callback
-```
+| 平台 · 字段 | 填什么 |
+|---|---|
+| GitHub · Homepage URL | `http://127.0.0.1:8000`（填仓库地址也行，只是展示链接） |
+| GitHub · Authorization callback URL | `http://127.0.0.1:8000/api/auth/github/callback` |
+| Gitee · 应用主页 | `http://127.0.0.1:8000`（同样可填仓库地址） |
+| Gitee · 应用回调地址 | `http://127.0.0.1:8000/api/auth/gitee/callback` |
+| Gitee · 权限 | `user_info` + `projects` |
 
-Gitee 的 OAuth 应用在 <https://gitee.com/oauth/applications> 建，回调填
-`http://127.0.0.1:8000/api/auth/gitee/callback`，权限勾 `user_info` + `projects`。
-**回调地址必须和上面一字不差**，否则授权时 Gitee 会报 redirect_uri 不一致 ——
-也就是说请始终用 `http://127.0.0.1:8000` 打开，别用 `localhost`。
-后端会按当前访问的 host 拼回调；若不得不用别的地址，可在 `.env` 写
-`GITEE_CALLBACK_URL=<完整回调地址>` 强制固定。
-（不建应用也能用私人令牌登录；把 `.env` 里 Gitee 两行留空，页签会自动切回令牌框。）
+> ⚠️ **回调地址不能填 `https://github.com/4243342/gitmon` 这类仓库地址。** 授权成功后平台会跳到
+> 那个地址并附加 `?code=...&state=...`，仓库页面不会把授权码交回后端，code 直接丢失；而且平台
+> 做的是**整串精确匹配**（`localhost` ≠ `127.0.0.1`，多一个斜杠也不行），对不上就直接报
+> 「无效的登录回调地址 / redirect_uri_mismatch」。
+
+本机 `backend/.env` 已用 `GITHUB_CALLBACK_URL` / `GITEE_CALLBACK_URL` 把回调固定成上表两个值，
+所以用 `127.0.0.1` 还是 `localhost` 打开都不会漂移，登录页上显示的就是可直接复制的正确值。
+改完后台可以跑 `node scripts/check-oauth.mjs` 自检：它会比对后端报的回调地址与授权跳转实际带的
+`redirect_uri` 是否一致。部署到公网时把这两行换成 `https://你的域名/...`，并在两个平台后台同步改。
+（不建应用也能用私人令牌登录：把 `.env` 里该平台两行留空，页签会自动切回令牌框。）
 
 凭证写进 `backend/.env`（启动时自动加载，不用 export）：
 
