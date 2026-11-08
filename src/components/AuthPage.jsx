@@ -3,7 +3,7 @@ import { loginLocal, startLogin } from '../auth.js'
 
 // 首页登录授权页：GitHub / Gitee 二选一 + 游客
 // 为什么要登录：匿名 60 次/小时 ≈ 扫 4 个仓库；登录之后自动把你名下所有项目开成一整箱。
-// 只提供平台授权（OAuth）与本机登录两条路，不再收手填令牌。
+// 只提供平台授权（OAuth）与本机登录两条路，不收手填令牌。
 
 const META = {
   github: {
@@ -130,9 +130,7 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
         {!oauthReady && (
           <p className="auth-hint">
             后端还没配 {meta.name} 的 OAuth 应用（{meta.env}）。
-            配好以后这个按钮直接可用；现在可以先
-            {provider === 'github' && local.available ? '用本机登录，或' : ''}
-            游客进入。
+            配好以后这个按钮直接可用；现在可以先游客进入。
           </p>
         )}
 
