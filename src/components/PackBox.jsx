@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import PixelSprite from './PixelSprite.jsx'
 import { sfx } from '../sfx.js'
 
@@ -22,6 +23,9 @@ export default function PackBox({
   }, {})
   const openedCount = pets.filter((p) => opened.has(p.fullName)).length
   const allSaved = revealedAll && openedCount === pets.length
+
+  // 整箱登场：上部琶音 + 一层和弦，和"一个卡包"的登场音区分开
+  useEffect(() => { sfx.boxIn() }, [])
 
   return (
     <main className="box-stage">
@@ -78,7 +82,7 @@ export default function PackBox({
               key={`${pet.platform}/${pet.fullName}`}
               className={`pack-tile q-${pet.quality.key}${isOpen ? ' is-open' : ''}${revealed ? ' is-revealed' : ''}`}
               style={{ '--q-color': pet.quality.color, '--q-glow': pet.quality.glow, '--i': i }}
-              onClick={() => { if (!revealed) { sfx.blip(); onOpen(pet) } }}
+              onClick={() => { if (!revealed) { sfx.swoosh(); onOpen(pet) } }}
               title={`${pet.fullName} · ${pet.quality.name} · Lv.${pet.level}`}
             >
               <span className="pt-foil" />
@@ -103,7 +107,7 @@ export default function PackBox({
 
       <div className="actions box-actions">
         {!revealedAll && pets.length > 1 && (
-          <button className="primary-btn" onClick={() => { sfx.reveal('SSR'); onOpenAll() }}>
+          <button className="primary-btn" onClick={() => { sfx.tiles(pets.length); onOpenAll() }}>
             一键全开（{pets.length} 包）
           </button>
         )}

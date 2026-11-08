@@ -109,6 +109,12 @@ export default function App() {
   useSfxBus()
   const typed = useTypewriter(view === 'scan' ? (mode === 'owner' ? DIALOGS_OWNER : DIALOGS) : [])
 
+  // 扫描阶段推进：每亮一格给一声，音高上行
+  useEffect(() => {
+    if (view !== 'scan' || step === 0) return
+    sfx.scanStep(step)
+  }, [step, view])
+
   useEffect(() => { setCollection(loadCollection()) }, [])
 
   // 启动：拉会话 + 登录方式，决定首屏是授权页还是首页
@@ -270,12 +276,14 @@ export default function App() {
 
   const goDetail = () => {
     if (pet) setCollection(upsertPet(loadCollection(), pet))
+    sfx.swoosh()
     setView('detail')
   }
 
   // 从卡箱开的那一只：收下就回卡箱，接着开下一包
   const backToBox = () => {
     if (pet) setCollection(upsertPet(loadCollection(), pet))
+    sfx.swoosh()
     setView('box')
   }
 
@@ -284,7 +292,7 @@ export default function App() {
     box?.pets.forEach((p) => { list = upsertPet(list, p) })
     setCollection(list)
     setOpened(new Set((box?.pets || []).map((p) => p.fullName)))
-    sfx.blip()
+    sfx.collect()
   }
 
   const reset = () => {
@@ -469,7 +477,7 @@ export default function App() {
 
       {view === 'pack' && pet && (
         <main className="pack-stage">
-          <PackOpening pet={pet} onReveal={afterReveal} />
+          <PackOpening pet={pet} onReveal={afterReveal} muted={muted} />
         </main>
       )}
 

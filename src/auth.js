@@ -139,6 +139,18 @@ async function verifyTokenLocally(token) {
   }
 }
 
+// 本机已登录（后端复用 gh CLI 的令牌，仅 127.0.0.1 可用）
+export async function loginLocal() {
+  const profile = await api('/api/auth/github/local', { method: 'POST' })
+  try {
+    const { token } = await api('/api/auth/token')
+    if (token) localStorage.setItem(TOKEN_KEY, token)
+  } catch { /* 令牌取不到也不挡进入 */ }
+  cacheProfile(profile)
+  clearGuest()
+  return { online: true, profile }
+}
+
 export async function logout() {
   try { localStorage.removeItem(TOKEN_KEY) } catch { /* ignore */ }
   cacheProfile(null)

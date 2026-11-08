@@ -12,9 +12,25 @@ from .snapshot import RepoSnapshot
 
 __all__ = ["RepoSnapshot", "scan", "GitHubScanner", "GiteeScanner", "HttpClient"]
 
+# GitHub 令牌都有前缀，Gitee 私人令牌是一串裸十六进制 —— 用它来挡住"跨平台串令牌"
+_GITHUB_TOKEN_PREFIXES = ("ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_")
+
+
+def token_for(token: str | None, platform: str) -> str | None:
+    """登录令牌只发给它自己的平台：GitHub 令牌不发给 Gitee，反之亦然。"""
+    if not token:
+        return token
+    looks_github = token.startswith(_GITHUB_TOKEN_PREFIXES)
+    if platform == "github" and not looks_github:
+        return None
+    if platform == "gitee" and looks_github:
+        return None
+    return token
+
 
 def scan(ref: RepoRef, *, use_scc: bool | None = None, since: str | None = None,
          token: str | None = None) -> RepoSnapshot:
+    token = token_for(token, ref.platform)
     with HttpClient(timeout=settings.http_timeout, retries=settings.http_retries) as http:
         if ref.platform == "gitee":
             scanner = GiteeScanner(http, timeout=settings.http_timeout, max_tree_entries=settings.max_tree_entries, token=token)

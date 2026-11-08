@@ -170,3 +170,110 @@ def test_session_token_used_for_scan(client: TestClient, monkeypatch) -> None:
     client.post("/api/auth/github/token", json={"token": "ghp_usertokenxx"})
     assert client.post("/api/hatch/sync", json={"repo": "acme/widget"}).status_code == 200
     assert seen["token"] == "ghp_usertokenxx"
+
+
+def test_local_login_uses_gh_token(client: TestClient, monkeypatch) -> None:
+    """本机已登录：复用 gh 的令牌，一次点击就建会话。"""
+    monkeypatch.setattr(auth_api, "_is_loopback", lambda request: True)
+    monkeypatch.setattr(auth, "local_gh_token", lambda: "gho_local_token")
+    monkeypatch.setattr(auth, "github_profile", lambda token: {
+        "login": "4243342", "name": "", "avatar_url": "https://x/a.png",
+    })
+    monkeypatch.setattr(auth, "github_quota", lambda token: {"limit": 5000, "remaining": 4999, "resetAt": 0})
+
+    response = client.post("/api/auth/github/local")
+    assert response.status_code == 200
+    profile = response.json()
+    assert profile["authenticated"] is True
+    assert profile["login"] == "4243342"
+    assert profile["source"] == "local"
+    assert profile["quota"]["remaining"] == 4999
+    assert client.get("/api/auth/token").json()["token"] == "gho_local_token"
+
+
+def test_local_login_rejected_for_remote(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setattr(auth_api, "_is_loopback", lambda request: False)
+    monkeypatch.setattr(auth, "local_gh_token", lambda: "gho_local_token")
+    response = client.post("/api/auth/github/local")
+    assert response.status_code == 401
+    assert "127.0.0.1" in response.json()["error"]
+
+
+def test_local_login_off_can_be_disabled(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setattr(config.settings, "local_login", False)
+    monkeypatch.setattr(auth_api, "_is_loopback", lambda request: True)
+    response = client.post("/api/auth/github/local")
+    assert response.status_code == 401
+
+
+def test_providers_lists_both_platforms(client: TestClient) -> None:
+    payload = client.get("/api/auth/providers").json()
+    assert payload["github"]["oauth"] is False
+    assert payload["gitee"]["oauth"] is False
+    assert "gitee.com/profile/personal_access_tokens" in payload["gitee"]["tokenUrl"]
+    assert payload["anonymous"]["quotaPerHour"] == 60
+
+
+def test_gitee_pat_login(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setattr(auth, "gitee_profile", lambda token: {
+        "login": "gitee_user", "name": "码云用户", "avatar_url": "https://x/g.png", "email": "",
+    })
+    response = client.post("/api/auth/gitee/token", json={"token": "0123456789abcdef0123456789abcdef"})
+    assert response.status_code == 200
+    profile = response.json()
+    assert profile["authenticated"] is True
+    assert profile["provider"] == "gitee"
+    assert profile["login"] == "gitee_user"
+    assert profile["quota"] == {}  # Gitee 没有配额接口，不乱报 5000
+
+    me = client.get("/api/auth/me").json()
+    assert me["provider"] == "gitee"
+
+    token = client.get("/api/auth/token").json()
+    assert token["provider"] == "gitee"
+    assert token["token"].startswith("0123456789")
+
+
+def test_gitee_pat_rejects_bad_token(client: TestClient, monkeypatch) -> None:
+    def boom(token: str):
+        raise auth.AuthError("Gitee 令牌无效或已过期")
+
+    monkeypatch.setattr(auth, "gitee_profile", boom)
+    response = client.post("/api/auth/gitee/token", json={"token": "bad-token-value"})
+    assert response.status_code == 401
+    assert "Gitee 令牌无效" in response.json()["error"]
+
+
+def test_gitee_oauth_start_requires_config(client: TestClient) -> None:
+    response = client.get("/api/auth/gitee/start", follow_redirects=False)
+    assert response.status_code == 400
+    assert "GITEE_CLIENT_ID" in response.json()["hint"]
+
+
+def test_gitee_oauth_start_and_callback(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setattr(config.settings, "gitee_client_id", "gid")
+    monkeypatch.setattr(config.settings, "gitee_client_secret", "gsecret")
+    start = client.get("/api/auth/gitee/start?next=/app", follow_redirects=False)
+    assert start.status_code == 302
+    assert start.headers["location"].startswith(auth.GITEE_AUTHORIZE)
+    assert "client_id=gid" in start.headers["location"]
+
+    monkeypatch.setattr(auth, "exchange_gitee_code", lambda code: ("gitee_oauth_token", "user_info projects"))
+    monkeypatch.setattr(auth, "gitee_profile", lambda token: {
+        "login": "gitee_oauth_user", "name": "G", "avatar_url": "", "email": "",
+    })
+    state = auth.sign_state("/")
+    callback = client.get(f"/api/auth/gitee/callback?code=abc&state={state}", follow_redirects=False)
+    assert callback.status_code == 302
+    assert "auth=ok" in callback.headers["location"]
+    assert client.get("/api/auth/me").json()["login"] == "gitee_oauth_user"
+
+
+def test_scan_token_isolation() -> None:
+    from gitmon_api.scanner import token_for
+
+    assert token_for("ghp_abc", "github") == "ghp_abc"
+    assert token_for("ghp_abc", "gitee") is None  # GitHub 令牌不能发给 Gitee
+    assert token_for("deadbeef", "gitee") == "deadbeef"
+    assert token_for("deadbeef", "github") is None
+    assert token_for(None, "github") is None

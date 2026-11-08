@@ -60,6 +60,7 @@
 ## 玩法
 
 - 🎴 **开包**：品质决定卡包外观，SSR 金光闪闪
+- 🔊 **过场音效**：双层音轨——pack-opener-js 的礼成采样（指尖铝箔、掀盖、抽卡风声、落地一击，SSR 落得最重）+ WebAudio 合成的芯片音（卡包登场、整箱琶音、翻格连打、收图鉴铃音）
 - 📦 **整箱**：输入账号主页 = 该账号每个项目一包，一键全开、批量收图鉴
 - ⬆️ **养成**：commit +2 XP、合并 PR +10 XP、发 release +50 XP
 - 🧬 **进化**：幼体 → 成长体（Lv.150+）→ 完全体（Lv.500+）
@@ -76,6 +77,9 @@ npm run dev
 # → http://127.0.0.1:5173
 ```
 
+首屏是**登录授权页**：GitHub 匿名接口只有 60 次/小时（扫四个仓库就用完），授权后 5000 次/小时。
+不登录也能点「先随便逛逛」直接玩，随时从顶栏补登录。
+
 输入任意地址试试——单个仓库是一包，账号主页是一整箱：
 
 ```
@@ -83,6 +87,26 @@ https://github.com/facebook/react      ← 一个卡包
 https://github.com/4243342             ← 一整箱
 https://gitee.com/mirrors/vue          ← Gitee 也行
 ```
+
+## 登录授权
+
+首屏先连 GitHub，两条路等价，都是一个 GitHub token：
+
+| 方式 | 怎么做 | 适合 |
+|---|---|---|
+| **OAuth 授权** | 后端配 `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` 后，点「用 GitHub 授权登录」 | 正式部署 |
+| **个人访问令牌** | 自己去 [GitHub tokens](https://github.com/settings/tokens/new?scopes=repo,read:user) 生成 `ghp_xxx`，粘到授权页 | 本地开发 / 不想建应用 |
+
+配 OAuth App 只需两分钟（<https://github.com/settings/developers> → New OAuth App）：
+
+```
+Homepage URL            http://127.0.0.1:8000
+Authorization callback  http://127.0.0.1:8000/api/auth/github/callback
+```
+
+登录后令牌写在 `localStorage['gitmon:gh_token']`，`src/scan.js` 自动带上它直连 GitHub；
+后端会把令牌用 HMAC 流加密后存进本地 SQLite，浏览器只留一个 HttpOnly 会话 cookie。
+后端不可用时自动降级为"本地令牌"模式，扫描仍在浏览器里完成。
 
 ## 技术栈
 
@@ -94,6 +118,8 @@ React 18 · Vite 5 · PixiJS 8（开包舞台）· tsParticles 4（粒子）
 
 | 模块 | 职责 |
 |---|---|
+| `src/auth.js` | 登录授权：GitHub OAuth / 个人令牌 → 会话、令牌落地、离线降级 |
+| `src/components/AuthPage.jsx` | 首屏登录授权页（额度说明、令牌登录、游客入口） |
 | `src/engine.js` | 判定引擎：仓库地址 → 品种 / 品质 / 等级 / 六维 / 技能（纯函数，可复现） |
 | `src/battle.js` | 战斗引擎：属性克制 / 伤害公式 / 状态 / 先制 / AI（纯函数 + 显式种子，可复现） |
 | `src/rivals.js` | 内置 36 个知名仓库的离线快照 → 对手精灵；在线扫描 / 同类型 / 随机三种挑选 |
@@ -128,7 +154,7 @@ curl -X POST localhost:8000/api/hatch/sync -H 'content-type: application/json' \
 
 ## 竞技场对战
 
-三种挑战：**在线对手**（输入对方仓库地址，扫描成精灵按真实强度 1v1，命中内置快照可离线打）、**同类型对战**（只从和先发同属性的仓库里挑，克制关系清楚）、**随机宠物**（36 只内置对手随机抽）。后两种可调三档难度（对手六维 ×0.65 / ×1 / ×1.35）。9 元素克制表、Pokémon Showdown 同款伤害公式与能力等级、灼烧/中毒/麻痹/沉睡、先制技与换人、PP 用尽自动"挣扎"。机制细节与借鉴边界见 [`docs/BATTLE.md`](docs/BATTLE.md)。
+三种挑战：**在线对手**（单项目 1v1：填对方仓库按真实强度打；整仓：填对方账号让它的项目排队上，最多 3v3；命中内置快照可离线打）、**同类型对战**（只从和先发同属性的仓库里挑，克制关系清楚）、**随机宠物**（36 只内置对手随机抽）。后两种可调三档难度（对手六维 ×0.65 / ×1 / ×1.35）。9 元素克制表、Pokémon Showdown 同款伤害公式与能力等级、灼烧/中毒/麻痹/沉睡、先制技与换人、PP 用尽自动"挣扎"。机制细节与借鉴边界见 [`docs/BATTLE.md`](docs/BATTLE.md)。
 
 引擎自检（不依赖浏览器）：
 
@@ -167,7 +193,9 @@ AI 味 ≥50 → 词条「根基不稳」，≥75 → 「生成体」；根基�
 - [x] 根基与性格词条（含"根基不稳"减益与修复提示）
 - [x] 离线 AI 味检测 CLI + 扫描钩子
 - [x] 竞技场对战：在线对手 / 同类型 / 随机宠物三种挑战 + 三档难度（`docs/BATTLE.md`）
-- [ ] 前端切到真实 API（目前仍用 mock 引擎，可离线演示）
+- [x] GitHub 登录授权：首屏授权页 + OAuth / 个人访问令牌（60 → 5000 次/小时）
+- [ ] 前端切到真实 API（判定仍在前端跑，扫描已用真实数据）
+- [ ] Gitee 登录授权（先用令牌 / 匿名）
 - [ ] 精灵成长与每日同步的前端展示
 - [ ] AI 率按最近 90 天提交加权，让"补课"真能把词条洗掉
 - [ ] 全服排行榜页面

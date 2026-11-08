@@ -47,8 +47,9 @@ GitHub 匿名 API 只有 **60 次/小时**，一次扫描要 5~17 个请求，�
 
 | 方式 | 需要什么 | 适合 |
 |---|---|---|
+| 本机一键登录 | 这台机器上 `gh auth login` 过（自动读 `gh auth token`） | 本地开发，点一下就进，零配置 |
 | OAuth 授权 | 注册一个 GitHub OAuth App（2 分钟） | 正式部署，用户点一下就登录 |
-| 个人访问令牌（PAT） | 用户自己去 GitHub 生成 `ghp_xxx` 贴进来 | 本地开发 / 不想建应用 |
+| 个人访问令牌（PAT） | 用户自己去 GitHub 生成 `ghp_xxx` 贴进来 | 不想建应用、或换设备 |
 
 **配 OAuth App**：<https://github.com/settings/developers> → New OAuth App
 
@@ -60,7 +61,9 @@ Authorization callback  http://127.0.0.1:8000/api/auth/github/callback
 把 Client ID / Secret 写进环境变量 `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`，
 部署到域名时同时改 `GITMON_PUBLIC_URL=https://your.domain`（回调地址由它拼出来）。
 
-不配也能用：首页会提示"后端没配 OAuth"，用户走下面的令牌登录，额度同样是 5000 次/小时。
+不配也能用。首页会按顺序降级：① 检测到本机 `gh` 已登录 → 显示"用本机已登录的 @xxx 直接进入"；
+② 配了 OAuth App → GitHub 授权按钮可用；③ 都没有 → 提示用个人访问令牌（额度同样是 5000 次/小时）。
+本机登录只对 `127.0.0.1` 请求生效，公网部署请设 `GITMON_LOCAL_LOGIN=0`。
 
 安全做法：令牌用 HMAC-SHA256 计数器模式流加密后落库（密钥来自 `GITMON_SECRET`，
 留空则自动生成 `data/secret.key`，权限 0600）；浏览器只持有 HttpOnly 会话 cookie

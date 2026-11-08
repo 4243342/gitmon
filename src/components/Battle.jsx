@@ -481,6 +481,18 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
     setOpponentNote('')
   }
 
+  // 整仓扫完后按对手人数补满我方队伍（玩家进模式时被单项目裁到 1 只，这里再补回来）
+  const fillTeam = (count) => {
+    setTeam((prev) => {
+      const out = [...prev]
+      for (const p of candidates) {
+        if (out.length >= count) break
+        if (!out.some((x) => x.fullName === p.fullName && x.platform === p.platform)) out.push(p)
+      }
+      return out.slice(0, count)
+    })
+  }
+
   // 切换单项目 / 整仓：多余的人先收回去
   const changeOnlineSize = (size) => {
     setOnlineSize(size)
@@ -521,7 +533,7 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
       if (localTeam.length >= 2) {
         const picked = localTeam.slice(0, 3)
         setOwnerTeam(picked)
-        setTeam((prev) => prev.slice(0, picked.length))
+        fillTeam(picked.length)
         setOpponentNote(`内置快照 · ${owner} 的 ${picked.length} 个项目`)
         return
       }
@@ -537,7 +549,7 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
         .slice(0, 3)
       if (!pets.length) throw new Error('这个账号没有可挑战的公开项目')
       setOwnerTeam(pets)
-      setTeam((prev) => prev.slice(0, pets.length))
+      fillTeam(pets.length)
       setOpponentNote(`线上数据 · ${owner} 的 ${pets.length} 个项目`)
     } catch (e) {
       setScanError(e.message || '扫描失败，请检查地址')

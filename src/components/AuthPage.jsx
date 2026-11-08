@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { loginWithToken } from '../auth.js'
+import { loginLocal, loginWithToken } from '../auth.js'
 
 // 首页登录授权页：GitHub OAuth 为主，个人访问令牌为备
 // 为什么要登录：匿名 60 次/小时 ≈ 扫 4 个仓库；授权后 5000 次/小时。
@@ -10,6 +10,7 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
   const [showHelp, setShowHelp] = useState(false)
 
   const oauthReady = !!providers?.github?.oauth
+  const local = providers?.local || {}
   const quota = providers?.anonymous || { quotaPerHour: 60, authenticatedPerHour: 5000 }
 
   const startOAuth = () => {
@@ -22,6 +23,18 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
     setBusy('oauth')
     // 整页跳转：回来后 URL 带 ?auth=ok，App 会重新拉一次会话
     window.location.href = `/api/auth/github/start?next=${encodeURIComponent('/')}`
+  }
+
+  const enterLocal = async () => {
+    setError('')
+    setBusy('local')
+    try {
+      const result = await loginLocal()
+      onAuthed?.(result)
+    } catch (e) {
+      setError(e?.message || '本机登录失败')
+      setBusy('')
+    }
   }
 
   const submitToken = async () => {
@@ -60,7 +73,24 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
           </p>
         )}
 
-        <button className="auth-github" onClick={startOAuth} disabled={busy === 'oauth'}>
+        {local.available && (
+          <button className="auth-local" onClick={enterLocal} disabled={busy === 'local'}>
+            {local.avatar
+              ? <img src={local.avatar} alt="" />
+              : <span className="auth-local-dot" />}
+            <span className="auth-local-text">
+              <b>{busy === 'local' ? '正在进入…' : `用本机已登录的 @${local.login} 直接进入`}</b>
+              <em>复用这台机器上 gh 的登录态，不用注册 OAuth App</em>
+            </span>
+            <span className="auth-local-go">→</span>
+          </button>
+        )}
+
+        <button
+          className={local.available ? 'auth-github is-secondary' : 'auth-github'}
+          onClick={startOAuth}
+          disabled={busy === 'oauth'}
+        >
           <span className="gh-mark" aria-hidden="true">
             <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor">
               <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A7.995 7.995 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />

@@ -26,6 +26,7 @@ import hmac
 import os
 import secrets
 import sqlite3
+import subprocess
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -42,6 +43,13 @@ GITHUB_TOKEN = "https://github.com/login/oauth/access_token"
 GITHUB_API = "https://api.github.com"
 # read:user 拿昵称头像；repo 让私有仓库也能孵化；read:org 让组织仓库可见
 DEFAULT_SCOPES = "read:user repo read:org"
+
+GITEE_AUTHORIZE = "https://gitee.com/oauth/authorize"
+GITEE_TOKEN = "https://gitee.com/oauth/token"
+GITEE_API = "https://gitee.com/api/v5"
+# user_info 拿昵称头像；projects 让私有仓库也能孵化
+GITEE_SCOPES = "user_info projects"
+
 SESSION_COOKIE = "gitmon_sid"
 STATE_TTL = 600
 
@@ -238,6 +246,138 @@ def github_quota(token: str) -> dict[str, Any]:
         return {}
 
 
+# ---------------------------------------------------------------- Gitee
+
+def gitee_oauth_enabled() -> bool:
+    return bool(settings.gitee_client_id and settings.gitee_client_secret)
+
+
+def gitee_callback_url() -> str:
+    return f"{settings.public_base_url}/api/auth/gitee/callback"
+
+
+def gitee_authorize_url(state: str) -> str:
+    if not gitee_oauth_enabled():
+        raise OAuthNotConfigured(
+            "Gitee OAuth 未配置",
+            hint="设置 GITEE_CLIENT_ID / GITEE_CLIENT_SECRET，或改用 Gitee 私人令牌登录",
+        )
+    query = urlencode({
+        "client_id": settings.gitee_client_id,
+        "redirect_uri": gitee_callback_url(),
+        "response_type": "code",
+        "scope": GITEE_SCOPES,
+        "state": state,
+    })
+    return f"{GITEE_AUTHORIZE}?{query}"
+
+
+def exchange_gitee_code(code: str) -> tuple[str, str]:
+    if not gitee_oauth_enabled():
+        raise OAuthNotConfigured("Gitee OAuth 未配置")
+    with _client() as client:
+        resp = client.post(
+            GITEE_TOKEN,
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "client_id": settings.gitee_client_id,
+                "client_secret": settings.gitee_client_secret,
+                "redirect_uri": gitee_callback_url(),
+            },
+            headers={"Accept": "application/json"},
+        )
+    if resp.status_code >= 500:
+        raise AuthError("Gitee 授权服务暂时不可用，请稍后重试")
+    try:
+        data = resp.json()
+    except ValueError:
+        raise AuthError("Gitee 授权返回内容无法解析") from None
+    if data.get("error"):
+        desc = str(data.get("error_description") or data["error"])
+        raise AuthError(f"Gitee 授权失败：{desc}")
+    token_value = str(data.get("access_token") or "")
+    if not token_value:
+        raise AuthError("Gitee 没有返回访问令牌")
+    return token_value, str(data.get("scope") or "")
+
+
+def gitee_profile(token: str) -> dict[str, Any]:
+    """Gitee 私人令牌 / OAuth 令牌都能用，统一返回用户信息。"""
+    if not token:
+        raise AuthError("令牌为空")
+    try:
+        with _client() as client:
+            resp = client.get(
+                f"{GITEE_API}/user",
+                params={"access_token": token},
+                headers={"Authorization": f"token {token}"},
+            )
+    except httpx.HTTPError:
+        raise AuthError("连接 Gitee 失败，请检查网络后重试") from None
+    if resp.status_code == 401:
+        raise AuthError("Gitee 令牌无效或已过期", hint="重新生成一个带 user_info 权限的私人令牌")
+    if resp.status_code == 403:
+        raise AuthError("Gitee 拒绝了该令牌（可能是配额或权限问题）", hint="稍后重试，或换一个私人令牌")
+    if resp.status_code >= 400:
+        raise AuthError(f"Gitee 返回异常状态 {resp.status_code}")
+    try:
+        return resp.json()
+    except ValueError:
+        raise AuthError("Gitee 用户信息无法解析") from None
+
+
+# ---------------------------------------------------------------- 本机已登录（gh CLI）
+# 本地开发时最常见的场景：这台机器的 gh 已经登录过了，没必要再建 OAuth App、
+# 也不用把令牌复制到网页里。这里直接复用 gh 存的令牌，但**只对 127.0.0.1 生效**。
+
+_local_token: tuple[float, str] | None = None
+_local_profile: tuple[float, dict[str, Any]] | None = None
+
+
+def local_gh_token() -> str:
+    """服务端兜底令牌优先；没有就读本机 gh CLI 的登录令牌（缓存 5 分钟）。"""
+    global _local_token
+    if settings.github_token:
+        return settings.github_token
+    now = time.time()
+    if _local_token and now - _local_token[0] < 300:
+        return _local_token[1]
+    token = ""
+    try:
+        proc = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=8)
+        if proc.returncode == 0:
+            token = proc.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        token = ""
+    _local_token = (now, token)
+    return token
+
+
+def local_login_available() -> dict[str, Any]:
+    """给首页用：本机是否有一个可直接进入的 GitHub 账号（结果缓存 60 秒）。"""
+    global _local_profile
+    if not settings.local_login:
+        return {"available": False}
+    token = local_gh_token()
+    if not token:
+        return {"available": False}
+    now = time.time()
+    if _local_profile and now - _local_profile[0] < 60:
+        return {"available": True, **_local_profile[1]}
+    try:
+        profile = github_profile(token)
+    except AuthError:
+        return {"available": False}
+    summary = {
+        "login": str(profile.get("login") or ""),
+        "name": str(profile.get("name") or ""),
+        "avatar": str(profile.get("avatar_url") or ""),
+    }
+    _local_profile = (now, summary)
+    return {"available": bool(summary["login"]), **summary}
+
+
 # ---------------------------------------------------------------- 用户与会话
 
 def _user_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
@@ -317,6 +457,7 @@ def public_profile(user: dict[str, Any] | None, *, quota: dict[str, Any] | None 
         return {
             "authenticated": False,
             "oauth": oauth_enabled(),
+            "oauthByProvider": {"github": oauth_enabled(), "gitee": gitee_oauth_enabled()},
             "quota": {"limit": 60, "remaining": None, "resetAt": 0},
         }
     return {
@@ -332,6 +473,7 @@ def public_profile(user: dict[str, Any] | None, *, quota: dict[str, Any] | None 
         "hasToken": bool(user.get("token")),
         "quota": quota or {},
         "oauth": oauth_enabled(),
+        "oauthByProvider": {"github": oauth_enabled(), "gitee": gitee_oauth_enabled()},
     }
 
 

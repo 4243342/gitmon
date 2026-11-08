@@ -1165,3 +1165,32 @@ body::after {
   .auth-deco { display: none; }
   .user-quota { display: none; }
 }
+
+/* 本机已登录（gh CLI）一键进入 */
+.auth-local {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 14px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(110, 231, 168, .42);
+  border-radius: 12px;
+  background:
+    radial-gradient(320px 90px at 12% 0%, rgba(53, 192, 125, .22), transparent 70%),
+    linear-gradient(160deg, rgba(23, 44, 38, .9), rgba(15, 24, 33, .92));
+  color: #eaf7ef;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .16s, transform .16s;
+}
+.auth-local:hover:not(:disabled) { border-color: #6ee7a8; transform: translateY(-1px); }
+.auth-local:disabled { opacity: .6; cursor: progress; }
+.auth-local img { width: 34px; height: 34px; border-radius: 50%; border: 1px solid rgba(110, 231, 168, .5); display: block; }
+.auth-local-dot { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, #35c07d, #8cf0bf); }
+.auth-local-text { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.auth-local-text b { font-size: 13px; font-weight: 700; letter-spacing: .3px; }
+.auth-local-text em { font-size: 10.5px; font-style: normal; color: #9fb4ce; line-height: 1.5; }
+.auth-local-go { color: #6ee7a8; font-size: 15px; }
+.auth-github.is-secondary { padding: 10px 16px; font-size: 12.5px; }

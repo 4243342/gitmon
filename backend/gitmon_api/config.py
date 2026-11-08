@@ -12,6 +12,28 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+def load_dotenv(path: Path | None = None) -> None:
+    """极简 .env 读取：只认 KEY=VALUE，不覆盖已存在的环境变量。
+
+    不引第三方依赖（python-dotenv 是可用，但这里只需要十几行）。
+    """
+    target = path or (BASE_DIR / ".env")
+    if not target.exists():
+        return
+    try:
+        for line in target.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+    except OSError:
+        return
+
+
 def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
 
@@ -49,6 +71,9 @@ class Settings:
     # GitHub OAuth 应用（登录授权用；不配置则只能粘贴个人访问令牌）
     github_client_id: str = ""
     github_client_secret: str = ""
+    # Gitee OAuth 应用（可选；不配置则只支持 Gitee 私人令牌）
+    gitee_client_id: str = ""
+    gitee_client_secret: str = ""
     # 对外地址：OAuth 回调前缀，例如 http://127.0.0.1:8000
     public_base_url: str = "http://127.0.0.1:8000"
     # 登录成功后跳回的页面（默认回根路径，本地用 vite 代理也成立）
@@ -56,6 +81,8 @@ class Settings:
     # 会话密钥：为空则自动生成并落到 data/secret.key，用于签名与令牌加密
     secret_key: str = ""
     session_ttl: int = 30 * 24 * 3600
+    # 本机已登录（gh CLI）直接登录：只对 127.0.0.1 请求生效，部署到公网时关掉
+    local_login: bool = True
     # 缓存与网络
     cache_ttl: int = 6 * 3600
     http_timeout: float = 18.0
@@ -88,6 +115,7 @@ class Settings:
 
 
 def load_settings() -> Settings:
+    load_dotenv()
     data_dir = Path(_env("GITMON_DATA_DIR") or str(BASE_DIR / "data")).expanduser()
     if not data_dir.is_absolute():
         data_dir = (BASE_DIR / data_dir).resolve()
@@ -108,10 +136,13 @@ def load_settings() -> Settings:
         gitee_token=_env("GITEE_TOKEN"),
         github_client_id=_env("GITHUB_CLIENT_ID"),
         github_client_secret=_env("GITHUB_CLIENT_SECRET"),
+        gitee_client_id=_env("GITEE_CLIENT_ID"),
+        gitee_client_secret=_env("GITEE_CLIENT_SECRET"),
         public_base_url=(_env("GITMON_PUBLIC_URL") or "http://127.0.0.1:8000").rstrip("/"),
         web_url=_env("GITMON_WEB_URL"),
         secret_key=_env("GITMON_SECRET"),
         session_ttl=_env_int("GITMON_SESSION_TTL", 30 * 24 * 3600),
+        local_login=_env_bool("GITMON_LOCAL_LOGIN", True),
         cache_ttl=_env_int("GITMON_CACHE_TTL", 6 * 3600),
         http_timeout=float(_env_int("GITMON_HTTP_TIMEOUT", 18)),
         daily_sync=_env_bool("GITMON_DAILY_SYNC", False),

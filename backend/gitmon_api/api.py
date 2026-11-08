@@ -72,7 +72,11 @@ def health() -> dict[str, Any]:
         "ok": True,
         "version": "0.2.0",
         "tokens": {"github": bool(settings.github_token), "gitee": bool(settings.gitee_token)},
-        "login": {"githubOAuth": auth.oauth_enabled(), "callback": auth.callback_url()},
+        "login": {
+            "githubOAuth": auth.oauth_enabled(),
+            "giteeOAuth": auth.gitee_oauth_enabled(),
+            "callback": auth.callback_url(),
+        },
         "queue": scan_queue.pending(),
         "cacheTtl": settings.cache_ttl,
         "scc": settings.use_scc,

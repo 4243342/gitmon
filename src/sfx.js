@@ -32,6 +32,41 @@ function tone({ type = 'square', freq = 440, dur = 0.08, vol = 0.16, slide = 0, 
   osc.stop(t0 + dur + 0.02)
 }
 
+// 噪声爆破：白噪 + 带通/高通滤波，用来做风切、撕纸、落地的"空气感"
+// filter 扫频（to）能让 whoosh 有方向：向上=起，向下=落
+function noise({ dur = 0.18, vol = 0.1, delay = 0, filter = 'highpass', freq = 900, q = 0.7, to = 0 }) {
+  if (muted) return
+  const c = ac()
+  if (!c) return
+  const t0 = c.currentTime + delay
+  const len = Math.max(1, Math.floor(c.sampleRate * dur))
+  const buf = c.createBuffer(1, len, c.sampleRate)
+  const data = buf.getChannelData(0)
+  for (let i = 0; i < len; i++) {
+    // 尾部指数衰减，避免"啪"的截断
+    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 1.6)
+  }
+  const src = c.createBufferSource()
+  src.buffer = buf
+  const bq = c.createBiquadFilter()
+  bq.type = filter
+  bq.frequency.setValueAtTime(freq, t0)
+  bq.Q.value = q
+  if (to) bq.frequency.exponentialRampToValueAtTime(Math.max(80, to), t0 + dur)
+  const g = c.createGain()
+  g.gain.setValueAtTime(vol, t0)
+  g.gain.exponentialRampToValueAtTime(0.001, t0 + dur)
+  src.connect(bq).connect(g).connect(c.destination)
+  src.start(t0)
+  src.stop(t0 + dur + 0.02)
+}
+
+// 低频撞地：正弦下滑 + 短噪声，给"卡牌落在台座上"
+function thud({ delay = 0, vol = 0.16, freq = 120 }) {
+  tone({ type: 'sine', freq, slide: -freq * 0.55, dur: 0.2, vol, delay })
+  noise({ dur: 0.09, vol: vol * 0.7, delay, filter: 'lowpass', freq: 520 })
+}
+
 export const sfx = {
   get muted() { return muted },
   toggleMute() {
@@ -48,6 +83,13 @@ export const sfx = {
   back() { tone({ freq: 420, slide: -180, dur: 0.12, vol: 0.12 }) },
   // 扫描进行：双音
   scanTick() { tone({ freq: 660, dur: 0.05, vol: 0.08 }); tone({ freq: 990, dur: 0.05, vol: 0.06, delay: 0.06 }) },
+  // 扫描推进到下一阶段：音高逐级上行，像仪表盘一格一格亮起
+  scanStep(step = 1) {
+    const f = 520 + step * 110
+    tone({ type: 'square', freq: f, dur: 0.05, vol: 0.075 })
+    tone({ type: 'square', freq: f * 1.5, dur: 0.05, vol: 0.04, delay: 0.055 })
+    noise({ dur: 0.06, vol: 0.025, filter: 'highpass', freq: 2600 })
+  },
   // 稀有度揭晓：音阶上行，品质越高越长
   reveal(quality) {
     const scales = {
@@ -58,11 +100,59 @@ export const sfx = {
     }
     const notes = scales[quality] || scales.R
     notes.forEach((f, i) => tone({ freq: f, dur: 0.11, vol: 0.15, delay: i * 0.09, type: 'square' }))
-    if (quality === 'SSR') tone({ freq: 1568, dur: 0.4, vol: 0.1, delay: notes.length * 0.09 + 0.05 })
+    if (quality === 'SSR') {
+      tone({ freq: 1568, dur: 0.4, vol: 0.1, delay: notes.length * 0.09 + 0.05 })
+      noise({ dur: 0.5, vol: 0.05, delay: notes.length * 0.09, filter: 'highpass', freq: 4200, to: 8000 })
+    }
   },
-  // 撕包：噪声刮擦（用锯齿快速滑音模拟）
+  // 卡包登场（扫描完成 → 卡包浮现在台面）：上升气声 + 滑音 + 轻落地
+  packIn() {
+    noise({ dur: 0.5, vol: 0.075, filter: 'bandpass', freq: 320, q: 0.9, to: 2600 })
+    tone({ type: 'sine', freq: 150, slide: 520, dur: 0.46, vol: 0.07 })
+    thud({ delay: 0.46, vol: 0.11, freq: 105 })
+  },
+  // 撕包：噪声撕纸 + 锯齿刮擦（包-opener 自带音轨为主，这里是兜底/降级路径）
   rip() {
-    for (let i = 0; i < 4; i++) tone({ type: 'sawtooth', freq: 180 + i * 60, slide: -90, dur: 0.05, vol: 0.07, delay: i * 0.045 })
+    noise({ dur: 0.26, vol: 0.11, filter: 'bandpass', freq: 2200, q: 0.8, to: 700 })
+    for (let i = 0; i < 3; i++) {
+      tone({ type: 'sawtooth', freq: 200 + i * 70, slide: -100, dur: 0.045, vol: 0.05, delay: i * 0.05 })
+    }
+  },
+  // 卡盖掀飞：短促上扬 + 气流
+  lidOff() {
+    noise({ dur: 0.22, vol: 0.09, filter: 'highpass', freq: 1200, to: 3600 })
+    tone({ type: 'triangle', freq: 420, slide: 460, dur: 0.14, vol: 0.08 })
+  },
+  // 卡牌翻面 / 卡包翻格：一声清脆的"嗒"
+  flip() {
+    noise({ dur: 0.05, vol: 0.06, filter: 'highpass', freq: 3200 })
+    tone({ type: 'square', freq: 1560, slide: -240, dur: 0.03, vol: 0.045 })
+  },
+  // 卡牌落地：撞台面
+  impact() { thud({ vol: 0.15, freq: 135 }) },
+  // 整箱登场：快速上行琶音 + 一层柔和和弦
+  boxIn() {
+    ;[784, 988, 1175, 1568].forEach((f, i) => tone({ freq: f, dur: 0.07, vol: 0.055, delay: i * 0.055 }))
+    ;[523, 659, 784].forEach((f) => tone({ type: 'triangle', freq: f, dur: 0.42, vol: 0.045, delay: 0.24 }))
+  },
+  // 一键全开：按卡片翻出的节奏连打，音高逐张上行
+  tiles(count = 6) {
+    const n = Math.min(count, 48)
+    for (let i = 0; i < n; i++) {
+      const f = 880 + (i % 12) * 46
+      tone({ type: 'square', freq: f, slide: -120, dur: 0.028, vol: 0.042, delay: i * 0.055 })
+      noise({ dur: 0.03, vol: 0.035, delay: i * 0.055, filter: 'highpass', freq: 3000 })
+    }
+  },
+  // 收入图鉴：两连铃 + 柔和尾音
+  collect() {
+    tone({ type: 'triangle', freq: 1047, dur: 0.1, vol: 0.11 })
+    tone({ type: 'triangle', freq: 1319, dur: 0.12, vol: 0.11, delay: 0.1 })
+    ;[1047, 1319, 1568].forEach((f) => tone({ type: 'sine', freq: f, dur: 0.34, vol: 0.04, delay: 0.22 }))
+  },
+  // 页面转场：轻风切（从一个视图切到另一个视图）
+  swoosh() {
+    noise({ dur: 0.24, vol: 0.06, filter: 'bandpass', freq: 600, q: 1.1, to: 2400 })
   },
   // 升级：上行三连音
   levelUp() {
