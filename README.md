@@ -86,13 +86,37 @@ React 18 · Vite 5 · 纯 CSS 动画 · Canvas 像素绘制
 | `src/sprite.js` | 种子 → 像素精灵（对称轮廓 + 属性配色 + 进化阶段装饰） |
 | `src/components/` | 卡包、精灵卡片、雷达图 |
 
+## 后端（已实现）
+
+`backend/` 是一个 FastAPI 单体服务：真实扫描 GitHub / Gitee、真判定、真养成、真立绘。
+
+```bash
+cd backend
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+GITHUB_TOKEN=ghp_xxx .venv/bin/python -m uvicorn gitmon_api.main:app --port 8000
+# 文档 → http://127.0.0.1:8000/docs
+```
+
+```bash
+curl -X POST localhost:8000/api/hatch/sync -H 'content-type: application/json' \
+  -d '{"repo":"https://github.com/facebook/react"}'
+```
+
+- 扫描：文件树 + 元数据 + 依赖清单，12~17 个请求，快照缓存 6 小时
+- 判定：语言占比定属性、依赖/结构定生态类型、五维加权定品质、对数归一化定等级
+- 养成：commit/issue/PR/release/star → XP，Lv.999 上限，30 天不动会沉睡
+- 立绘：种子确定性 PNG（零依赖自写编码器）+ README 徽章 SVG + 分享卡片
+
+端点清单、判定口径、部署与前端接入见 [`backend/README.md`](backend/README.md)。
+
 ## 路线图
 
 - [x] 前端原型：孵化 → 开包 → 精灵卡片全链路
-- [ ] 接入真实仓库扫描（GitHub / Gitee API + `scc` 统计）
-- [ ] 精灵成长与每日同步
-- [ ] README 动态徽章
-- [ ] 全服排行榜
+- [x] 后端：GitHub / Gitee 真实扫描 + 判定引擎 + SQLite 图鉴 + 养成结算
+- [x] README 动态徽章 / 分享卡片 SVG 端点
+- [ ] 前端切到真实 API（目前仍用 mock 引擎，可离线演示）
+- [ ] 精灵成长与每日同步的前端展示
+- [ ] 全服排行榜页面
 
 ## 设计文档
 

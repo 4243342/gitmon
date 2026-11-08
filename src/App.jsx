@@ -1,132 +1,169 @@
-import { useState } from 'react'
-import { hatch } from './engine.js'
+import { useEffect, useState } from 'react'
+import { scanRepo } from './scan.js'
+import { judge } from './engine.js'
+import { loadCollection, upsertPet } from './storage.js'
+import { exportShareCard } from './share.js'
 import PetCard from './components/PetCard.jsx'
-import PixelSprite from './components/PixelSprite.jsx'
+import PackOpening from './components/PackOpening.jsx'
+import Collection from './components/Collection.jsx'
+import GrowPanel from './components/GrowPanel.jsx'
 import './styles.css'
 
-// 阶段：home → pack（卡包待开）→ reveal（精灵登场）→ detail
+const STEPS = ['技术栈扫描', '工程量估算', '代码质量评估', '生成卡包']
+
 export default function App() {
-  const [stage, setStage] = useState('home')
+  const [view, setView] = useState('home') // home | scan | pack | reveal | detail
   const [url, setUrl] = useState('')
   const [error, setError] = useState('')
   const [pet, setPet] = useState(null)
-  const [tearing, setTearing] = useState(false)
   const [collection, setCollection] = useState([])
+  const [step, setStep] = useState(0)
 
-  const doHatch = () => {
-    const result = hatch(url)
-    if (!result) {
-      setError('无法识别的地址，请输入 GitHub 或 Gitee 仓库链接')
-      return
-    }
+  useEffect(() => { setCollection(loadCollection()) }, [])
+
+  const run = async () => {
+    if (!url.trim()) { setError('请输入仓库地址'); return }
     setError('')
-    setPet(result)
-    setStage('pack')
+    setView('scan')
+    setStep(0)
+
+    try {
+      const t1 = setTimeout(() => setStep(1), 350)
+      const t2 = setTimeout(() => setStep(2), 900)
+      const snap = await scanRepo(url)
+      clearTimeout(t1); clearTimeout(t2)
+      setStep(2)
+      await new Promise((r) => setTimeout(r, 300))
+      setStep(3)
+      const judged = judge(snap)
+      await new Promise((r) => setTimeout(r, 420))
+      setPet(judged)
+      setView('pack')
+    } catch (e) {
+      setError(e.message || '扫描失败，请检查仓库地址')
+      setView('home')
+    }
   }
 
-  const openPack = () => {
-    if (tearing) return
-    setTearing(true)
-    setTimeout(() => {
-      setStage('reveal')
-      setTearing(false)
-      setCollection((c) => (c.some((p) => p.fullName === pet.fullName) ? c : [...c, pet]))
-    }, 1200)
+  const afterReveal = () => setView('reveal')
+
+  const goDetail = () => {
+    if (pet) setCollection(upsertPet(loadCollection(), pet))
+    setView('detail')
   }
 
-  const reset = () => {
-    setStage('home')
-    setUrl('')
-    setPet(null)
-  }
+  const reset = () => { setView('home'); setPet(null); setUrl('') }
 
   return (
     <div className="app">
       <header className="topbar">
-        <h1 className="logo" onClick={reset}>GitMon</h1>
-        <span className="tagline">你的仓库，是一只活着的精灵</span>
+        <div className="brand" onClick={reset}>
+          <span className="logo">GitMon</span>
+          <span className="tagline">你的仓库，是一只活着的精灵</span>
+        </div>
+        <a className="gh-link" href="https://github.com/4243342/gitmon" target="_blank" rel="noreferrer">GitHub</a>
       </header>
 
-      {stage === 'home' && (
+      {view === 'home' && (
         <main className="home">
-          <div className="hero-card">
+          <section className="hero">
             <h2>孵化你的仓库精灵</h2>
-            <p>输入 GitHub / Gitee 仓库地址，扫描后将生成一个卡包——品种由技术栈决定，品质由代码质量决定，等级由工程量决定。</p>
+            <p>
+              输入 GitHub / Gitee 仓库地址，扫描后生成一个卡包——
+              <b>品种由技术栈决定</b>，<b>品质由代码质量决定</b>，<b>等级由工程量决定</b>。
+            </p>
             <div className="input-row">
               <input
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && doHatch()}
-                placeholder="https://github.com/owner/repo 或 gitee.com/owner/repo"
+                onKeyDown={(e) => e.key === 'Enter' && run()}
+                placeholder="https://github.com/owner/repo　或　gitee.com/owner/repo"
                 spellCheck={false}
               />
-              <button onClick={doHatch}>孵化</button>
+              <button onClick={run}>孵化</button>
             </div>
             {error && <p className="error">{error}</p>}
             <div className="examples">
-              试试：
-              <button onClick={() => setUrl('https://github.com/facebook/react')}>facebook/react</button>
-              <button onClick={() => setUrl('https://gitee.com/mirrors/vue')}>mirrors/vue</button>
+              <span>试试：</span>
+              {[
+                'https://github.com/facebook/react',
+                'https://github.com/torvalds/linux',
+                'https://github.com/simeydotme/pokemon-cards-css',
+                'https://gitee.com/mirrors/vue',
+              ].map((u) => (
+                <button key={u} onClick={() => setUrl(u)}>
+                  {u.replace('https://', '').replace('github.com/', 'gh/').replace('gitee.com/', 'gitee/')}
+                </button>
+              ))}
             </div>
-          </div>
+          </section>
 
-          {collection.length > 0 && (
-            <section className="collection">
-              <h3>我的图鉴（{collection.length}）</h3>
-              <div className="collection-grid">
-                {collection.map((p) => (
-                  <div key={p.fullName} className="collection-item" onClick={() => { setPet(p); setStage('detail') }}>
-                    <PixelSprite pet={p} size={64} animate={false} />
-                    <span>{p.repo}</span>
-                    <span className={`mini-q q-${p.quality.key}`}>{p.quality.key}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
+          <Collection list={collection} onPick={(p) => { setPet(p); setView('detail') }} />
+
+          <section className="howto">
+            <h3>怎么判定</h3>
+            <div className="howto-grid">
+              <div><b>品种</b><span>主语言 → 元素属性（Python 水系 / JS 雷系 / Rust 钢系…）× 项目类型 → 生态型（AI 龙型 / CLI 鸟型 / Web 兽型…）</span></div>
+              <div><b>品质</b><span>测试 25% + 工程质量 20% + 文档 20% + 维护 20% + 社区 15% → N / R / SR / SSR</span></div>
+              <div><b>等级</b><span>代码规模 + commit + 贡献者 + 活跃时长，对数归一化 → Lv.1–999</span></div>
+            </div>
+          </section>
         </main>
       )}
 
-      {stage === 'pack' && pet && (
+      {view === 'scan' && (
+        <main className="scan">
+          <h2>正在扫描仓库</h2>
+          <p className="scan-url">{url}</p>
+          <ul className="steps">
+            {STEPS.map((s, i) => (
+              <li key={s} className={i < step ? 'done' : i === step ? 'active' : ''}>
+                <span className="dot" />
+                {s}
+                {i < step && <em>✓</em>}
+              </li>
+            ))}
+          </ul>
+        </main>
+      )}
+
+      {view === 'pack' && pet && (
         <main className="pack-stage">
-          <p className="scan-info">
-            扫描完成：{pet.platform === 'gitee' ? 'Gitee' : 'GitHub'} / {pet.fullName}
-            <br />品质分 {pet.qualityScore} · 工程量分 {pet.engineeringScore}
-          </p>
-          <div
-            className={`card-pack pack-${pet.quality.key} ${tearing ? 'tearing' : ''}`}
-            style={{ '--q-color': pet.quality.color, '--q-glow': pet.quality.glow }}
-            onClick={openPack}
-          >
-            <div className="pack-foil" />
-            <div className="pack-title">GITMON</div>
-            <div className="pack-sub">仓库精灵卡包</div>
-            <div className="pack-hint">{tearing ? '开启中…' : '点击开包'}</div>
-          </div>
-          <button className="ghost-btn" onClick={reset}>换一个仓库</button>
+          <PackOpening pet={pet} onReveal={afterReveal} />
         </main>
       )}
 
-      {stage === 'reveal' && pet && (
+      {view === 'reveal' && pet && (
         <main className="reveal-stage">
           <h2 className={`reveal-title quality-text-${pet.quality.key}`}>
-            {pet.quality.name} · {pet.element.name}系{pet.species.name} 登场！
+            {pet.quality.name} · {pet.element.name}系{pet.species.name} 登场
           </h2>
           <PetCard pet={pet} revealed />
-          <button className="primary-btn" onClick={() => setStage('detail')}>查看详情</button>
-        </main>
-      )}
-
-      {stage === 'detail' && pet && (
-        <main className="detail-stage">
-          <PetCard pet={pet} />
-          <div className="detail-actions">
+          <div className="actions">
+            <button className="primary-btn" onClick={goDetail}>收入图鉴</button>
             <button className="ghost-btn" onClick={reset}>再孵一只</button>
           </div>
         </main>
       )}
 
-      <footer className="footer">GitMon Prototype · 前端 Mock 引擎，后端接入后数据来自真实仓库</footer>
+      {view === 'detail' && pet && (
+        <main className="detail-stage">
+          <PetCard pet={pet} />
+          <div className="actions">
+            <button className="primary-btn" onClick={() => exportShareCard(pet)}>导出分享卡</button>
+            <button className="ghost-btn" onClick={reset}>再孵一只</button>
+          </div>
+          <GrowPanel
+            pet={pet}
+            onUpdate={(next) => { setPet(next); setCollection(upsertPet(loadCollection(), next)) }}
+          />
+          <Collection list={collection} onPick={(p) => setPet(p)} />
+        </main>
+      )}
+
+      <footer className="footer">
+        GitMon Prototype v0.2 · 数据来自 GitHub / Gitee 公开 API · 开包动画 pack-opener-js · 粒子 tsParticles
+      </footer>
     </div>
   )
 }
