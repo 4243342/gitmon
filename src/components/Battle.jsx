@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import PixelSprite from './PixelSprite.jsx'
+import '../battle-arena.css'
 import {
   STATUS_INFO,
   battleTurn,
@@ -22,6 +23,7 @@ import {
   sameTypePool,
 } from '../rivals.js'
 import { parseRepoInput, scanOwnerBox, scanRepo } from '../scan.js'
+import { bgm } from '../bgm.js'
 
 // 三种挑战：在线对手（输入仓库/账号，真实强度）／同类型（找同属性仓库）／随机宠物
 const MODES = [
@@ -29,7 +31,7 @@ const MODES = [
     key: 'online',
     index: '01',
     name: '在线对手',
-    tag: '单项目 1v1 · 整仓 3v3',
+    tag: '单项目 1v1 · 整仓全员',
     desc: '填一个仓库打它的单项目，或填一个账号让它的整仓项目排队上。按对方的真实强度来，不设难度。',
   },
   {
@@ -59,7 +61,7 @@ const ONLINE_XP = { single: 200, team: 280 }
 
 const ONLINE_SIZES = [
   { key: 'single', name: '单项目', hint: '1v1 · 一个仓库' },
-  { key: 'team', name: '整仓', hint: '3v3 · 整个账号' },
+  { key: 'team', name: '整仓', hint: '全员 · 整个账号' },
 ]
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -67,6 +69,9 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 function unitPet(unit) {
   return {
     spriteSeed: unit.spriteSeed,
+    // 自定义形象按 platform + fullName 索引，必须透传
+    platform: unit.platform,
+    fullName: unit.fullName,
     element: { key: unit.element.key, name: unit.element.name, color: unit.element.color },
     elementSecondary: unit.elementSecondary,
     species: unit.species,
@@ -85,6 +90,7 @@ function HPBar({ unit, side }) {
   const low = pct <= 25
   return (
     <div className={`hpbar ${low ? 'hpbar-low' : ''}`}>
+      <span className="hp-label">HP</span>
       <div className="hpbar-track">
         <div
           className={`hpbar-fill ${pct <= 20 ? 'hp-red' : pct <= 50 ? 'hp-yellow' : 'hp-green'}`}
@@ -99,7 +105,10 @@ function HPBar({ unit, side }) {
 function UnitPanel({ unit, side, fx, shaking }) {
   const status = unit.status ? STATUS_INFO[unit.status] : null
   return (
-    <div className={`unit-panel ${side} ${shaking ? 'is-hit' : ''}`}>
+    <div
+      className={`unit-panel ${side} ${shaking ? 'is-hit' : ''}`}
+      style={{ '--unit-color': unit.element.color }}
+    >
       <div className="unit-top">
         <div className="unit-name-row">
           <span className="unit-name">{unit.name}</span>
@@ -124,25 +133,33 @@ function UnitPanel({ unit, side, fx, shaking }) {
   )
 }
 
+const ROLE_ICON = { quick: '»', main: '✦', heavy: '◆', ultra: '★' }
+
 function MoveButton({ move, foe, disabled, onClick }) {
   const mult = moveEffectiveness(move, foe)
   const hint = mult === 0 ? '无效' : mult > 1 ? effectivenessLabel(mult) : mult < 1 ? '效果不佳' : ''
+  const ppPct = move.maxPp === Infinity ? 100 : Math.max(0, (move.pp / move.maxPp) * 100)
   return (
     <button
       className={`move-btn ${move.category} ${disabled ? 'disabled' : ''} ${mult === 0 ? 'no-effect' : ''}`}
       onClick={onClick}
       disabled={disabled}
+      title={!move.unlocked ? `Lv.${move.unlockLevel} 解锁` : move.pp <= 0 ? 'PP 用尽' : `${move.label} · 威力 ${move.power}`}
     >
+      <span className="move-icon" aria-hidden="true">{ROLE_ICON[move.role] || '◆'}</span>
       <span className="move-head">
         <span className="move-name">{move.name}</span>
-        <span className="move-type" style={{ color: move.type === foe?.types?.[0] ? '#ffd166' : undefined }}>{move.label}</span>
+        <span className="move-type">{move.label}</span>
+        {hint && <span className={`move-hint ${mult > 1 ? 'good' : mult === 0 ? 'none' : 'bad'}`}>{hint}</span>}
       </span>
       <span className="move-meta">
-        <span>威力 {move.power}</span>
-        <span>命中 {move.acc}</span>
-        <span>PP {move.pp}/{move.maxPp}</span>
+        <span>威力 <b>{move.power}</b></span>
+        <span>命中 <b>{move.acc}</b></span>
+        <span>PP <b>{move.pp}/{move.maxPp}</b></span>
       </span>
-      {hint && <span className={`move-hint ${mult > 1 ? 'good' : mult === 0 ? 'none' : 'bad'}`}>{hint}</span>}
+      {!move.unlocked
+        ? <span className="move-lock">Lv.{move.unlockLevel} 解锁</span>
+        : <span className="pp-track"><span className="pp-fill" style={{ width: `${ppPct}%` }} /></span>}
     </button>
   )
 }
@@ -253,7 +270,7 @@ function OnlineSetup({ size, setSize, repoInput, setRepoInput, onScan, scanning,
           </div>
         ) : (
           <p className="online-hint">
-            整仓 = 对方账号下的项目依次上场，最多 3 只。整仓按真实数值打，不叠难度；扫描会消耗 API 额度，内置快照账号可离线直接打。
+            整仓 = 对方账号下的项目全部上场，有几只打几只，不设人数上限。整仓按真实数值打，不叠难度；扫描会消耗 API 额度，内置快照账号可离线直接打。
           </p>
         )
       ) : opponent ? (
@@ -429,6 +446,16 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
   const [reward, setReward] = useState(0)
   const [lunging, setLunging] = useState(null)
   const [hurt, setHurt] = useState({ player: false, enemy: false })
+  // 快进：跳过逐帧演出，点一下就结算整回合（偏好记住，下次进来还是快进）
+  const [fast, setFast] = useState(() => {
+    try { return localStorage.getItem('gitmon:battle:fast') === '1' } catch { return false }
+  })
+
+  const toggleFast = () => setFast((prev) => {
+    const next = !prev
+    try { localStorage.setItem('gitmon:battle:fast', next ? '1' : '0') } catch { /* 隐私模式忽略 */ }
+    return next
+  })
 
   // 在线对手：单项目（一个仓库）／整仓（一个账号的项目）
   const [onlineSize, setOnlineSize] = useState('single')
@@ -457,6 +484,8 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
       alive = false
       timersRef.current.forEach(clearTimeout)
       vfxRef.current?.clearFx(fxLayerRef.current)
+      // 离开战场一定要收掉循环，否则 BGM 会跟到别的页面
+      bgm.stop()
     }
   }, [])
 
@@ -493,13 +522,12 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
     })
   }
 
-  // 切换单项目 / 整仓：多余的人先收回去
+  // 切换单项目 / 整仓：单项目只能留一只，整仓不设上限（对方多少项目就上多少只）
   const changeOnlineSize = (size) => {
     setOnlineSize(size)
     setScanError('')
     clearOpponent()
-    const cap = size === 'team' ? 3 : 1
-    if (team.length > cap) setTeam(team.slice(0, cap))
+    if (size === 'single' && team.length > 1) setTeam(team.slice(0, 1))
   }
 
   const scanOpponent = async () => {
@@ -526,18 +554,17 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
         return
       }
 
-      // ② 整仓：对方账号下的项目依次上场（填仓库时按它的账号算）
+      // ② 整仓：对方账号下的全部项目依次上场（填仓库时按它的账号算）
       const owner = info.owner
       const platform = info.platform
       const localTeam = matchBuiltinOwnerTeam(platform, owner)
       if (localTeam.length >= 2) {
-        const picked = localTeam.slice(0, 3)
-        setOwnerTeam(picked)
-        fillTeam(picked.length)
-        setOpponentNote(`内置快照 · ${owner} 的 ${picked.length} 个项目`)
+        setOwnerTeam(localTeam)
+        fillTeam(localTeam.length)
+        setOpponentNote(`内置快照 · ${owner} 的 ${localTeam.length} 个项目`)
         return
       }
-      const res = await scanOwnerBox({ kind: 'owner', platform, owner }, { limit: 4 })
+      const res = await scanOwnerBox({ kind: 'owner', platform, owner }, { limit: 30 })
       if (!res.snaps.length) {
         throw new Error(res.rateLimited
           ? 'API 触发限流，稍后再试（设置 Token 可提高额度）'
@@ -546,7 +573,6 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
       const pets = res.snaps
         .map((s) => rivalFromSnapshot(s))
         .sort((a, b) => powerOf(b) - powerOf(a))
-        .slice(0, 3)
       if (!pets.length) throw new Error('这个账号没有可挑战的公开项目')
       setOwnerTeam(pets)
       fillTeam(pets.length)
@@ -566,7 +592,7 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
     }
 
     const seed = (Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0
-    const cap = mode === 'online' ? (teamMode ? 3 : 1) : 3
+    const cap = mode === 'online' ? (teamMode ? Math.max(1, ownerTeam.length) : 1) : 3
     let enemies
     if (mode === 'online') enemies = teamMode ? ownerTeam : [opponent]
     else if (mode === 'same') enemies = pickSameTypeTeam(team, seed, difficulty, cap)
@@ -592,6 +618,8 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
     setLog(built.events.map((e) => e.text))
     setPhase('fight')
     setShowBench(false)
+    // 开战按钮是用户手势，在这里起 BGM 才能解锁 AudioContext
+    bgm.startBattle()
   }
 
   const flash = (side, ev) => {
@@ -610,7 +638,8 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
     timersRef.current = []
 
     const { state: next, events } = battleTurn(state, action)
-    const schedule = (fn, ms) => timersRef.current.push(setTimeout(fn, ms))
+    // 快进模式：不排任何演出定时器，回合点完即刻结算
+    const schedule = fast ? () => {} : (fn, ms) => timersRef.current.push(setTimeout(fn, ms))
     const slotOf = (side) => (side === 'player' ? playerSlotRef : enemySlotRef)
 
     setState(next)
@@ -648,7 +677,7 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
       }
     })
 
-    await wait(Math.max(560, at + 200))
+    await wait(fast ? 0 : Math.max(560, at + 200))
 
     if (next.winner) {
       const base = mode === 'online' ? ONLINE_XP[onlineSize] : XP_BASE[difficulty]
@@ -659,6 +688,10 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
         onReward?.(team, xp, next.winner === 'player')
       }
       setPhase('result')
+      // 循环收尾，换成一段胜利/失败的小结句
+      bgm.stop()
+      if (next.winner === 'player') bgm.victory()
+      else bgm.defeat()
     }
     setBusy(false)
   }
@@ -671,6 +704,29 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
   const benchIndexes = state
     ? state.sides.player.team.map((u, i) => ({ u, i })).filter(({ u, i }) => i !== state.sides.player.active && !u.fainted)
     : []
+
+  // 键盘操作：1–4 出招 / B 换人面板 / F 快进 / Esc 收起换人（输入框里不抢键）
+  useEffect(() => {
+    if (phase !== 'fight' || !state || state.winner) return undefined
+    const onKey = (e) => {
+      const tag = e.target?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.key === 'f' || e.key === 'F') { toggleFast(); return }
+      if (showBench && e.key === 'Escape') { setShowBench(false); return }
+      if (busy || showBench) return
+      if (/^[1-4]$/.test(e.key)) {
+        const i = Number(e.key) - 1
+        const unit = state.sides.player.team[state.sides.player.active]
+        const move = unit?.moves?.[i]
+        if (move && move.unlocked && move.pp > 0) { e.preventDefault(); act({ type: 'move', index: i }) }
+      } else if (e.key === 'b' || e.key === 'B') {
+        const hasBench = state.sides.player.team.some((u, i) => i !== state.sides.player.active && !u.fainted)
+        if (hasBench) { e.preventDefault(); setShowBench((v) => !v) }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [phase, state, busy, showBench, fast])
 
   if (phase === 'mode') {
     return (
@@ -719,14 +775,27 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
   return (
     <main className="battle-wrap">
       <div className="battle-topbar">
-        <span>第 {state.turn + 1} 回合 · {rivalTeamLabel(difficulty, mode, onlineSize)}</span>
-        <span className="battle-count">我方 {myTeamAlive} · 对手 {foeTeamAlive}</span>
-        <button className="ghost-btn tiny" onClick={onExit}>离开</button>
+        <span className="hud-turn">TURN {String(state.turn + 1).padStart(2, '0')}</span>
+        <span>{rivalTeamLabel(difficulty, mode, onlineSize)}</span>
+        <span className="hud-dots" title={`我方存活 ${myTeamAlive}`}>
+          {state.sides.player.team.map((u, i) => <i key={i} className={u.fainted ? 'down' : ''} />)}
+        </span>
+        <span className="hud-vs">VS</span>
+        <span className="hud-dots foe" title={`对手存活 ${foeTeamAlive}`}>
+          {state.sides.enemy.team.map((u, i) => <i key={i} className={u.fainted ? 'down' : ''} />)}
+        </span>
+        <span className="hud-actions">
+          <button className={`hud-btn ${fast ? 'on' : ''}`} onClick={toggleFast} title="跳过出手演出，点一下立即结算（F）">
+            » {fast ? '快进中' : '快进'}
+          </button>
+          <button className="ghost-btn tiny" onClick={onExit}>离开</button>
+        </span>
       </div>
 
       <div className="battle-field">
         <div className="field-sky" />
         <div className="field-grid" />
+        <div className="arena-sparks" aria-hidden="true"><i /><i /><i /><i /><i /></div>
 
         <div className="battle-row enemy-row">
           <div
@@ -749,31 +818,48 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
         </div>
 
         <div className="vfx-layer" ref={fxLayerRef} />
+      </div>
 
-        <div className="battle-log" ref={logRef}>
-          {log.slice(-5).map((line, i, arr) => (
-            <p key={`${line}-${i}`} className={i === arr.length - 1 ? 'latest' : ''}>{line}</p>
-          ))}
-        </div>
+      {/* 战报独立成播报条，不再压在精灵身上当调试日志 */}
+      <div className="battle-log" ref={logRef} aria-live="polite">
+        {log.slice(-4).map((line, i, arr) => (
+          <p key={`${log.length - arr.length + i}-${line}`} className={i === arr.length - 1 ? 'latest' : ''}>{line}</p>
+        ))}
       </div>
 
       {phase === 'result' && (
-        <div className="battle-result">
-          <h2 className={state.winner === 'player' ? 'win' : 'lose'}>
-            {state.winner === 'player' ? '胜利' : '惜败'}
-          </h2>
-          <p>{state.winner === 'player' ? '对手的仓库被你压了一头。' : '属性与节奏都被对手抓到了。'}</p>
-          <p className="reward">全队获得 <b>+{reward} EXP</b></p>
-          <div className="actions">
-            <button className="primary-btn" onClick={start}>{mode === 'random' ? '再抽一只' : '再战一场'}</button>
-            <button className="ghost-btn" onClick={() => setPhase('select')}>换阵容</button>
-            <button className="ghost-btn" onClick={() => setPhase('mode')}>换模式</button>
-            <button className="ghost-btn" onClick={onExit}>返回图鉴</button>
+        <div className={`battle-result ${state.winner === 'player' ? 'win' : 'lose'}`}>
+          <div className="result-card">
+            <div className="result-mark" aria-hidden="true">{state.winner === 'player' ? '✦' : '◇'}</div>
+            <h2 className={state.winner === 'player' ? 'win' : 'lose'}>
+              {state.winner === 'player' ? '胜利' : '惜败'}
+            </h2>
+            <p>{state.winner === 'player' ? '对手的仓库被你压了一头。' : '属性与节奏都被对手抓到了。'}</p>
+            <div className="result-stats">
+              <span>回合<b>{state.turn}</b></span>
+              <span>存活<b>{myTeamAlive}</b></span>
+              <span>击倒<b>{state.sides.enemy.team.filter((u) => u.fainted).length}</b></span>
+            </div>
+            <p className="reward">全队获得 <b>+{reward} EXP</b></p>
+            <div className="actions">
+              <button className="primary-btn" onClick={start}>{mode === 'random' ? '再抽一只' : '再战一场'}</button>
+              <button className="ghost-btn" onClick={() => setPhase('select')}>换阵容</button>
+              <button className="ghost-btn" onClick={() => setPhase('mode')}>换模式</button>
+              <button className="ghost-btn" onClick={onExit}>返回图鉴</button>
+            </div>
           </div>
         </div>
       )}
 
       <div className="battle-controls">
+        <div className="control-head">
+          <span className="control-title">
+            {busy ? '结算中…' : state.winner ? '战斗结束' : '选择招式'}
+          </span>
+          <span className="control-hint">
+            <kbd>1</kbd>–<kbd>4</kbd> 出招 · <kbd>B</kbd> 换人 · <kbd>F</kbd> 快进
+          </span>
+        </div>
         <div className="move-grid" style={{ '--mv': playerUnit.element.color }}>
           {playerUnit.moves.map((move, i) => (
             <MoveButton
