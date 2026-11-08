@@ -1,0 +1,620 @@
+/* ============================================================
+   GitMon 游戏化主题 v1 —— 复古掌机 RPG 风
+   叠加在 styles.css 之上（后加载覆盖）
+   素材：Kenney Pixel UI Pack (CC0) + Fusion Pixel Font (OFL)
+   ============================================================ */
+
+/* ---------- 像素字体 ---------- */
+@font-face {
+  font-family: 'FusionPixel';
+  src: url('./assets/fonts/fusion-pixel-12px-proportional-zh_hans.ttf.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+/* Press Start 2P 由 main.jsx 引入 @fontsource/press-start-2p（family 名 'Press Start 2P'） */
+
+:root {
+  --px-bg: #060a13;
+  --px-line: #2a3550;
+  --px-shadow: rgba(0, 0, 0, .55);
+  --font-pixel: 'FusionPixel', 'PingFang SC', 'Microsoft YaHei', monospace;
+  --font-arcade: 'Press Start 2P', 'FusionPixel', monospace;
+}
+
+/* ---------- 全局底子：深夜空 + 扫描线 ---------- */
+body {
+  background-color: var(--px-bg);
+  font-family: var(--font-pixel);
+  font-size: 15px;
+  letter-spacing: .4px;
+  -webkit-font-smoothing: never;
+}
+
+/* 星空（两层视差） */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image:
+    radial-gradient(1px 1px at 12% 22%, #cfe3ffcc 50%, transparent 51%),
+    radial-gradient(1px 1px at 34% 68%, #ffffff99 50%, transparent 51%),
+    radial-gradient(1px 1px at 58% 14%, #ffe9a8bb 50%, transparent 51%),
+    radial-gradient(1px 1px at 76% 44%, #cfe3ffaa 50%, transparent 51%),
+    radial-gradient(1px 1px at 88% 76%, #ffffff88 50%, transparent 51%),
+    radial-gradient(1px 1px at 8% 84%, #b8ccff99 50%, transparent 51%),
+    radial-gradient(1px 1px at 46% 90%, #ffffff77 50%, transparent 51%),
+    radial-gradient(2px 2px at 68% 82%, #ffd76e88 50%, transparent 51%),
+    radial-gradient(2px 2px at 24% 8%, #9ec1ff77 50%, transparent 51%);
+  background-size: 640px 640px;
+  animation: star-drift 140s linear infinite;
+  opacity: .8;
+}
+@keyframes star-drift {
+  from { background-position: 0 0; }
+  to { background-position: -640px 320px; }
+}
+
+/* CRT 扫描线（极淡） */
+body::after {
+  content: '';
+  position: fixed; inset: 0; z-index: 999; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, .16) 0 1px, transparent 1px 3px);
+  opacity: .35;
+  mix-blend-mode: multiply;
+}
+
+.app { position: relative; z-index: 1; }
+
+/* ---------- 像素角（阶梯切角）工具 ---------- */
+.px-corner {
+  clip-path: polygon(
+    0 12px, 6px 12px, 6px 6px, 12px 6px, 12px 0,
+    calc(100% - 12px) 0, calc(100% - 12px) 6px, calc(100% - 6px) 6px, calc(100% - 6px) 12px, 100% 12px,
+    100% calc(100% - 12px), calc(100% - 6px) calc(100% - 12px), calc(100% - 6px) calc(100% - 6px), calc(100% - 12px) calc(100% - 6px), calc(100% - 12px) 100%,
+    12px 100%, 12px calc(100% - 6px), 6px calc(100% - 6px), 6px calc(100% - 12px), 0 calc(100% - 12px)
+  );
+}
+
+/* ---------- 顶栏 ---------- */
+.logo {
+  font-family: var(--font-arcade);
+  font-size: 21px;
+  letter-spacing: 2px;
+  background: none;
+  -webkit-background-clip: initial; background-clip: initial;
+  color: var(--accent);
+  text-shadow:
+    2px 2px 0 #b45309,
+    4px 4px 0 rgba(0, 0, 0, .6);
+  animation: logo-bob 2.6s ease-in-out infinite;
+}
+@keyframes logo-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+.tagline { font-size: 13px; }
+.gh-link {
+  border-radius: 0;
+  border-width: 2px;
+  font-size: 13px;
+  padding: 5px 13px;
+}
+.mute-btn {
+  background: none; border: 2px solid var(--px-line); color: var(--dim);
+  font-family: var(--font-pixel); font-size: 12px; padding: 5px 11px;
+  cursor: pointer; margin-right: 10px;
+}
+.mute-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ---------- 像素面板：hero / howto / grow ---------- */
+.hero,
+.howto-grid > div,
+.grow,
+.arena-entry {
+  border-radius: 0 !important;
+  border: 2px solid var(--px-line) !important;
+  clip-path: polygon(
+    0 14px, 7px 14px, 7px 7px, 14px 7px, 14px 0,
+    calc(100% - 14px) 0, calc(100% - 14px) 7px, calc(100% - 7px) 7px, calc(100% - 7px) 14px, 100% 14px,
+    100% calc(100% - 14px), calc(100% - 7px) calc(100% - 14px), calc(100% - 7px) calc(100% - 7px), calc(100% - 14px) calc(100% - 7px), calc(100% - 14px) 100%,
+    14px 100%, 14px calc(100% - 7px), 7px calc(100% - 7px), 7px calc(100% - 14px), 0 calc(100% - 14px)
+  );
+}
+.hero { filter: drop-shadow(6px 6px 0 var(--px-shadow)); }
+
+.hero h2 {
+  font-size: 24px;
+  letter-spacing: 1px;
+  color: #fff;
+  text-shadow: 3px 3px 0 rgba(255, 203, 5, .32), 0 0 22px rgba(255, 203, 5, .12);
+}
+.hero p { font-size: 14px; line-height: 2; }
+.hero p b { color: var(--accent); font-weight: 400; }
+
+/* hero 漂浮精灵装饰 */
+.hero { position: relative; overflow: hidden; }
+.hero p { padding-right: 118px; }
+.hero-deco {
+  position: absolute;
+  pointer-events: none;
+  image-rendering: pixelated;
+  opacity: .9;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, .5));
+}
+.hero-deco.d1 { right: 14px; top: -10px; animation: deco-float 3.6s ease-in-out infinite; }
+.hero-deco.d2 { right: 24px; top: 58px; animation: deco-float 4.4s ease-in-out -1.2s infinite; opacity: .5; }
+.hero-deco.d3 { left: -22px; bottom: -16px; transform: rotate(-8deg); animation: deco-float 5s ease-in-out -2s infinite; opacity: .3; }
+@keyframes deco-float {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -10px; }
+}
+
+/* 输入框：终端风 */
+.input-row input {
+  border-radius: 0;
+  border: 2px solid var(--px-line);
+  background: #0a1220;
+  font-family: var(--font-pixel);
+  font-size: 14px;
+  padding: 12px 14px;
+  box-shadow: inset 3px 3px 0 rgba(0, 0, 0, .4);
+}
+.input-row input:focus {
+  border-color: var(--accent);
+  box-shadow: inset 3px 3px 0 rgba(0,0,0,.4), 0 0 0 2px rgba(255, 203, 5, .18);
+  outline: none;
+}
+.input-row input::placeholder { color: #55617e; }
+
+/* ---------- 像素按钮：Kenney 9-slice ---------- */
+.primary-btn,
+.input-row button {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-style: solid;
+  border-width: 9px;
+  border-image: url('./assets/kenney/btn-yellow.png') 16 fill stretch;
+  background: none;
+  border-radius: 0;
+  color: #2d1c00;
+  font-family: var(--font-pixel);
+  font-size: 14.5px;
+  font-weight: 700;
+  padding: 2px 20px;
+  min-height: 24px;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .35);
+  image-rendering: pixelated;
+  transition: none;
+}
+.primary-btn:active:not(:disabled),
+.input-row button:active {
+  border-image-source: url('./assets/kenney/btn-yellow-pressed.png');
+  translate: 0 2px;
+}
+.primary-btn:hover:not(:disabled),
+.input-row button:hover { filter: brightness(1.08) saturate(1.05); }
+.primary-btn:disabled { filter: grayscale(.7) brightness(.7); cursor: default; }
+
+.ghost-btn {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-style: solid;
+  border-width: 9px;
+  border-image: url('./assets/kenney/btn-blue.png') 16 fill stretch;
+  background: none;
+  border-radius: 0;
+  color: #eaf4ff;
+  font-family: var(--font-pixel);
+  font-size: 14px;
+  padding: 2px 20px;
+  min-height: 24px;
+  image-rendering: pixelated;
+}
+.ghost-btn:active { border-image-source: url('./assets/kenney/btn-blue-pressed.png'); translate: 0 2px; }
+.ghost-btn:hover { filter: brightness(1.1); }
+.ghost-btn.tiny { border-width: 7px; padding: 0 10px; font-size: 12px; }
+
+/* 示例 chips：像素小方块 */
+.examples { font-size: 13px; }
+.examples button {
+  border-radius: 0;
+  border: 2px solid var(--px-line);
+  background: #0d1524;
+  font-family: var(--font-pixel);
+  font-size: 12px;
+  padding: 5px 11px;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, .5);
+}
+.examples button:hover {
+  border-color: var(--accent); color: var(--accent);
+  translate: 0 -1px;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, .5);
+}
+
+/* ---------- RPG 对话框（扫描页） ---------- */
+.scan { padding-top: 60px; }
+.rpg-box {
+  max-width: 560px; margin: 0 auto 34px;
+  background: #0d1526;
+  border: 3px solid #e8eef9;
+  box-shadow:
+    0 0 0 3px #0d1526,
+    0 0 0 5px var(--px-line),
+    8px 10px 0 rgba(0, 0, 0, .55);
+  padding: 22px 26px;
+  min-height: 120px;
+  position: relative;
+}
+.rpg-box::before {
+  content: '▼ SCAN';
+  position: absolute; top: -13px; left: 18px;
+  background: var(--accent); color: #221a00;
+  font-family: var(--font-arcade);
+  font-size: 9px;
+  padding: 3px 8px;
+}
+.rpg-line { font-size: 15px; line-height: 1.9; color: #dfe8f7; min-height: 28px; }
+.rpg-line .px-num { color: var(--accent); }
+.rpg-caret {
+  display: inline-block;
+  width: 9px; height: 15px;
+  background: var(--accent);
+  margin-left: 4px;
+  vertical-align: -2px;
+  animation: caret-blink .7s steps(1) infinite;
+}
+@keyframes caret-blink { 50% { opacity: 0; } }
+
+.scan-steps { display: grid; gap: 9px; max-width: 380px; margin: 0 auto; text-align: left; }
+.scan-steps li {
+  display: flex; align-items: center; gap: 12px;
+  font-size: 14px; color: #5c6883; list-style: none;
+  border: 2px solid transparent; padding: 7px 12px;
+}
+.scan-steps li .dot { width: 10px; height: 10px; border-radius: 0; background: #232e48; box-shadow: 2px 2px 0 rgba(0,0,0,.4); }
+.scan-steps li.active {
+  color: #fff;
+  border-color: var(--accent);
+  background: rgba(255, 203, 5, .07);
+}
+.scan-steps li.active .dot { background: var(--accent); animation: caret-blink .5s steps(1) infinite; }
+.scan-steps li.done { color: #9fb0cc; }
+.scan-steps li.done .dot { background: #3ecf94; }
+.scan-steps li.done em { color: #3ecf94; font-style: normal; margin-left: auto; font-family: var(--font-arcade); font-size: 10px; }
+
+/* ---------- 卡包页 ---------- */
+.pack-meta-text { font-size: 13px; }
+.quality-pill {
+  border-radius: 0;
+  border-width: 2px;
+  font-family: var(--font-arcade);
+  font-size: 11px;
+  padding: 3px 9px;
+  box-shadow: 2px 2px 0 rgba(0,0,0,.5);
+}
+.pack-hint { font-size: 13px; }
+.pack-hint .hint-arrow {
+  display: inline-block; width: 14px; height: 14px;
+  background: url('./assets/kenney/tiles/arrow-right-yellow.png') center/contain no-repeat;
+  image-rendering: pixelated;
+  vertical-align: -2px;
+  margin: 0 3px;
+  animation: hint-nudge 1.1s ease-in-out infinite;
+}
+@keyframes hint-nudge { 0%, 100% { translate: 0 0; } 50% { translate: 5px 0; } }
+
+/* ---------- 登场标题 ---------- */
+.reveal-title {
+  font-size: 22px;
+  letter-spacing: 2px;
+  animation: title-slam .5s cubic-bezier(.2, .9, .3, 1.3);
+}
+@keyframes title-slam {
+  0% { transform: scale(2.4); opacity: 0; filter: blur(3px); }
+  70% { transform: scale(.95); opacity: 1; filter: none; }
+  100% { transform: scale(1); }
+}
+.quality-text-N, .quality-text-R, .quality-text-SR, .quality-text-SSR { text-shadow: 3px 3px 0 rgba(0, 0, 0, .65); }
+
+/* ---------- 精灵卡片 ---------- */
+.pet-card {
+  border-radius: 0;
+  border: 3px solid var(--q-color);
+  outline: 2px solid rgba(0, 0, 0, .55);
+  clip-path: polygon(
+    0 14px, 7px 14px, 7px 7px, 14px 7px, 14px 0,
+    calc(100% - 14px) 0, calc(100% - 14px) 7px, calc(100% - 7px) 7px, calc(100% - 7px) 14px, 100% 14px,
+    100% calc(100% - 14px), calc(100% - 7px) calc(100% - 14px), calc(100% - 7px) calc(100% - 7px), calc(100% - 14px) calc(100% - 7px), calc(100% - 14px) 100%,
+    14px 100%, 14px calc(100% - 7px), 7px calc(100% - 7px), 7px calc(100% - 14px), 0 calc(100% - 14px)
+  );
+}
+.pet-name { font-size: 18px; letter-spacing: .5px; }
+
+/* 品质盾徽 */
+.quality-badge {
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  width: 56px; height: 62px;
+  padding: 0;
+  position: relative;
+  flex: none;
+}
+.quality-badge::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: var(--shield-url) center / contain no-repeat;
+  image-rendering: pixelated;
+  filter: drop-shadow(2px 3px 0 rgba(0, 0, 0, .45));
+  animation: badge-bob 2.8s ease-in-out infinite;
+}
+@keyframes badge-bob { 0%, 100% { translate: 0 0; } 50% { translate: 0 -3px; } }
+.quality-SSR .quality-badge { --shield-url: url('./assets/kenney/tiles/shield-ssr.png'); }
+.quality-SR .quality-badge { --shield-url: url('./assets/kenney/tiles/shield-sr.png'); }
+.quality-R .quality-badge { --shield-url: url('./assets/kenney/tiles/shield-r.png'); }
+.quality-N .quality-badge { --shield-url: url('./assets/kenney/tiles/shield-n.png'); }
+.quality-badge span {
+  position: absolute;
+  top: 7px; left: 0; right: 0;
+  text-align: center;
+  display: block;
+  font-family: var(--font-arcade);
+  font-size: 10px;
+  color: #fff;
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, .65);
+  z-index: 1;
+}
+.quality-badge small { display: none; }
+
+/* 分段像素条：HP / EXP / 六维 / 品质细分 */
+.hp-bar, .evo-bar, .stat-bar, .qd-bar, .exp-bar, .foundation-bar {
+  border-radius: 0 !important;
+  background: #0a1120 !important;
+  box-shadow: inset 0 0 0 1px #1d2740;
+}
+.hp-bar { height: 10px !important; }
+.hp-fill, .evo-fill, .stat-fill, .qd-bar > div, .exp-bar div, .foundation-fill {
+  position: relative;
+  border-radius: 0 !important;
+}
+.hp-fill::after, .evo-fill::after, .stat-fill::after, .qd-bar > div::after, .exp-bar div::after, .foundation-fill::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(90deg, transparent 0 7px, rgba(6, 10, 19, .55) 7px 9px);
+}
+.hp-fill { background: linear-gradient(90deg, #35c07d, #8cf0bf) !important; }
+.hp-fill::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: rgba(255, 255, 255, .28);
+}
+
+.lv { font-family: var(--font-arcade); font-size: 11px; letter-spacing: 1px; }
+.hp-num { font-family: var(--font-arcade); font-size: 8px; }
+
+/* 技能：剑形图标 */
+.skill {
+  border-radius: 0;
+  border-width: 2px;
+  font-size: 12px;
+  padding: 4px 10px;
+  background: rgba(7, 12, 22, .9);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, .45);
+}
+.skill-dot {
+  width: 13px; height: 13px;
+  border-radius: 0 !important;
+  background: url('./assets/kenney/tiles/sword-yellow.png') center/contain no-repeat !important;
+  image-rendering: pixelated;
+}
+.skill.locked .skill-dot {
+  background: url('./assets/kenney/tiles/sword-white.png') center/contain no-repeat !important;
+  filter: grayscale(1) opacity(.4);
+}
+.skill.locked { border-style: solid; }
+
+/* 性格词条：像素方块 chip */
+.trait-chip { border-radius: 0; font-size: 11.5px; padding: 3px 9px; box-shadow: 2px 2px 0 rgba(0,0,0,.4); }
+.trait-fix { font-size: 11px; }
+
+/* ---------- 图鉴 ---------- */
+.section-head h3 { font-size: 16px; letter-spacing: 1px; }
+.section-head h3::before { content: '◆ '; color: var(--accent); }
+.collection-item {
+  border-radius: 0;
+  border-width: 2px;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, .5);
+}
+.collection-item:hover { translate: 0 -3px; }
+.ci-name { font-size: 12px; }
+.mini-q { font-family: var(--font-arcade); font-size: 9px; }
+
+/* ---------- 养成面板 ---------- */
+.grow { filter: drop-shadow(5px 5px 0 rgba(0, 0, 0, .45)); }
+.grow-head h3 { font-size: 16px; }
+.grow-head h3::before { content: '⚔ '; color: var(--accent); }
+.task { border-radius: 0; border-width: 2px; }
+.task button {
+  border-radius: 0;
+  border: 2px solid var(--px-line);
+  font-family: var(--font-pixel);
+  font-size: 12px;
+  padding: 3px 11px;
+  background: #0d1524;
+  box-shadow: 2px 2px 0 rgba(0,0,0,.4);
+}
+.task button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.task button:disabled { opacity: .5; }
+
+/* ---------- 判定说明 ---------- */
+.howto h3 { font-size: 16px; color: var(--text); }
+.howto h3::before { content: '📖 '; }
+.howto-grid > div { filter: drop-shadow(4px 4px 0 rgba(0, 0, 0, .4)); }
+.howto-grid b { font-size: 14px; }
+.howto-grid span { font-size: 13.5px; line-height: 1.9; }
+
+/* ---------- 战斗（沿用像素化基调） ---------- */
+.battle-field { border-radius: 0; border-width: 2px; }
+.unit-panel { border-radius: 0; border-width: 2px; backdrop-filter: none; }
+.move-btn {
+  border-radius: 0;
+  border-width: 2px;
+  border-left-width: 4px;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, .45);
+  font-family: var(--font-pixel);
+}
+.move-btn:hover:not(.disabled) { translate: 0 -2px; }
+.move-name { font-size: 14px; }
+.type-chip, .status-chip, .passive-chip { border-radius: 0; font-size: 10.5px; }
+.battle-result { border-radius: 0; border-width: 2px; }
+.battle-result h2 { font-family: var(--font-arcade); font-size: 20px; }
+.bench-card, .diff-btn, .picker-card { border-radius: 0; }
+
+/* ---------- 竞技场入口 ---------- */
+.arena-copy h3 { font-size: 16px; }
+.arena-copy h3::before { content: '⚔ '; color: var(--accent); }
+.arena-copy p { font-size: 13px; }
+
+/* ---------- footer ---------- */
+.footer { font-size: 12px; color: #3d4a68; }
+
+/* ---------- 滚动条 ---------- */
+::-webkit-scrollbar { width: 10px; }
+::-webkit-scrollbar-track { background: #080d18; }
+::-webkit-scrollbar-thumb {
+  background: #2a3550;
+  border: 2px solid #080d18;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+/* ---------- 选中文字 ---------- */
+::selection { background: var(--accent); color: #221a00; }
+
+/* ---------- 响应式微调 ---------- */
+@media (max-width: 460px) {
+  .hero-deco.d2, .hero-deco.d3 { display: none; }
+  .hero-deco.d1 { width: 90px !important; height: 90px !important; right: 12px; top: 10px; }
+}
+
+/* ============================================================
+   标准集换式卡尺寸 63:88（宽 360 / 高 ≈503）
+   紧凑版卡面布局：信息全部保留，纵向压缩
+   ============================================================ */
+.pet-card {
+  width: min(360px, 92vw);
+  aspect-ratio: 63 / 88;
+  padding: 12px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+}
+
+/* 头部 */
+.pet-card .card-head { flex: none; align-items: center; gap: 8px; }
+.pet-card .card-head-text { min-width: 0; flex: 1; }
+.pet-card .pet-name {
+  font-size: 15px; line-height: 1.25; letter-spacing: .3px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 100%;
+}
+.pet-card .pet-sub { font-size: 10px; line-height: 1.4; margin-top: 2px; }
+.pet-card .sleep-tag { font-size: 9px; padding: 0 4px; }
+.pet-card .quality-badge { width: 40px; height: 46px; }
+.pet-card .quality-badge span { font-size: 10px; margin-top: 3px; }
+
+/* 立绘区 */
+.pet-card .sprite-frame {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  height: auto;
+  margin: 0;
+  border-radius: 0;
+}
+.pet-card .sprite-aura { inset: 22%; }
+
+/* 等级 / HP */
+.pet-card .card-row { flex: none; gap: 7px; }
+.pet-card .lv { font-size: 9.5px; letter-spacing: .5px; }
+.pet-card .hp-bar { height: 8px !important; }
+.pet-card .hp-num { font-size: 7.5px; white-space: nowrap; }
+
+/* 进化 / 根基：紧凑两行 */
+.pet-card .mini-rows { flex: none; display: grid; gap: 3px; }
+.pet-card .mini-row { display: flex; align-items: center; gap: 6px; }
+.pet-card .mini-label { font-size: 8.5px; color: var(--dim); width: 24px; flex: none; }
+.pet-card .evo-bar,
+.pet-card .foundation-bar { flex: 1; height: 4px !important; min-width: 0; }
+.pet-card .mini-val { font-size: 8.5px; color: var(--dim); white-space: nowrap; flex: none; }
+
+/* 六维 */
+.pet-card .card-body {
+  flex: none;
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+.pet-card .radar { width: 120px; height: 120px; flex: none; }
+.pet-card .radar-label { font-size: 7px; }
+.pet-card .stats-list { gap: 2px; min-width: 0; }
+.pet-card .stat-row { grid-template-columns: 20px 1fr 18px 11px; gap: 4px; }
+.pet-card .stat-name { font-size: 8.5px; }
+.pet-card .stat-bar { height: 4px; }
+.pet-card .stat-val { font-size: 8px; }
+.pet-card .stat-grade { font-size: 7.5px; }
+
+/* 技能：2×2 */
+.pet-card .skills {
+  flex: none;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-top: 0;
+}
+.pet-card .skill { padding: 2px 6px; font-size: 9px; gap: 4px; min-width: 0; }
+.pet-card .skill-dot { width: 10px; height: 10px; flex: none; }
+.pet-card .skill-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 词条 */
+.pet-card .traits { flex: none; margin-top: 0; gap: 4px; flex-wrap: nowrap; overflow: hidden; }
+.pet-card .trait-chip { font-size: 8.5px; padding: 1px 5px; white-space: nowrap; }
+.pet-card .trait-fix-inline {
+  width: 13px; height: 13px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 9px; color: var(--accent); cursor: help;
+  border: 1px solid rgba(255, 203, 5, .5);
+}
+
+/* 品质五维：极简 */
+.pet-card .quality-dims {
+  flex: none;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  margin-top: 0;
+  padding-top: 5px;
+}
+.pet-card .qd-head { display: none; }
+.pet-card .qd-bar { height: 3px; }
+.pet-card .qd-name {
+  display: block; margin-top: 2px;
+  font-size: 7px; color: #6d7893; text-align: center;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* 页脚 */
+.pet-card .card-foot {
+  flex: none;
+  margin-top: 0; padding-top: 4px;
+  font-size: 7.5px;
+  gap: 6px;
+}
+
+/* 卡片紧凑版盾徽文字 */
+.pet-card .quality-badge span { top: 6px; font-size: 9px; }

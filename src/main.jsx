@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { ParticlesProvider } from '@tsparticles/react'
 import { loadSlim } from '@tsparticles/slim'
+import '@fontsource/press-start-2p/400.css'
 import App from './App.jsx'
 
 const initParticles = async (engine) => {

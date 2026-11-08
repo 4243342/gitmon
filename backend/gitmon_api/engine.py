@@ -458,7 +458,10 @@ def judge(snapshot: RepoSnapshot, *, keep_species: tuple[str, str | None, str] |
     stats = stats_for(snapshot, quality["key"])
 
     # §6.3 / §6.4：根基与性格词条。AI 味只压根基与词条，不改品质分。
+    # 置信度 low 的检测结果直接忽略——宁可漏判，不可误伤（§12.5）。
     raw_ai_rate = snapshot.tree.get("ai_rate")
+    if snapshot.tree.get("ai_confidence") == "low":
+        raw_ai_rate = None
     ai_rate = float(raw_ai_rate) if raw_ai_rate is not None else None
     foundation, foundation_dims = trait_mod.foundation_score(snapshot, ai_rate)
     trait_list = trait_mod.derive_traits(

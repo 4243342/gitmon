@@ -64,6 +64,14 @@ def test_negative_traits_come_first_and_are_capped(good_snapshot) -> None:
     assert kinds == sorted(kinds, key=lambda k: 0 if k == "negative" else 1)
 
 
+def test_low_confidence_ai_rate_is_ignored(weak_snapshot) -> None:
+    """置信度 low 的检测结果不参与判定：宁可漏判，不可误伤。"""
+    weak_snapshot.tree = {**weak_snapshot.tree, "ai_rate": 85.0, "ai_confidence": "low"}
+    spec = engine.judge(weak_snapshot)
+    assert spec["ai_rate"] is None
+    assert all(t["key"] not in {"unstable_foundation", "generated_body"} for t in spec["traits"])
+
+
 def test_apply_to_stats_is_clamped() -> None:
     stats = [{"name": "攻击", "value": 10, "grade": "D"}, {"name": "防御", "value": 98, "grade": "S"}]
     modified = traits.apply_to_stats(stats, [

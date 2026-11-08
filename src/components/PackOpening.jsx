@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPackOpener } from 'pack-opener-js'
 import { packArtwork, cardArtwork } from '../sprite.js'
+import { sfx } from '../sfx.js'
 import RevealBurst from './RevealBurst.jsx'
 
 // 开包动画（pack-opener-js，文档 §10.1）：手指划开撕口 → 卡包盖飞出 → 卡牌带品质辉光翻面
@@ -30,7 +31,8 @@ export default function PackOpening({ pet, onReveal }) {
           {
             onEvent: (e) => {
               if (cancelled) return
-              if (e.type === 'ready') setReady(true)
+              if (e.type === 'ready') { setReady(true); sfx.blip() }
+              if (e.type === 'slicing') sfx.rip()
               if (e.type === 'revealed') {
                 setBurst(true)
                 setTimeout(() => onReveal?.(), 850)
@@ -73,7 +75,7 @@ export default function PackOpening({ pet, onReveal }) {
       </div>
 
       {!failed ? (
-        <div className="pack-canvas-stage" ref={stageRef} />
+        <div className="pack-canvas-stage" ref={stageRef} onPointerDown={() => sfx.rip()} />
       ) : (
         <div className="pack-fallback" onClick={onReveal}>
           <div className="pack-fallback-inner">
@@ -83,8 +85,11 @@ export default function PackOpening({ pet, onReveal }) {
         </div>
       )}
 
-      <p className="pack-hint">拖动划过封口撕开卡包，或</p>
-      <button className="primary-btn" onClick={autoOpen} disabled={!ready && !failed}>
+      <p className="pack-hint">
+        拖动划过封口撕开卡包，或
+        <span className="hint-arrow" />
+      </p>
+      <button className="primary-btn" onClick={() => { sfx.rip(); autoOpen() }} disabled={!ready && !failed}>
         一键开包
       </button>
 

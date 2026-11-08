@@ -1,5 +1,15 @@
-// 判定引擎（文档 §3 品种 / §4 品质 / §5 等级 / §6 六维与技能）
+// 判定引擎（文档 §3 品种 / §4 品质 / §5 等级 / §6 六维与技能 / §6.3 根基 / §6.4 词条）
 // 纯函数：RepoSnapshot → Pet。同一仓库同一快照必得同一只精灵（§2.2）
+
+import {
+  applyTraits,
+  foundationOf,
+  foundationTier,
+  traitHints,
+  traitSummary,
+  traitsOf,
+  xpMultiplier,
+} from './traits.js'
 
 // ---------- 种子 ----------
 export function hashSeed(str) {
@@ -269,6 +279,12 @@ export function judge(snap) {
   const stats = buildStats(snap, qualityKey, rng)
   const skills = buildSkills(primary, level, rng)
 
+  // §6.3 / §6.4：根基与性格词条（前端 mock；后端接入后以 API 为准）
+  const aiRate = snap.aiRate ?? null
+  const foundation = foundationOf(snap, aiRate)
+  const petTraits = traitsOf(snap, { aiRate })
+  const finalStats = applyTraits(stats, petTraits)
+
   return {
     ...snap,
     seed,
@@ -286,9 +302,17 @@ export function judge(snap) {
     exp: expForLevel(level),
     evolutionStage,
     milestones,
-    stats,
+    stats: finalStats,
     skills,
-    maxHp: stats.find((s) => s.name === 'HP').value * 10,
+    foundation: foundation.score,
+    foundationDims: foundation.dims,
+    foundationTier: foundationTier(foundation.score),
+    traits: petTraits,
+    traitSummary: traitSummary(petTraits),
+    traitHints: traitHints(petTraits),
+    xpMultiplier: xpMultiplier(petTraits),
+    expToNext: Math.round(expForLevel(level) * xpMultiplier(petTraits)),
+    maxHp: finalStats.find((s) => s.name === 'HP').value * 10,
     status: snap.daysSincePush > 30 ? 'sleeping' : 'active',
     bond: 0,
     createdAt: Date.now(),

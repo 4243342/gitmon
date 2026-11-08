@@ -1,28 +1,111 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { scanRepo } from './scan.js'
-import { judge } from './engine.js'
+import { expForLevel, judge } from './engine.js'
 import { loadCollection, upsertPet } from './storage.js'
 import { exportShareCard } from './share.js'
+import { sfx } from './sfx.js'
 import PetCard from './components/PetCard.jsx'
 import PackOpening from './components/PackOpening.jsx'
 import Collection from './components/Collection.jsx'
 import GrowPanel from './components/GrowPanel.jsx'
+import Battle from './components/Battle.jsx'
+import DecoSprite from './components/DecoSprite.jsx'
 import './styles.css'
+import './game-theme.css'
 
-const STEPS = ['技术栈扫描', '工程量估算', '代码质量评估', '生成卡包']
+const STEPS = ['连接仓库', '读取技术栈', '估算工程量', '评估代码质量']
+const DIALOGS = [
+  '连接仓库，读取档案...',
+  '分析语言构成，判定元素属性...',
+  '统计代码规模，估算工程量...',
+  '检查测试 / CI / 文档，评估品质...',
+  '卡包生成完毕！',
+]
+
+// 全局芯片音效总线：按钮点击/悬停自动发声
+function useSfxBus() {
+  useEffect(() => {
+    let lastTick = 0
+    const onClick = (e) => {
+      const b = e.target.closest('button')
+      if (b && !b.disabled) sfx.blip()
+    }
+    const onOver = (e) => {
+      const b = e.target.closest('button')
+      const now = performance.now()
+      if (b && !b.disabled && now - lastTick > 90) {
+        lastTick = now
+        sfx.tick()
+      }
+    }
+    document.addEventListener('click', onClick)
+    document.addEventListener('pointerover', onOver)
+    return () => {
+      document.removeEventListener('click', onClick)
+      document.removeEventListener('pointerover', onOver)
+    }
+  }, [])
+}
+
+// RPG 对话框打字机
+function useTypewriter(lines, speed = 34) {
+  const [text, setText] = useState('')
+  const [line, setLine] = useState(0)
+  useEffect(() => {
+    if (line >= lines.length) return
+    const cur = lines[line]
+    if (text.length >= cur.length) {
+      const t = setTimeout(() => { setLine((l) => l + 1); setText('') }, 650)
+      return () => clearTimeout(t)
+    }
+    const t = setTimeout(() => setText(cur.slice(0, text.length + 1)), speed)
+    return () => clearTimeout(t)
+  }, [text, line, lines, speed])
+  return lines[Math.min(line, lines.length - 1)]?.slice(0, text.length) || ''
+}
 
 export default function App() {
-  const [view, setView] = useState('home') // home | scan | pack | reveal | detail
+  const [view, setView] = useState('home') // home | scan | pack | reveal | detail | battle
   const [url, setUrl] = useState('')
   const [error, setError] = useState('')
   const [pet, setPet] = useState(null)
   const [collection, setCollection] = useState([])
   const [step, setStep] = useState(0)
+  const [battleInitial, setBattleInitial] = useState(null)
+  const [muted, setMuted] = useState(sfx.muted)
+
+  useSfxBus()
+  const typed = useTypewriter(view === 'scan' ? DIALOGS : [])
 
   useEffect(() => { setCollection(loadCollection()) }, [])
 
+  // 战斗结算：全队分经验，升级按 engine 的成长曲线走
+  const grantBattleXp = (team, xp, won) => {
+    const updated = (team || []).map((p) => {
+      let exp = (p.exp || 0) + xp
+      let level = Number(p.level) || 1
+      while (level < 999 && exp >= expForLevel(level)) {
+        exp -= expForLevel(level)
+        level += 1
+      }
+      return {
+        ...p,
+        exp,
+        level,
+        bond: Math.min(100, (p.bond || 0) + (won ? 4 : 1)),
+        battles: (p.battles || 0) + 1,
+        wins: (p.wins || 0) + (won ? 1 : 0),
+      }
+    })
+    let list = loadCollection()
+    updated.forEach((p) => { list = upsertPet(list, p) })
+    setCollection(list)
+    const mine = updated.find((p) => pet && p.fullName === pet.fullName && p.platform === pet.platform)
+    if (mine) setPet(mine)
+  }
+
   const run = async () => {
-    if (!url.trim()) { setError('请输入仓库地址'); return }
+    if (!url.trim()) { setError('请输入仓库地址'); sfx.error(); return }
     setError('')
     setView('scan')
     setStep(0)
@@ -30,6 +113,7 @@ export default function App() {
     try {
       const t1 = setTimeout(() => setStep(1), 350)
       const t2 = setTimeout(() => setStep(2), 900)
+      sfx.scanTick()
       const snap = await scanRepo(url)
       clearTimeout(t1); clearTimeout(t2)
       setStep(2)
@@ -41,18 +125,22 @@ export default function App() {
       setView('pack')
     } catch (e) {
       setError(e.message || '扫描失败，请检查仓库地址')
+      sfx.error()
       setView('home')
     }
   }
 
-  const afterReveal = () => setView('reveal')
+  const afterReveal = () => {
+    setView('reveal')
+    if (pet) sfx.reveal(pet.quality.key)
+  }
 
   const goDetail = () => {
     if (pet) setCollection(upsertPet(loadCollection(), pet))
     setView('detail')
   }
 
-  const reset = () => { setView('home'); setPet(null); setUrl('') }
+  const reset = () => { sfx.back(); setView('home'); setPet(null); setUrl('') }
 
   return (
     <div className="app">
@@ -61,12 +149,20 @@ export default function App() {
           <span className="logo">GitMon</span>
           <span className="tagline">你的仓库，是一只活着的精灵</span>
         </div>
-        <a className="gh-link" href="https://github.com/4243342/gitmon" target="_blank" rel="noreferrer">GitHub</a>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <button className="mute-btn" onClick={() => setMuted(sfx.toggleMute())}>
+            {muted ? '♪ OFF' : '♪ ON'}
+          </button>
+          <a className="gh-link" href="https://github.com/4243342/gitmon" target="_blank" rel="noreferrer">GitHub</a>
+        </div>
       </header>
 
       {view === 'home' && (
         <main className="home">
           <section className="hero">
+            <DecoSprite seed="deco-thunder-01" colors={['#f5c542', '#ffdf7e']} body="biped" size={96} className="d1" />
+            <DecoSprite seed="deco-water-02" colors={['#4a9eff', '#a8d8ff']} body="winged" size={72} className="d2" />
+            <DecoSprite seed="deco-fire-03" colors={['#ff6b4a', '#ffb199']} body="slime" size={80} className="d3" />
             <h2>孵化你的仓库精灵</h2>
             <p>
               输入 GitHub / Gitee 仓库地址，扫描后生成一个卡包——
@@ -82,9 +178,9 @@ export default function App() {
               />
               <button onClick={run}>孵化</button>
             </div>
-            {error && <p className="error">{error}</p>}
+            {error && <p className="error">! {error}</p>}
             <div className="examples">
-              <span>试试：</span>
+              <span>▶ 快试试：</span>
               {[
                 'https://github.com/facebook/react',
                 'https://github.com/torvalds/linux',
@@ -100,6 +196,20 @@ export default function App() {
 
           <Collection list={collection} onPick={(p) => { setPet(p); setView('detail') }} />
 
+          <section className="arena-entry">
+            <div className="arena-copy">
+              <h3>竞技场</h3>
+              <p>带 1–3 只精灵上场。属性克制、先制、异常状态和换人决定胜负——等级高不一定赢。</p>
+            </div>
+            <button
+              className="primary-btn"
+              onClick={() => { setBattleInitial(null); setView('battle') }}
+              disabled={collection.length === 0}
+            >
+              {collection.length === 0 ? '先孵化一只' : '进入竞技场'}
+            </button>
+          </section>
+
           <section className="howto">
             <h3>怎么判定</h3>
             <div className="howto-grid">
@@ -113,14 +223,18 @@ export default function App() {
 
       {view === 'scan' && (
         <main className="scan">
-          <h2>正在扫描仓库</h2>
-          <p className="scan-url">{url}</p>
-          <ul className="steps">
+          <div className="rpg-box">
+            <p className="rpg-line">
+              {typed}
+              <span className="rpg-caret" />
+            </p>
+          </div>
+          <ul className="scan-steps">
             {STEPS.map((s, i) => (
               <li key={s} className={i < step ? 'done' : i === step ? 'active' : ''}>
                 <span className="dot" />
                 {s}
-                {i < step && <em>✓</em>}
+                {i < step && <em>OK!</em>}
               </li>
             ))}
           </ul>
@@ -151,6 +265,7 @@ export default function App() {
           <PetCard pet={pet} />
           <div className="actions">
             <button className="primary-btn" onClick={() => exportShareCard(pet)}>导出分享卡</button>
+            <button className="primary-btn" onClick={() => { setBattleInitial(pet); setView('battle') }}>带它去对战</button>
             <button className="ghost-btn" onClick={reset}>再孵一只</button>
           </div>
           <GrowPanel
@@ -161,8 +276,19 @@ export default function App() {
         </main>
       )}
 
+      {view === 'battle' && (
+        <main className="battle-stage">
+          <Battle
+            pets={collection}
+            initial={battleInitial}
+            onExit={() => setView(battleInitial ? 'detail' : 'home')}
+            onReward={grantBattleXp}
+          />
+        </main>
+      )}
+
       <footer className="footer">
-        GitMon Prototype v0.2 · 数据来自 GitHub / Gitee 公开 API · 开包动画 pack-opener-js · 粒子 tsParticles
+        GitMon Prototype v0.3 · 数据来自 GitHub / Gitee 公开 API · 开包动画 pack-opener-js · 粒子 tsParticles · 对战机制参照 Pokémon Showdown（MIT）
       </footer>
     </div>
   )

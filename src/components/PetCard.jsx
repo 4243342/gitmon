@@ -5,7 +5,8 @@ import RadarChart from './RadarChart.jsx'
 const STAGE_NAME = ['', '幼体', '成长体', '完全体']
 const NEXT_STAGE = { 1: 150, 2: 500, 3: 999 }
 
-// 精灵卡片：鼠标跟随倾斜 + 全息层（参考 hover-tilt / pokemon-cards-css 视觉，自研实现）
+// 精灵卡片：标准集换式卡比例 63:88（宽 340，高 475）
+// 鼠标跟随倾斜 + 全息层（参考 hover-tilt / pokemon-cards-css 视觉，自研实现）
 export default function PetCard({ pet, revealed = false }) {
   const ref = useRef(null)
   const [tilt, setTilt] = useState({ x: 0, y: 0 })
@@ -41,13 +42,13 @@ export default function PetCard({ pet, revealed = false }) {
       <div className="glare" />
 
       <div className="card-head">
-        <div>
+        <div className="card-head-text">
           <div className="pet-name">{pet.repo}</div>
           <div className="pet-sub">
             {pet.element.name}系
             {pet.elementSecondary && <span className="dual">/{pet.elementSecondary.name}</span>}
             {' · '}{pet.species.name} · {STAGE_NAME[pet.evolutionStage]}
-            {pet.status === 'sleeping' && <span className="sleep-tag">沉睡中</span>}
+            {pet.status === 'sleeping' && <span className="sleep-tag">沉睡</span>}
           </div>
         </div>
         <div className="quality-badge">
@@ -58,7 +59,7 @@ export default function PetCard({ pet, revealed = false }) {
 
       <div className="sprite-frame">
         <div className="sprite-aura" />
-        <PixelSprite pet={pet} size={168} />
+        <PixelSprite pet={pet} size={132} />
       </div>
 
       <div className="card-row">
@@ -69,14 +70,28 @@ export default function PetCard({ pet, revealed = false }) {
         <span className="hp-num">HP {pet.maxHp}</span>
       </div>
 
-      <div className="evo-row">
-        <span className="evo-label">进化进度</span>
-        <div className="evo-bar"><div className="evo-fill" style={{ width: `${progress}%` }} /></div>
-        <span className="evo-target">{pet.evolutionStage >= 3 ? '最终形态' : `Lv.${nextLevel}`}</span>
+      <div className="mini-rows">
+        <div className="mini-row">
+          <span className="mini-label">进化</span>
+          <div className="evo-bar"><div className="evo-fill" style={{ width: `${progress}%` }} /></div>
+          <span className="mini-val">{pet.evolutionStage >= 3 ? '最终' : `Lv.${nextLevel}`}</span>
+        </div>
+        <div className="mini-row">
+          <span className="mini-label">根基</span>
+          <div className="foundation-bar">
+            <div
+              className={`foundation-fill tier-${pet.foundationTier?.key || 'fair'}`}
+              style={{ width: `${pet.foundation || 0}%` }}
+            />
+          </div>
+          <span className={`mini-val tier-${pet.foundationTier?.key || 'fair'}`}>
+            {pet.foundationTier?.name || '未评估'}
+          </span>
+        </div>
       </div>
 
       <div className="card-body">
-        <RadarChart stats={pet.stats} color={pet.element.color} size={200} />
+        <RadarChart stats={pet.stats} color={pet.element.color} size={120} compact />
         <div className="stats-list">
           {pet.stats.map((s) => (
             <div key={s.name} className="stat-row">
@@ -93,25 +108,38 @@ export default function PetCard({ pet, revealed = false }) {
 
       <div className="skills">
         {pet.skills.map((s) => (
-          <div key={s.name} className={`skill ${s.unlocked ? '' : 'locked'}`}>
-            <span className="skill-dot" style={{ background: s.unlocked ? pet.element.color : '#3a4460' }} />
-            {s.unlocked ? s.name : `Lv.${s.unlockLevel} 解锁`}
+          <div key={s.name} className={`skill ${s.unlocked ? '' : 'locked'}`} title={s.unlocked ? s.name : `Lv.${s.unlockLevel} 解锁`}>
+            <span className="skill-dot" />
+            <span className="skill-name">{s.unlocked ? s.name : `Lv.${s.unlockLevel}`}</span>
           </div>
         ))}
       </div>
 
+      {(pet.traits?.length > 0 || pet.traitHints?.filter((h) => h.fix).length > 0) && (
+        <div className="traits">
+          {pet.traits.slice(0, 3).map((t) => (
+            <span key={t.key} className={`trait-chip ${t.kind}`} title={`${t.desc}\n触发：${t.reason}`}>
+              {t.kind === 'negative' ? '▾' : '▴'} {t.name}
+            </span>
+          ))}
+          {pet.traitHints?.filter((h) => h.fix).slice(0, 1).map((h) => (
+            <span className="trait-fix-inline" key={h.name} title={h.fix}>?</span>
+          ))}
+        </div>
+      )}
+
       <div className="quality-dims">
         {pet.qualityDims.map((d) => (
-          <div key={d.key} className="qd">
-            <div className="qd-head"><span>{d.name}</span><b>{d.value}</b></div>
+          <div key={d.key} className="qd" title={`${d.name} ${d.value}`}>
             <div className="qd-bar"><div style={{ width: `${d.value}%`, background: q.color }} /></div>
+            <span className="qd-name">{d.name}</span>
           </div>
         ))}
       </div>
 
       <div className="card-foot">
-        <span>品质分 {pet.qualityScore} · 工程量 {pet.engineeringScore}</span>
-        <span>{pet.platform === 'gitee' ? 'Gitee' : 'GitHub'} · ⭐{pet.stars}</span>
+        <span>品质 {pet.qualityScore} · 工程量 {pet.engineeringScore}</span>
+        <span>{pet.platform === 'gitee' ? 'Gitee' : 'GitHub'} · ★{pet.stars}</span>
       </div>
     </div>
   )

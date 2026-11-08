@@ -99,6 +99,13 @@ def pet_to_api(pet: dict[str, Any]) -> dict[str, Any]:
     secondary_key = pet.get("element_secondary")
     secondary = engine.element_by_key(secondary_key) if secondary_key else None
     ref = _ref_of(pet)
+    # 老数据没有根基字段：不假装它是 0 分，标成"未评估"，等下次同步补算
+    foundation_value = float(pet.get("foundation") or 0)
+    foundation = round(foundation_value, 1) if foundation_value > 0 else None
+    foundation_tier = (
+        trait_mod.foundation_tier(foundation_value) if foundation is not None
+        else {"key": "unknown", "name": "未评估", "min": 0}
+    )
 
     return {
         "id": pet["id"],
@@ -127,8 +134,8 @@ def pet_to_api(pet: dict[str, Any]) -> dict[str, Any]:
         "stats": pet.get("stats") or [],
         "skills": pet.get("skills") or [],
         "hp": int(pet.get("hp") or 0),
-        "foundation": round(float(pet.get("foundation") or 0), 1),
-        "foundationTier": trait_mod.foundation_tier(float(pet.get("foundation") or 0)),
+        "foundation": foundation,
+        "foundationTier": foundation_tier,
         "foundationDims": pet.get("foundation_dims") or {},
         "traits": pet.get("traits") or [],
         "traitSummary": trait_mod.summary(pet.get("traits") or []),
