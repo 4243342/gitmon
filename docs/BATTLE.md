@@ -10,6 +10,7 @@
 | [smogon/pokemon-showdown](https://github.com/smogon/pokemon-showdown) | 伤害公式（Gen5）、能力等级 −6..+6 分数表、先制度→速度的行动顺序、灼烧/麻痹/睡眠的处理方式、PP 与「挣扎」、STAB 与会心框架 | MIT |
 | [@pkmn/sim](https://www.npmjs.com/package/@pkmn/sim) | 调研结论：曾评估直接引入，但其绑定官方 1000+ 种族/招式数据（数 MB），与「仓库精灵 + 自研六维」不匹配，最终只参考机制未引入代码 | MIT |
 | 《赛尔号》(Seer) | 「克制 / 微弱 / 无效」三档克制呈现、以属性技能为核心的直球节奏 | 商业作品，仅玩法借鉴 |
+| [patch-gg/pixelfx](https://github.com/patch-gg/pixelfx) | **攻击特效**：代码绘制的像素特效库（244 个特效、零图片素材、种子随机），直接按模块引入其 `fire / water / lightning / impacts / nature / explosions / projectiles / spawn` 特效贴到被打精灵身上；本项目只写选片与定位（`src/vfx.js`）。声明见 `THIRD-PARTY.md` | MIT |
 
 **为什么没把引擎直接跑在浏览器里**：Showdown 是开源战斗模拟器里做得最好的（社区标准、MIT），我们也确实把它跑通了——把 9 属性表、自定义种族与招式灌进它的 Dex 后，它能按官方规则打完一整场。但作为**运行时**引擎代价太大：
 
@@ -105,3 +106,34 @@
 - EXP：新手 90 / 相当 150 / 强敌 240，胜 ×1.4、败 ×0.6，全队平分
 - 羁绊：胜 +4 / 败 +1；累计 `battles / wins` 写入图鉴
 - 引擎是纯函数 + 显式种子：同种子同操作序列必然复现（自检里有断言），这延续了 §2.2 的确定性原则
+
+## 9. 攻击特效（pixelfx）
+
+特效不手写、不画雪碧图：直接引入 [pixelfx](https://github.com/patch-gg/pixelfx)（MIT）的代码绘制像素特效——
+每个特效是一小段程序（粒子 + 加色光照缓冲 + 种子随机），和 GitMon 的种子像素精灵是一个审美体系，且没有图片素材。
+
+### 9.1 选片规则
+
+`src/vfx.js` 为 9 个属性各配了四档特效，按技能威力选档（<55 轻击 / <80 主力 / <105 重击 / ≥105 终极）：
+
+| 属性 | 轻击 | 主力 | 重击 | 终极 |
+|---|---|---|---|---|
+| 火 | fireball | flamethrower | fire-tornado | meteor |
+| 水 | splash | water-orb | wave-crash | geyser |
+| 雷 | zap-hit | spark-arc | ball-lightning | lightning-strike |
+| 钢 | parry | bullet-impact | crit-hit | ground-slam |
+| 地 | earth-spike | quake | ground-slam | dirt-explosion |
+| 岩 | boulder | dirt-explosion | small-explosion | big-explosion |
+| 风 | energy-disc | tornado | implosion | plasma-explosion |
+| 草 | thorns | spore-burst | acid-splash | poison-cloud |
+| 普通 | blunt-hit | hit-spark | crit-hit | cartoon-pow |
+
+选片只挑「在原点炸开」型特效（跳过 pixelfx 里带龙套角色的 acted 特效），所以直接贴到被打精灵身上即可，不算弹道。
+
+### 9.2 播放与节奏
+
+- 事件重放：`Battle.jsx` 按 `battleTurn` 返回的事件序列定时重放——`move` → 出手前冲 + 在防守方身上播特效；`damage` → 白闪 + 后退 + 浮动伤害（会心追加整屏冲击帧）；`faint` → 烟尘散去；`switch` → 传送门登场。
+- 时长封顶：pixelfx 部分特效长达 5–7 秒，按档位压到 1.1–2.2s（超长部分加速播放，最多 2.4×），战斗节奏不被特效拖住。
+- 性能：特效模块单独拆包（`vfx-*.js`，gzip 约 94KB），进入竞技场才加载；每帧只在特效自己的小画布上做 `clearFrame → draw → composite → putImageData`。
+
+> 许可证与引入方式见 `THIRD-PARTY.md`。

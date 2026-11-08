@@ -10,6 +10,7 @@
 [![React](https://img.shields.io/badge/React-18-61dafb?style=flat-square&logo=react&logoColor=white)](#)
 [![Vite](https://img.shields.io/badge/Vite-5-646cff?style=flat-square&logo=vite&logoColor=white)](#)
 [![License](https://img.shields.io/badge/license-MIT-3da639?style=flat-square)](#)
+[![Third-party](https://img.shields.io/badge/third--party-notices-8b8b8b?style=flat-square)](THIRD-PARTY.md)
 
 </div>
 
@@ -60,6 +61,7 @@
 - ⬆️ **养成**：commit +2 XP、合并 PR +10 XP、发 release +50 XP
 - 🧬 **进化**：幼体 → 成长体（Lv.150+）→ 完全体（Lv.500+）
 - ⚔️ **对战**：1–3 只组队上竞技场，属性克制 + 先制 + 异常状态 + 换人，3v3 回合制
+- 💥 **攻击特效**：pixelfx 代码绘制的像素特效——9 属性 × 4 档威力各有一套，会心有整屏冲击帧
 - 😴 **沉睡**：30 天不维护，精灵会睡过去 —— 别让它睡
 - 📇 **图鉴**：收集你所有仓库的精灵
 
@@ -81,8 +83,9 @@ https://gitee.com/mirrors/vue
 ## 技术栈
 
 ```
-React 18 · Vite 5 · 纯 CSS 动画 · Canvas 像素绘制
-零运行时依赖的精灵生成器（种子确定性）
+React 18 · Vite 5 · PixiJS 8（开包舞台）· tsParticles 4（粒子）
+纯 CSS 动画 · Canvas 像素绘制 · WebAudio 芯片音效（零音频素材）
+零依赖的精灵生成器（种子确定性）· 自研战斗引擎（纯函数，可与官方 Showdown 对拍）
 ```
 
 | 模块 | 职责 |
@@ -90,8 +93,11 @@ React 18 · Vite 5 · 纯 CSS 动画 · Canvas 像素绘制
 | `src/engine.js` | 判定引擎：仓库地址 → 品种 / 品质 / 等级 / 六维 / 技能（纯函数，可复现） |
 | `src/battle.js` | 战斗引擎：属性克制 / 伤害公式 / 状态 / 先制 / AI（纯函数 + 显式种子，可复现） |
 | `src/rivals.js` | 内置 19 个知名仓库的离线快照 → 对手精灵，按玩家强度匹配 |
+| `src/vfx.js` | 攻击特效层：按属性×威力选 [pixelfx](https://github.com/patch-gg/pixelfx) 特效并贴到精灵身上（懒加载分包） |
 | `src/sprite.js` | 种子 → 像素精灵（对称轮廓 + 属性配色 + 进化阶段装饰） |
 | `src/components/` | 卡包、精灵卡片、雷达图、竞技场 |
+
+> 每个库与每份素材的出处、许可证、以及"取了哪一部分"都在下方 [参考与借鉴（来源总表）](#参考与借鉴来源总表) 里逐条列出。
 
 ## 后端（已实现）
 
@@ -161,27 +167,62 @@ AI 味 ≥50 → 词条「根基不稳」，≥75 → 「生成体」；根基�
 - [ ] AI 率按最近 90 天提交加权，让"补课"真能把词条洗掉
 - [ ] 全服排行榜页面
 
-## 参考与借鉴
+## 参考与借鉴（来源总表）
 
-这个项目的视觉、玩法与工程实现站在不少开源项目肩上，特此注明。**所有引用均为思路与视觉参考；标 ⚠️ 的 GPL 项目未复制任何代码。**
+这个项目的每一个视觉细节、玩法机制和工程取舍都站在开源项目肩上，逐项列清来源、协议、**我们具体取了什么**、**落在哪个文件**。没有列在下表的代码与素材，均为本项目自研。
 
-| 项目 | 我们借鉴了什么 | 协议 |
+### 一、直接引入的代码与素材（会进构建产物）
+
+| 来源 | 我们用了什么 | 落点 | 协议 |
+|---|---|---|---|
+| [pack-opener-js](https://www.npmjs.com/package/pack-opener-js) `0.5` | **开包动画引擎**：手指划开撕口 → 卡包盖飞出 → 卡牌带品质辉光翻面；slice / burst / carousel 三种机制、稀有度辉光色随品质切换 | [`src/components/PackOpening.jsx`](src/components/PackOpening.jsx) | MIT |
+| [PixiJS](https://github.com/pixijs/pixijs) `8` | pack-opener-js 的 WebGL 渲染后端（我们只做实例配置与素材喂入） | 随 pack-opener-js 间接引入 | MIT |
+| [tsParticles](https://github.com/tsparticles/tsparticles) `4`（`@tsparticles/react` + `slim`） | 开包揭晓与升级的粒子氛围，配色按 N / R / SR / SSR 参数化 | [`src/components/RevealBurst.jsx`](src/components/RevealBurst.jsx) | MIT |
+| [pixelfx](https://github.com/patch-gg/pixelfx) `0.3` | **对战攻击特效**：按模块引入约 35 个程序化像素特效（火 / 水 / 雷 / 冲击 / 爆裂 / 投射 / 生成），按招式属性与威力选片，单独打包、进竞技场才加载 | [`src/vfx.js`](src/vfx.js) | MIT |
+| ↳ [Sprite Fusion Pixel Art VFX](https://www.spritefusion.com/pixel-art-vfx)（Hugo Duprez） | pixelfx 的 `core/sim.js` 与部分特效改写自此，为本项目的粒子物理/光照缓冲提供底层 | 间接依赖 | MIT |
+| ↳ [Hollow Crown](https://github.com/rehan-remade/hollow-crown)（rehan-remade） | pixelfx 的 `core/act.js` 借了它"技能演出"的节奏（12fps 定格、命中停顿、弹性靶子），本项目的特效时序即走这条链路 | 间接依赖 | MIT |
+| [Kenney Pixel UI Pack](https://kenney.nl/assets/pixel-ui-pack) | **整套 UI 图块**：9-slice 像素按钮（5 色 × 常态 / 按下）、面板、品质盾徽（N / R / SR / SSR）、剑（技能）、胶囊条（属性条）、箭头 / 手型 / 菱形指针 | [`src/assets/kenney/`](src/assets/kenney/) → 由 [`src/game-theme.css`](src/game-theme.css) 消费 | **CC0** |
+| [Fusion Pixel Font](https://github.com/TakWolf/fusion-pixel-font)（TakWolf） | 12px 中文像素字体，全量汉字 woff2（940 KB），界面正文与战报 | [`src/assets/fonts/`](src/assets/fonts/) | **OFL-1.1** |
+| [Press Start 2P](https://fonts.google.com/specimen/Press+Start+2P)（via [@fontsource](https://fontsource.org/fonts/press-start-2p)） | 街机标题字体：等级数字、品质徽标、按钮大写标签 | `src/main.jsx` 引入 `400.css` | **OFL-1.1** |
+| [scc](https://github.com/boyter/scc) | 后端浅克隆后统计 LOC / 注释行 / **圈复杂度** / COCOMO → 喂给工程量与「特防（可维护性）」维度 | `backend/`（`GITMON_USE_SCC=1`） | MIT |
+| [@pkmn/sim](https://www.npmjs.com/package/@pkmn/sim) | **只在测试里用**：把我们的属性表与自定义种族灌进官方 Dex 当"标准答案"，对拍 81 组克制 + 178 次伤害样本 | [`scripts/showdown-parity.mjs`](scripts/showdown-parity.mjs)（devDependency） | MIT |
+
+### 二、只借思路，代码全部自研
+
+| 来源 | 借了什么 | 边界 | 协议 |
+|---|---|---|---|
+| [Pokémon Showdown](https://github.com/smogon/pokemon-showdown) | **战斗系统骨架**：Gen5 伤害公式、能力等级 −6..+6 分数表、先制 → 速度的行动顺序、灼烧 / 麻痹 / 睡眠的处理方式、PP 与「挣扎」、STAB 与会心框架 | 图鉴数据与招式全自研；机制按其实现重写，未引入代码（原因见 [`docs/BATTLE.md` §0](docs/BATTLE.md)） | MIT |
+| 《赛尔号》(Seer) | 「克制 / 微弱 / 无效」三档克制呈现、以属性技能为核心的直球节奏 | 商业作品，零素材零代码 | — |
+| [pokemon-cards-css](https://github.com/simeydotme/pokemon-cards-css) ⚠️ | **全息闪卡的视觉语言**：多层渐变 + `blend-mode` + 滤镜，高光随指针位置移动 | GPL-3.0 有传染性 → 仅作视觉参考，CSS 全自研（`PetCard.jsx` 的 `--mx` / `--my` / `--rx` / `--ry` + `.holo-layer` / `.glare`） | GPL-3.0 |
+| [hover-tilt](https://github.com/simeydotme/hover-tilt) | 指针归一化到 −0.5..0.5 再映射倾斜角的换算方式与阻尼手感 | 自研 `useState` 实现，**未装依赖** | MIT |
+| [pixel-sprite-monster-generator](https://github.com/sempitern0/pixel-sprite-monster-generator) | **种子确定性立绘**：体型族 × 调色板 × 变体（心情 / 史诗）的三层生成结构 | 移植为 JS 程序化绘制（[`src/sprite.js`](src/sprite.js)），7 体型映射生态型，32×32 手工调参 | MIT |
+| [gen_me_a_pixamon](https://github.com/pixmusix/gen_me_a_pixamon) | 单 u64 种子 → 确定性 PNG 的极简路线（服务端预生成的取舍依据） | 未移植代码，只定架构方向 | MIT |
+| [github-readme-stats](https://github.com/anuraghazra/github-readme-stats) | 无状态 SVG 卡片端点架构：纯函数渲染 + 缓存头 + 主题参数 | SVG 渲染自研 | MIT |
+| github-tamagotchi | 「情绪状态机映射仓库健康度」的设计；宠物由仓库哈希派生的确定性思路 | 我们做的是品种 / 品质 / 等级，不做健康监控（见 [`docs/DESIGN.md` §11](docs/DESIGN.md)） | 参考 |
+| Repup / cli-pet / pixel-tamagotchi | 极简养成循环的可行性、"状态 ↔ 工程信号"的四维映射、git hook 即时同步 | 工程信号口径与数值全自定 | 参考 |
+| PokeToken | 性格 / 个体值 / 闪光率的数值设计与孵蛋加权 | 替换为「根基 + 词条」双轨，弱化随机 | 参考 |
+| [Platane/snk](https://github.com/Platane/snk) / [GitHub Skyline](https://skyline.github.com/) / [github-profile-trophy](https://github.com/ryo-ma/github-profile-trophy) | README 游戏化的表达方式：Action 定时生成 + 稳定 URL、年度仪式感、成就墙 | 徽章与卡片端点自研 | 参考 |
+
+### 三、调研过、最终没有采用
+
+| 来源 | 为什么没要 | 协议 |
 |---|---|---|
-| [pack-opener-js](https://www.npmjs.com/package/pack-opener-js) | 开包动画机制：撕口、卡包盖飞出、稀有度辉光、卡牌翻面 | MIT |
-| [pokemon-cards-css](https://github.com/simeydotme/pokemon-cards-css) ⚠️ | 全息闪卡的视觉语言（渐变 + blend-mode + 滤镜）。**仅作视觉参考，代码全部自研** | GPL-3.0 |
-| [hover-tilt](https://github.com/simeydotme/hover-tilt) | 卡片跟随鼠标倾斜 + 辉光 | MIT |
-| [pixel-sprite-monster-generator](https://github.com/sempitern0/pixel-sprite-monster-generator) | 种子确定性像素怪兽的生成思路（体型族 × 调色板 × 变体） | MIT |
-| [tsParticles](https://github.com/tsparticles/tsparticles) | 开包 / 升级的粒子氛围 | MIT |
-| [scc](https://github.com/boyter/scc) | 代码行、注释行、圈复杂度统计（后端浅克隆后调用） | MIT |
-| [Pokémon Showdown](https://github.com/smogon/pokemon-showdown)（[@pkmn/sim](https://www.npmjs.com/package/@pkmn/sim)） | **战斗系统**：伤害公式（Gen5）、能力等级 −6..+6 分数表、先制→速度的行动顺序、灼烧/麻痹/睡眠处理、PP 与「挣扎」。引擎代码未引入（其数据层绑定官方图鉴，与仓库精灵不匹配），机制骨架按其实现重写 | MIT |
-| 《赛尔号》(Seer) | 对战的克制/微弱/无效三档呈现与直球技能节奏（商业作品，仅玩法借鉴） | — |
-| [github-readme-stats](https://github.com/anuraghazra/github-readme-stats) | 无状态 SVG 卡片端点的架构（缓存头 + 纯函数渲染） | MIT |
-| github-tamagotchi | "宠物情绪映射仓库健康度"的状态机设计；宠物由仓库哈希派生的确定性思路 | 参考 |
-| Repup / cli-pet / pixel-tamagotchi | 极简养成循环与"状态 ↔ 工程信号"的四维映射 | 参考 |
-| PokeToken | 性格 / 个体值 / 闪光率的数值设计参照 | 参考 |
-| [github-profile-trophy](https://github.com/ryo-ma/github-profile-trophy) / [Platane/snk](https://github.com/Platane/snk) / GitHub Skyline | README 游戏化的表达方式（徽章墙、贡献动画、年度报告） | 参考 |
+| [canvas-confetti](https://github.com/catdad/canvas-confetti) | tsParticles 一个库就覆盖了礼花 + 星光 + 烟花，少一个依赖 | MIT |
+| [tokei](https://github.com/XAMPPRocky/tokei) | 语言识别准、速度也不错，但**没有圈复杂度**——而复杂度正是我们要喂给「特防」的输入 | MIT / Apache-2.0 |
+| [cloc](https://github.com/AlDanial/cloc) | 大仓库实测慢 10–20 倍，只留作交叉验证 | GPL-2.0 |
+| [OctoCounts](https://octocounts.com/) | 封装 tokei 的在线服务；自建 scc 后不需要 | 商用服务 |
+| [Pokemon-Pack-Sim](https://github.com/jaip18/Pokemon-Pack-Sim) | React Three Fiber 的 3D 翻卡很漂亮，但强耦合 Pokémon TCG API，只当**动画编排**参考 | MIT |
+| [pokemon-card-game](https://github.com/trungLyDal/pokemon-card-game) | 开包 + 收藏全套实现，架构可看，代码质量一般 | MIT |
+| [procedural-pixel-creatures](https://github.com/idlerunner00/procedural-pixel-creatures) | Godot / C# 耦合重，立绘质量虽高但移植成本不划算 | 待核实 |
+| [github-readme-streak-stats](https://github.com/DenverCoder1/github-readme-streak-stats) | 连续贡献卡片的展示形式参考，暂未实现 | MIT |
 
-> 竞品分析（github-tamagotchi 的完成度、我们不打"健康监控"正面战的原因）见设计文档 §11。
+### 协议与合规
+
+- 本项目自身以 **MIT** 发布（见 [`LICENSE`](LICENSE)）。
+- **GPL 项目零代码复用**：`pokemon-cards-css` 只提供视觉参考，仓库内没有任何其代码片段；如未来需要可原地替换掉自研全息层。
+- **素材许可原文随仓库**：[`src/assets/kenney/LICENSE.txt`](src/assets/kenney/LICENSE.txt)（CC0）、[`src/assets/fonts/LICENSE-fusion-pixel.txt`](src/assets/fonts/LICENSE-fusion-pixel.txt)（OFL-1.1）。
+- **复制的第三方代码**单独声明在 [`THIRD-PARTY.md`](THIRD-PARTY.md)（当前仅 pixelfx，含上游 NOTICE 与打包范围说明）。
+- 更细的选型评估见 [`docs/DESIGN.md` §10 开源资源调研](docs/DESIGN.md)，竞品分析见 §11，对战借鉴边界见 [`docs/BATTLE.md` §0](docs/BATTLE.md)。
 
 ## 设计文档
 
