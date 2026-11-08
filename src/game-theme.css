@@ -998,6 +998,36 @@ body::after {
 .gh-mark { display: inline-flex; }
 .auth-hint { margin-top: 9px; font-size: 11.5px; line-height: 1.75; color: var(--dim); }
 
+/* 回调地址：平台后台必须填这一串，一字不差 */
+.auth-callback {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 7px 9px;
+  font-size: 11px;
+  color: #8494b4;
+  border: 1px dashed #2c3a58;
+  background: rgba(12, 20, 34, .6);
+}
+.auth-callback code {
+  font-size: 10.5px;
+  color: #b9cbe8;
+  word-break: break-all;
+  flex: 1;
+  min-width: 0;
+}
+.auth-callback button {
+  font-size: 10px;
+  padding: 2px 8px;
+  color: #cfe0ff;
+  background: #17253f;
+  border: 1px solid #2c3a58;
+  cursor: pointer;
+}
+.auth-callback button:hover { background: #1f3155; color: #fff; }
+
 .auth-error { margin-top: 12px; font-size: 12.5px; color: #ff8a8a; }
 
 .auth-foot {

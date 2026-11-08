@@ -30,7 +30,7 @@ import subprocess
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import httpx
 
@@ -144,11 +144,31 @@ def oauth_enabled() -> bool:
     return bool(settings.github_client_id and settings.github_client_secret)
 
 
-def callback_url() -> str:
-    return f"{settings.public_base_url}/api/auth/github/callback"
+def _callback_base(request: Any = None) -> str:
+    """回调前缀。
+
+    优先取本次请求自己的 host —— 本机开发时 127.0.0.1 和 localhost 是两个
+    不同的 origin，平台后台登记哪一个都能对上（只在回环地址上这么做，
+    公网部署仍以 GITMON_PUBLIC_URL 为准，避免被 Host 头带偏）。
+    """
+    base = settings.public_base_url
+    if request is not None:
+        try:
+            host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").strip()
+            pure = host.split(":")[0].strip("[]").lower()
+            if pure in {"127.0.0.1", "localhost", "::1"}:
+                scheme = (request.headers.get("x-forwarded-proto") or request.url.scheme or "http").split(",")[0].strip()
+                base = f"{scheme}://{host}"
+        except Exception:  # noqa: BLE001 — Host 头缺失时不值得报错，退回配置值
+            pass
+    return base.rstrip("/")
 
 
-def authorize_url(state: str) -> str:
+def callback_url(request: Any = None) -> str:
+    return settings.github_callback_override or f"{_callback_base(request)}/api/auth/github/callback"
+
+
+def authorize_url(state: str, request: Any = None) -> str:
     if not oauth_enabled():
         raise OAuthNotConfigured(
             "GitHub OAuth 未配置",
@@ -156,7 +176,7 @@ def authorize_url(state: str) -> str:
         )
     query = urlencode({
         "client_id": settings.github_client_id,
-        "redirect_uri": callback_url(),
+        "redirect_uri": callback_url(request),
         "scope": DEFAULT_SCOPES,
         "state": state,
         "allow_signup": "true",
@@ -174,7 +194,7 @@ def _client() -> httpx.Client:
     )
 
 
-def exchange_code(code: str) -> tuple[str, str]:
+def exchange_code(code: str, request: Any = None) -> tuple[str, str]:
     """授权码换 access_token，返回 (token, scopes)。"""
     if not oauth_enabled():
         raise OAuthNotConfigured("GitHub OAuth 未配置")
@@ -185,7 +205,7 @@ def exchange_code(code: str) -> tuple[str, str]:
                 "client_id": settings.github_client_id,
                 "client_secret": settings.github_client_secret,
                 "code": code,
-                "redirect_uri": callback_url(),
+                "redirect_uri": callback_url(request),
             },
             headers={"Accept": "application/json"},
         )
@@ -252,41 +272,78 @@ def gitee_oauth_enabled() -> bool:
     return bool(settings.gitee_client_id and settings.gitee_client_secret)
 
 
-def gitee_callback_url() -> str:
-    return f"{settings.public_base_url}/api/auth/gitee/callback"
+def gitee_callback_url(request: Any = None) -> str:
+    return settings.gitee_callback_override or f"{_callback_base(request)}/api/auth/gitee/callback"
 
 
-def gitee_authorize_url(state: str) -> str:
+def gitee_authorize_url(state: str, request: Any = None) -> str:
     if not gitee_oauth_enabled():
         raise OAuthNotConfigured(
             "Gitee OAuth 未配置",
             hint="设置 GITEE_CLIENT_ID / GITEE_CLIENT_SECRET，或改用 Gitee 私人令牌登录",
         )
+    # Gitee 要求 scope 用 %20 分隔空格，并且「上次授权过的用户」再次进来时
+    # scope 必须与上次完全一致，否则它会跳过授权页却只给旧权限。
     query = urlencode({
         "client_id": settings.gitee_client_id,
-        "redirect_uri": gitee_callback_url(),
+        "redirect_uri": gitee_callback_url(request),
         "response_type": "code",
         "scope": GITEE_SCOPES,
         "state": state,
-    })
+    }, quote_via=quote)
     return f"{GITEE_AUTHORIZE}?{query}"
 
 
-def exchange_gitee_code(code: str) -> tuple[str, str]:
+def exchange_gitee_code(code: str, request: Any = None) -> tuple[str, str, str]:
+    """授权码换令牌，返回 (access_token, scope, refresh_token)。
+
+    Gitee 的文档把参数写在 query 上、同时建议 client_secret 放 body，
+    所以这里两边都放一份（值相同），避免它只认其中一处。
+    access_token 只有 **1 天** 有效期，refresh_token 必须一起存下来。
+    """
     if not gitee_oauth_enabled():
         raise OAuthNotConfigured("Gitee OAuth 未配置")
+    params = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "client_id": settings.gitee_client_id,
+        "redirect_uri": gitee_callback_url(request),
+    }
+    with _client() as client:
+        resp = client.post(
+            GITEE_TOKEN,
+            params=params,
+            data={**params, "client_secret": settings.gitee_client_secret},
+            headers={"Accept": "application/json"},
+        )
+    return _parse_gitee_token(resp)
+
+
+def refresh_gitee_token(refresh_token: str) -> tuple[str, str]:
+    """用 refresh_token 换新的 access_token，返回 (access_token, refresh_token)。
+
+    Gitee 每次刷新都会连 refresh_token 一起换掉，必须把新的也存回去。
+    """
+    if not refresh_token:
+        raise AuthError("缺少 Gitee 刷新令牌", hint="请重新授权一次")
     with _client() as client:
         resp = client.post(
             GITEE_TOKEN,
             data={
-                "grant_type": "authorization_code",
-                "code": code,
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
                 "client_id": settings.gitee_client_id,
                 "client_secret": settings.gitee_client_secret,
-                "redirect_uri": gitee_callback_url(),
             },
             headers={"Accept": "application/json"},
         )
+    access, _, new_refresh = _parse_gitee_token(resp)
+    return access, new_refresh or refresh_token
+
+
+def _parse_gitee_token(resp: httpx.Response) -> tuple[str, str, str]:
+    if resp.status_code == 403:
+        raise AuthError("Gitee 拒绝了令牌请求", hint="检查应用回调地址与权限设置，或稍后重试")
     if resp.status_code >= 500:
         raise AuthError("Gitee 授权服务暂时不可用，请稍后重试")
     try:
@@ -295,11 +352,72 @@ def exchange_gitee_code(code: str) -> tuple[str, str]:
         raise AuthError("Gitee 授权返回内容无法解析") from None
     if data.get("error"):
         desc = str(data.get("error_description") or data["error"])
+        code = str(data["error"])
+        if code == "invalid_client":
+            raise AuthError("Gitee 应用的 Client ID / Secret 不正确", hint="检查 backend/.env 里的凭证")
+        if code.startswith("authorization_code"):
+            raise AuthError(
+                "Gitee 授权码无效或已使用（也可能是应用回调地址不一致）",
+                hint=f"确认 Gitee 应用后台填的回调地址是 {gitee_callback_url()}；{desc}",
+            )
+        if "refresh" in code or "validate_token" in code:
+            raise AuthError("Gitee 授权已过期，请重新登录一次", hint=desc)
         raise AuthError(f"Gitee 授权失败：{desc}")
-    token_value = str(data.get("access_token") or "")
-    if not token_value:
-        raise AuthError("Gitee 没有返回访问令牌")
-    return token_value, str(data.get("scope") or "")
+    access = str(data.get("access_token") or "")
+    if not access:
+        raise AuthError("Gitee 没有返回访问令牌", hint="请重新授权一次")
+    return access, str(data.get("scope") or ""), str(data.get("refresh_token") or "")
+
+
+# Gitee 令牌 1 天就过期：会话还在但令牌已失效时，前端会拿着废令牌直连 API。
+# 取令牌时做一次有效性校验（结果缓存 10 分钟），失效就静默刷新。
+_GITEE_CHECK_TTL = 600
+_gitee_check_cache: dict[str, tuple[float, str]] = {}
+
+
+def _gitee_token_status(token: str) -> str:
+    """ok / expired / unknown（网络不通时不判死刑，免得误刷令牌）。"""
+    try:
+        with _client() as client:
+            resp = client.get(f"{GITEE_API}/user", params={"access_token": token})
+    except httpx.HTTPError:
+        return "unknown"
+    if resp.status_code == 401:
+        return "expired"
+    if resp.status_code >= 400:
+        return "unknown"
+    return "ok"
+
+
+def ensure_gitee_token(user: dict[str, Any]) -> str:
+    """给 /api/auth/token 用：返回一个当下可用的 Gitee 令牌，必要时静默刷新。"""
+    token = user.get("token") or ""
+    if not token:
+        return token
+    user_id = user.get("id", "")
+    cached = _gitee_check_cache.get(user_id)
+    if cached and time.time() - cached[0] < _GITEE_CHECK_TTL and cached[1] == token:
+        return token
+    status = _gitee_token_status(token)
+    if status == "ok":
+        _gitee_check_cache[user_id] = (time.time(), token)
+        return token
+    if status != "expired":
+        return token
+    new_token, new_refresh = refresh_gitee_token(user.get("refresh_token") or "")
+    upsert_user(
+        provider="gitee",
+        login=user.get("login", ""),
+        name=user.get("name", ""),
+        avatar=user.get("avatar", ""),
+        email=user.get("email", ""),
+        token=new_token,
+        refresh_token=new_refresh,
+        scopes=user.get("scopes", ""),
+        source=user.get("source", "oauth"),
+    )
+    _gitee_check_cache[user_id] = (time.time(), new_token)
+    return new_token
 
 
 def gitee_profile(token: str) -> dict[str, Any]:
@@ -308,11 +426,9 @@ def gitee_profile(token: str) -> dict[str, Any]:
         raise AuthError("令牌为空")
     try:
         with _client() as client:
-            resp = client.get(
-                f"{GITEE_API}/user",
-                params={"access_token": token},
-                headers={"Authorization": f"token {token}"},
-            )
+            # Gitee v5 只认 access_token 参数；不额外发 Authorization 头，
+            # 免得某些网关把不认识的头当成冲突的凭据。
+            resp = client.get(f"{GITEE_API}/user", params={"access_token": token})
     except httpx.HTTPError:
         raise AuthError("连接 Gitee 失败，请检查网络后重试") from None
     if resp.status_code == 401:
@@ -385,22 +501,27 @@ def _user_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
         return None
     user = dict(row)
     user["token"] = decrypt_token(user.pop("token_cipher", ""))
+    user["refresh_token"] = decrypt_token(user.pop("refresh_cipher", ""))
     return user
 
 
 def upsert_user(*, provider: str, login: str, name: str, avatar: str, email: str,
-                token: str, scopes: str, source: str) -> dict[str, Any]:
+                token: str, scopes: str, source: str,
+                refresh_token: str = "") -> dict[str, Any]:
     now = utcnow_iso()
     user_id = hashlib.sha1(f"{provider}:{login.lower()}".encode()).hexdigest()[:16]
     cipher = encrypt_token(token)
+    refresh_cipher = encrypt_token(refresh_token)
     with db.connect() as conn:
         conn.execute(
-            "INSERT INTO users (id, provider, login, name, avatar, email, token_cipher, scopes, source,"
-            " created_at, updated_at, last_login_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) "
+            "INSERT INTO users (id, provider, login, name, avatar, email, token_cipher, refresh_cipher,"
+            " scopes, source, created_at, updated_at, last_login_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) "
             "ON CONFLICT(id) DO UPDATE SET name=excluded.name, avatar=excluded.avatar, email=excluded.email,"
-            " token_cipher=excluded.token_cipher, scopes=excluded.scopes, source=excluded.source,"
+            " token_cipher=excluded.token_cipher, refresh_cipher=excluded.refresh_cipher,"
+            " scopes=excluded.scopes, source=excluded.source,"
             " updated_at=excluded.updated_at, last_login_at=excluded.last_login_at",
-            (user_id, provider, login, name, avatar, email, cipher, scopes, source, now, now, now),
+            (user_id, provider, login, name, avatar, email, cipher, refresh_cipher,
+             scopes, source, now, now, now),
         )
         row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
     user = _user_row(row) or {}
@@ -482,6 +603,11 @@ def logout(user: dict[str, Any] | None, sid: str) -> None:
     if not user:
         return
     token = user.get("token") or ""
+    # 只撤销 GitHub OAuth 令牌：Gitee 没有对应的撤销端点，
+    # 更不能把 Gitee 令牌发到 api.github.com 去（那等于把凭据送给另一家）。
+    if user.get("provider", "github") == "gitee":
+        _gitee_check_cache.pop(user.get("id", ""), None)
+        return
     # OAuth 令牌撤销需要 client 凭证；个人令牌（PAT）无法远程撤销，只清本地会话
     if token and user.get("source") == "oauth" and oauth_enabled():
         try:

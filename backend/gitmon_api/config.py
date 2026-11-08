@@ -76,6 +76,10 @@ class Settings:
     gitee_client_secret: str = ""
     # 对外地址：OAuth 回调前缀，例如 http://127.0.0.1:8000
     public_base_url: str = "http://127.0.0.1:8000"
+    # 回调地址覆盖：平台后台登记的和上面拼出来的不一致时，直接写完整地址对齐
+    # （Gitee 报「无效的登录回调地址」基本都是这一项没对上）
+    github_callback_override: str = ""
+    gitee_callback_override: str = ""
     # 登录成功后跳回的页面（默认回根路径，本地用 vite 代理也成立）
     web_url: str = ""
     # 会话密钥：为空则自动生成并落到 data/secret.key，用于签名与令牌加密
@@ -139,6 +143,8 @@ def load_settings() -> Settings:
         gitee_client_id=_env("GITEE_CLIENT_ID"),
         gitee_client_secret=_env("GITEE_CLIENT_SECRET"),
         public_base_url=(_env("GITMON_PUBLIC_URL") or "http://127.0.0.1:8000").rstrip("/"),
+        github_callback_override=_env("GITHUB_CALLBACK_URL").rstrip("/"),
+        gitee_callback_override=_env("GITEE_CALLBACK_URL").rstrip("/"),
         web_url=_env("GITMON_WEB_URL"),
         secret_key=_env("GITMON_SECRET"),
         session_ttl=_env_int("GITMON_SESSION_TTL", 30 * 24 * 3600),

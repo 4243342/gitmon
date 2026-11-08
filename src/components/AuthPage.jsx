@@ -52,6 +52,7 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
   const [busy, setBusy] = useState('')
   const [error, setError] = useState(notice || '')
   const [showHelp, setShowHelp] = useState(false)
+  const [copied, setCopied] = useState('')
 
   const meta = META[provider]
   const cfg = providers?.[provider] || {}
@@ -65,6 +66,18 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
     setToken('')
     setError('')
     setShowHelp(false)
+  }
+
+  // 回调地址必须与平台后台登记的一字不差（Gitee 报「无效的登录回调地址」就是这个对不上）。
+  // 后端按当前浏览器地址生成，所以这里显示的就是马上会用的那一个。
+  const copyCallback = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(text)
+      setTimeout(() => setCopied(''), 1600)
+    } catch {
+      setError('复制失败，请手动选中地址复制')
+    }
   }
 
   const startOAuth = () => {
@@ -165,6 +178,16 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
             <ProviderMark provider={provider} />
             {busy === 'oauth' ? `正在跳转 ${meta.name}…` : `用 ${meta.name} 授权登录`}
           </button>
+        )}
+
+        {oauthReady && cfg.callback && (
+          <div className="auth-callback">
+            <span>{meta.name} 应用后台要填的回调地址</span>
+            <code>{cfg.callback}</code>
+            <button type="button" onClick={() => copyCallback(cfg.callback)}>
+              {copied === cfg.callback ? '已复制' : '复制'}
+            </button>
+          </div>
         )}
 
         {/* 平台没配 OAuth 应用时的兜底：令牌直接登录（Gitee 现在走这里） */}

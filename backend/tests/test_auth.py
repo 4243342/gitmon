@@ -20,9 +20,13 @@ def client(tmp_dir, monkeypatch):
     monkeypatch.setattr(settings, "session_ttl", 3600)
     monkeypatch.setattr(settings, "github_client_id", "")
     monkeypatch.setattr(settings, "github_client_secret", "")
+    # .env 里配了真实的 Gitee 应用，测试必须隔离掉，否则「未配置」用例会翻车
+    monkeypatch.setattr(settings, "gitee_client_id", "")
+    monkeypatch.setattr(settings, "gitee_client_secret", "")
     monkeypatch.setattr(settings, "web_url", "")
     settings.ensure_dirs()
     auth._secret_cache = None
+    auth._gitee_check_cache.clear()
     auth_api._quota_cache.clear()
     app = create_app(start_queue=False)
     with TestClient(app) as test_client:
@@ -126,7 +130,7 @@ def test_pat_login_rejects_bad_token(client: TestClient, monkeypatch) -> None:
 def test_oauth_callback_creates_session(client: TestClient, monkeypatch) -> None:
     monkeypatch.setattr(config.settings, "github_client_id", "cid")
     monkeypatch.setattr(config.settings, "github_client_secret", "secret")
-    monkeypatch.setattr(auth, "exchange_code", lambda code: ("gho_token", "read:user repo"))
+    monkeypatch.setattr(auth, "exchange_code", lambda code, request=None: ("gho_token", "read:user repo"))
     monkeypatch.setattr(auth, "github_profile", lambda token: {
         "login": "hubot", "name": "Hubot", "avatar_url": "", "email": "",
     })
@@ -257,8 +261,15 @@ def test_gitee_oauth_start_and_callback(client: TestClient, monkeypatch) -> None
     assert start.status_code == 302
     assert start.headers["location"].startswith(auth.GITEE_AUTHORIZE)
     assert "client_id=gid" in start.headers["location"]
+    # Gitee 要求 scope 用 %20，而且已授权用户的 scope 必须与上次一致
+    assert "scope=user_info%20projects" in start.headers["location"]
+    assert "response_type=code" in start.headers["location"]
 
-    monkeypatch.setattr(auth, "exchange_gitee_code", lambda code: ("gitee_oauth_token", "user_info projects"))
+    monkeypatch.setattr(
+        auth, "exchange_gitee_code",
+        lambda code, request=None: ("gitee_oauth_token", "user_info projects", "gitee_refresh_token"),
+    )
+    monkeypatch.setattr(auth, "_gitee_token_status", lambda token: "ok")
     monkeypatch.setattr(auth, "gitee_profile", lambda token: {
         "login": "gitee_oauth_user", "name": "G", "avatar_url": "", "email": "",
     })
@@ -277,3 +288,72 @@ def test_scan_token_isolation() -> None:
     assert token_for("deadbeef", "gitee") == "deadbeef"
     assert token_for("deadbeef", "github") is None
     assert token_for(None, "github") is None
+
+
+def _gitee_oauth_login(client: TestClient, monkeypatch, *, status="ok"):
+    """走一遍真实的 Gitee 回调链路（只把出网的两个函数打桩）。"""
+    monkeypatch.setattr(config.settings, "gitee_client_id", "gid")
+    monkeypatch.setattr(config.settings, "gitee_client_secret", "gsecret")
+    monkeypatch.setattr(
+        auth, "exchange_gitee_code",
+        lambda code, request=None: ("old_access", "user_info projects", "old_refresh"),
+    )
+    monkeypatch.setattr(auth, "gitee_profile", lambda token: {
+        "login": "gitee_oauth_user", "name": "G", "avatar_url": "", "email": "",
+    })
+    monkeypatch.setattr(auth, "_gitee_token_status", lambda token: status)
+    state = auth.sign_state("/")
+    response = client.get(f"/api/auth/gitee/callback?code=abc&state={state}", follow_redirects=False)
+    assert response.status_code == 302
+    return response
+
+
+def test_gitee_oauth_stores_refresh_token(client: TestClient, monkeypatch) -> None:
+    _gitee_oauth_login(client, monkeypatch)
+    user = auth.resolve_session(client.cookies.get(auth.SESSION_COOKIE, ""))
+    assert user["token"] == "old_access"
+    assert user["refresh_token"] == "old_refresh"  # 加密落库后能还原
+    assert client.get("/api/auth/token").json()["token"] == "old_access"
+
+
+def test_gitee_expired_token_is_refreshed_silently(client: TestClient, monkeypatch) -> None:
+    _gitee_oauth_login(client, monkeypatch)
+    monkeypatch.setattr(auth, "_gitee_token_status", lambda token: "expired")
+    monkeypatch.setattr(auth, "refresh_gitee_token", lambda refresh: ("new_access", "new_refresh"))
+    # /me 会顺手把令牌换掉，前端仍然认为是登录态
+    me = client.get("/api/auth/me").json()
+    assert me["authenticated"] is True
+    assert me["login"] == "gitee_oauth_user"
+    assert client.get("/api/auth/token").json()["token"] == "new_access"
+    user = auth.resolve_session(client.cookies.get(auth.SESSION_COOKIE, ""))
+    assert user["token"] == "new_access"
+    assert user["refresh_token"] == "new_refresh"
+
+
+def test_gitee_expired_without_refresh_ends_session(client: TestClient, monkeypatch) -> None:
+    _gitee_oauth_login(client, monkeypatch)
+    monkeypatch.setattr(auth, "_gitee_token_status", lambda token: "expired")
+
+    def no_refresh(refresh):
+        raise auth.AuthError("Gitee 授权已过期，请重新授权一次")
+
+    monkeypatch.setattr(auth, "refresh_gitee_token", no_refresh)
+    me = client.get("/api/auth/me").json()
+    assert me["authenticated"] is False
+    assert "重新授权" in me["notice"]
+    assert me["noticeProvider"] == "gitee"
+    assert client.get("/api/auth/token").status_code == 401
+
+
+def test_gitee_logout_never_sends_token_to_github(client: TestClient, monkeypatch) -> None:
+    def forbidden_client():
+        pytest.fail("Gitee 退出时不应该向 GitHub 发任何请求")
+
+    monkeypatch.setattr(auth, "_client", forbidden_client)
+    sid = "test-sid"
+    user = {
+        "id": "u1", "provider": "gitee", "login": "gitee_user", "source": "oauth",
+        "token": "gitee_secret_token", "refresh_token": "r",
+    }
+    auth.logout(user, sid)
+    assert auth.resolve_session(sid) is None

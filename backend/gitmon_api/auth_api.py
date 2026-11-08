@@ -61,13 +61,13 @@ class TokenLogin(BaseModel):
 # ---------------------------------------------------------------- 元信息
 
 @router.get("/providers", summary="登录方式可用性")
-def providers() -> dict[str, Any]:
+def providers(request: Request) -> dict[str, Any]:
     return {
         "local": auth.local_login_available(),
         "github": {
             "oauth": auth.oauth_enabled(),
             "loginUrl": "/api/auth/github/start",
-            "callback": auth.callback_url(),
+            "callback": auth.callback_url(request),
             "scopes": auth.DEFAULT_SCOPES,
             "console": "https://github.com/settings/developers",
             "tokenUrl": "https://github.com/settings/tokens/new?scopes=repo,read:user&description=GitMon",
@@ -76,7 +76,7 @@ def providers() -> dict[str, Any]:
         "gitee": {
             "oauth": auth.gitee_oauth_enabled(),
             "loginUrl": "/api/auth/gitee/start",
-            "callback": auth.gitee_callback_url(),
+            "callback": auth.gitee_callback_url(request),
             "scopes": auth.GITEE_SCOPES,
             "console": "https://gitee.com/oauth/applications",
             "tokenUrl": "https://gitee.com/profile/personal_access_tokens",
@@ -89,6 +89,20 @@ def providers() -> dict[str, Any]:
 @router.get("/me", summary="当前登录用户")
 def me(request: Request, quota: bool = Query(default=False, description="是否顺带查一次配额")) -> JSONResponse:
     user = _current_user(request)
+    # Gitee 的 OAuth access_token 只有 1 天；会话还在但令牌已废时不能假装登录成功，
+    # 静默刷新失败就结束会话，让前端回到授权页重新点一下（Gitee 会跳过同意页）。
+    if user and user.get("provider") == "gitee" and user.get("source") == "oauth":
+        try:
+            auth.ensure_gitee_token(user)
+        except AuthError as exc:
+            auth.drop_session(_session_sid(request))
+            _quota_cache.pop(user.get("id", ""), None)
+            payload = auth.public_profile(None)
+            payload["notice"] = exc.message or "Gitee 授权已过期，请重新登录一次"
+            payload["noticeProvider"] = "gitee"
+            response = JSONResponse(payload, headers={"Cache-Control": "no-store"})
+            response.delete_cookie(auth.SESSION_COOKIE, path=COOKIE_PATH)
+            return response
     quota_info: dict[str, Any] = {}
     if user and quota and user.get("token") and user.get("provider", "github") == "github":
         cached = _quota_cache.get(user["id"])
@@ -107,9 +121,13 @@ def token(request: Request) -> JSONResponse:
     user = _current_user(request)
     if not user:
         raise AuthError("未登录", hint="先完成 GitHub 或 Gitee 授权")
+    token_value = user.get("token", "")
+    if user.get("provider") == "gitee" and user.get("source") == "oauth":
+        # 刷新成功后库里的令牌已换，下发新的那个，前端才会用到有效的令牌
+        token_value = auth.ensure_gitee_token(user)
     return JSONResponse(
         {
-            "token": user.get("token", ""),
+            "token": token_value,
             "login": user.get("login", ""),
             "provider": user.get("provider", "github"),
         },
@@ -120,9 +138,9 @@ def token(request: Request) -> JSONResponse:
 # ---------------------------------------------------------------- OAuth
 
 @router.get("/github/start", summary="跳转 GitHub 授权页")
-def github_start(next: str = Query(default="/", alias="next")) -> RedirectResponse:
+def github_start(request: Request, next: str = Query(default="/", alias="next")) -> RedirectResponse:
     state = auth.sign_state(_safe_next(next))
-    response = RedirectResponse(auth.authorize_url(state), status_code=302)
+    response = RedirectResponse(auth.authorize_url(state, request), status_code=302)
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -143,7 +161,7 @@ def github_callback(
         next_path = auth.verify_state(state)
         if not code:
             raise AuthError("缺少授权码")
-        token_value, scopes = auth.exchange_code(code)
+        token_value, scopes = auth.exchange_code(code, request)
         profile = auth.github_profile(token_value)
         user = auth.upsert_user(
             provider="github",
@@ -232,9 +250,9 @@ def github_token_login(payload: TokenLogin) -> JSONResponse:
 # ---------------------------------------------------------------- Gitee
 
 @router.get("/gitee/start", summary="跳转 Gitee 授权页")
-def gitee_start(next: str = Query(default="/", alias="next")) -> RedirectResponse:
+def gitee_start(request: Request, next: str = Query(default="/", alias="next")) -> RedirectResponse:
     state = auth.sign_state(_safe_next(next))
-    response = RedirectResponse(auth.gitee_authorize_url(state), status_code=302)
+    response = RedirectResponse(auth.gitee_authorize_url(state, request), status_code=302)
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -255,7 +273,7 @@ def gitee_callback(
         next_path = auth.verify_state(state)
         if not code:
             raise AuthError("缺少授权码")
-        token_value, scopes = auth.exchange_gitee_code(code)
+        token_value, scopes, refresh_token = auth.exchange_gitee_code(code, request)
         profile = auth.gitee_profile(token_value)
         login = str(profile.get("login") or "")
         if not login:
@@ -267,6 +285,7 @@ def gitee_callback(
             avatar=str(profile.get("avatar_url") or ""),
             email=str(profile.get("email") or ""),
             token=token_value,
+            refresh_token=refresh_token,
             scopes=scopes,
             source="oauth",
         )
