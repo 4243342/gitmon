@@ -17,6 +17,9 @@ import {
   selectNose,
   selectTail,
 } from 'monstrjs/dist/sprites/index.js'
+import { MAX_STAGE } from './evolution.js'
+import { getCustomSprite } from './customSprite.js'
+import { speciesArtUrl } from './speciesArt.js'
 
 export const GRID = 64
 
@@ -71,15 +74,16 @@ function composeGrid({ spriteSeed, colors, body, stage = 1 }) {
   const arms = selectArms(type, rng)
   const legs = selectLegs(type, rng)
 
-  // 进化配饰：阶段 1 少量点缀，阶段 3 基本拉满
-  const stageIdx = clamp(Math.round(stage) || 1, 1, 3)
-  const accChance = [0.22, 0.5, 0.9][stageIdx - 1]
+  // 进化配饰：阶段 1 少量点缀，9 阶（人形态·神话）基本拉满
+  const stageIdx = clamp(Math.round(stage) || 1, 1, MAX_STAGE)
+  const t = (stageIdx - 1) / (MAX_STAGE - 1)
+  const accChance = 0.2 + t * 0.7
   const accessories = config.accessories
     .filter(() => rng.next() < accChance)
     .map((name) => ACCESSORY_PARTS.find((a) => a.name === name && a.type !== 'pattern'))
     .filter(Boolean)
   const patterns = []
-  if (stageIdx >= 2 && rng.next() < 0.25 + 0.2 * stageIdx) {
+  if (stageIdx >= 2 && rng.next() < 0.2 + t * 0.5) {
     const pool = ACCESSORY_PARTS.filter((a) => a.type === 'pattern')
     if (pool.length) patterns.push(rng.pick(pool))
   }
@@ -138,6 +142,49 @@ export function drawSprite(canvas, { spriteSeed, colors, body, stage }) {
 }
 
 // ---------- 卡包 / 卡面美术（供 pack-opener-js 使用） ----------
+// 形象来源必须和 PixelSprite / 分享卡完全一致：
+//   自定义上传 > 种族立绘素材 > seed 生成的像素精灵
+// 以前开包卡面写死用 seed 像素精灵，卡片却已换成新立绘，
+// 抽出来的一瞬和揭晓后的卡片像两只不同角色（还像旧版形象）。
+const loadImage = (url) => new Promise((resolve, reject) => {
+  const img = new Image()
+  img.onload = () => resolve(img)
+  img.onerror = reject
+  img.src = url
+})
+
+// 返回可直接 drawImage 的图像 + 是否需要关闭平滑（像素精灵要保持锯齿）
+export async function petArtwork(pet) {
+  const custom = getCustomSprite(pet)
+  if (custom) {
+    try { return { image: await loadImage(custom), pixelated: false } } catch { /* 加载失败继续降级 */ }
+  }
+  const art = speciesArtUrl(pet)
+  if (art) {
+    try { return { image: await loadImage(art), pixelated: false } } catch { /* 加载失败继续降级 */ }
+  }
+  const c = document.createElement('canvas')
+  c.width = 320; c.height = 320
+  drawSprite(c, {
+    spriteSeed: pet.spriteSeed,
+    colors: [pet.element.color, pet.elementSecondary?.color || pet.element.color],
+    body: pet.species.body,
+    stage: pet.evolutionStage,
+  })
+  return { image: c, pixelated: true }
+}
+
+// 等比铺进方框：立绘素材尺寸不一，不能像以前那样硬拉成 320×320
+function drawContained(ctx, image, x, y, box) {
+  const w = image.naturalWidth || image.width
+  const h = image.naturalHeight || image.height
+  if (!w || !h) return
+  const s = Math.min(box / w, box / h)
+  const dw = w * s
+  const dh = h * s
+  ctx.drawImage(image, x + (box - dw) / 2, y + (box - dh) / 2, dw, dh)
+}
+
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath()
   ctx.moveTo(x + r, y)
@@ -207,7 +254,10 @@ export function packArtwork(pet) {
   return c.toDataURL('image/png')
 }
 
-export function cardArtwork(pet) {
+// 现在是异步的：立绘可能是一张还没解码的 PNG，必须等它就绪再交给开包库，
+// 否则翻面那一帧会出现空白 / 上一张卡的形象。
+export async function cardArtwork(pet) {
+  const { image, pixelated } = await petArtwork(pet)
   const W = 600, H = 840
   const c = document.createElement('canvas')
   c.width = W; c.height = H
@@ -226,16 +276,16 @@ export function cardArtwork(pet) {
   roundRect(ctx, 10, 10, W - 20, H - 20, 34); ctx.stroke()
   ctx.shadowBlur = 0
 
-  const spriteCanvas = document.createElement('canvas')
-  spriteCanvas.width = 320; spriteCanvas.height = 320
-  drawSprite(spriteCanvas, {
-    spriteSeed: pet.spriteSeed,
-    colors: [pet.element.color, pet.elementSecondary?.color || pet.element.color],
-    body: pet.species.body,
-    stage: pet.evolutionStage,
-  })
-  ctx.imageSmoothingEnabled = false
-  ctx.drawImage(spriteCanvas, (W - 320) / 2, 120, 320, 320)
+  // 与正式卡片同一只角色：卡面立绘和 PetCard 的 sprite-frame 用同一个源
+  const ART_BOX = 380
+  const glow = ctx.createRadialGradient(W / 2, 280, 40, W / 2, 280, 230)
+  glow.addColorStop(0, pet.quality.glow)
+  glow.addColorStop(1, 'rgba(0,0,0,0)')
+  ctx.fillStyle = glow
+  ctx.fillRect((W - ART_BOX) / 2 - 20, 76, ART_BOX + 40, ART_BOX + 40)
+
+  ctx.imageSmoothingEnabled = !pixelated
+  drawContained(ctx, image, (W - ART_BOX) / 2, 96, ART_BOX)
 
   ctx.fillStyle = '#eef2fa'
   ctx.font = 'bold 56px -apple-system, "PingFang SC", sans-serif'

@@ -41,7 +41,9 @@ export default function PackOpening({ pet, onReveal, muted }) {
     ;(async () => {
       try {
         const pack = packArtwork(pet)
-        const card = cardArtwork(pet)
+        // 等立绘解码完成再交给开包库：卡面必须和揭晓页的正式卡片是同一只角色
+        const card = await cardArtwork(pet)
+        if (cancelled) return
         // 这套选项要留着：改静音时 setOptions 是整体替换，不能只传 sound 那一小块
         const options = {
           variant: 'slice',
@@ -166,11 +168,12 @@ export default function PackOpening({ pet, onReveal, muted }) {
       )}
 
       <p className="pack-hint">
-        拖动划过封口撕开卡包，或
-        <span className="hint-arrow" />
+        {ready || failed
+          ? <>拖动划过封口撕开卡包，或<span className="hint-arrow" /></>
+          : '正在准备这只精灵的卡面立绘…'}
       </p>
-      <button className="primary-btn" onClick={autoOpen} disabled={!ready && !failed}>
-        一键开包
+      <button className="primary-btn" onClick={failed ? fallbackOpen : autoOpen} disabled={!ready && !failed}>
+        {failed ? '直接开包' : ready ? '一键开包' : '立绘准备中…'}
       </button>
 
       {burst && <RevealBurst color={pet.quality.color} intensity={pet.quality.key === 'SSR' ? 1.6 : pet.quality.key === 'SR' ? 1.2 : 0.8} />}
