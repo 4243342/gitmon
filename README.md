@@ -175,7 +175,7 @@ monstrjs 手绘部件拼装精灵（种子确定性）· 自研战斗引擎（�
 |---|---|
 | `src/auth.js` | 登录授权：GitHub / Gitee OAuth → 会话、令牌落地、离线降级 |
 | `src/components/AuthPage.jsx` | 首屏登录授权页（额度说明、双平台切换、游客入口） |
-| `src/engine.js` | 判定引擎：仓库地址 → 品种 / 品质 / 等级 / 六维 / 技能（纯函数，可复现） |
+| `src/engine.js` | 判定引擎：仓库地址 → 品种 / 品质 / 等级 / 六维（种族值 + 个体值 IV + 等级成长） / 战力 CP / 技能（纯函数，可复现） |
 | `src/battle.js` | 战斗引擎：属性克制 / 伤害公式 / 状态 / 先制 / AI（纯函数 + 显式种子，可复现） |
 | `src/rivals.js` | 内置 36 个知名仓库的离线快照 → 对手精灵；在线扫描 / 同类型 / 随机三种挑选 |
 | `src/vfx.js` | 攻击特效层：按属性×威力选 [pixelfx](https://github.com/patch-gg/pixelfx) 特效并贴到精灵身上（懒加载分包） |

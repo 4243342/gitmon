@@ -2,7 +2,7 @@
 //   node scripts/battle-selftest.mjs
 // 覆盖：属性表合法性、伤害不变量、战斗必然收敛、同种子可复现、AI 合法性
 
-import { ELEMENTS } from '../src/engine.js'
+import { ELEMENTS, statCapAtLevel } from '../src/engine.js'
 import { rivalPets, pickRivalTeam } from '../src/rivals.js'
 import {
   TYPE_CHART,
@@ -54,7 +54,8 @@ const pets = rivalPets()
 console.log(`内置对手 ${pets.length} 只：${pets.map((p) => `${p.repo}(Lv${p.level})`).slice(0, 6).join(' ')}…`)
 for (const pet of pets) {
   const unit = toCombatant(pet)
-  check(`${pet.repo} HP 合理`, unit.maxHp > 60 && unit.maxHp < 400, String(unit.maxHp))
+  // HP 随等级增长：只需落在「该等级理论最大值」之内（旧断言的 <400 是固定等级时代的残留）
+  check(`${pet.repo} HP 合理`, unit.maxHp > 60 && unit.maxHp <= statCapAtLevel(pet.level, true), String(unit.maxHp))
   check(`${pet.repo} 四技能`, unit.moves.length === 4)
   check(`${pet.repo} 技能已解锁标记`, unit.moves.filter((m) => m.unlocked).length >= 2)
 }
@@ -64,6 +65,8 @@ const mockPet = (key) => ({
   repo: key, fullName: `mock/${key}`, platform: 'mock', level: 500, qualityKey: 'SR', spriteSeed: 7,
   element: ELEMENTS[key], elementSecondary: null,
   species: { name: '元素型', body: 'slime' }, evolutionStage: 2,
+  // 与判定引擎同款的 HP 成长（Lv.500、种族值≈80）→ 约 1385，保证伤害不变量口径一致
+  maxHp: Math.floor((2 * 80 + 15) * 500 / 100) + 500 + 10,
   stats: [
     { name: '攻击', value: 80 }, { name: '防御', value: 80 }, { name: '速度', value: 80 },
     { name: '特攻', value: 80 }, { name: '特防', value: 80 }, { name: 'HP', value: 80 },

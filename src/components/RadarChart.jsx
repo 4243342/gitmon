@@ -19,7 +19,7 @@ export default function RadarChart({ stats, size = 220, color = '#4a9eff', compa
         <polygon
           key={f}
           points={stats.map((_, i) => {
-            const [x, y] = point(i, f * 100)
+            const [x, y] = point(i, f * max)
             return `${x},${y}`
           }).join(' ')}
           fill="none"
@@ -33,7 +33,7 @@ export default function RadarChart({ stats, size = 220, color = '#4a9eff', compa
       })}
       <polygon points={valuePts} fill={color} fillOpacity="0.35" stroke={color} strokeWidth="2" />
       {stats.map((s, i) => {
-        const [x, y] = point(i, (labelR / R) * 100)
+        const [x, y] = point(i, (labelR / R) * max)
         // 左右两侧的标签向外锚定，避免超出画布
         const cos = Math.cos(angle(i))
         const anchor = compact ? (cos > 0.3 ? 'start' : cos < -0.3 ? 'end' : 'middle') : 'middle'
