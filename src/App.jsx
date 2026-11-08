@@ -3,7 +3,7 @@ import { parseRepoInput, scanOwnerBox, scanRepo } from './scan.js'
 import { expForLevel, judge } from './engine.js'
 import {
   cachedProfile, clearGuest, consumeAuthQuery, fetchMe, fetchProviders,
-  guestSkipped, logout, quotaText, skipLogin,
+  guestSkipped, logout, PROVIDER_LABEL, quotaText, skipLogin,
 } from './auth.js'
 import { loadCollection, upsertPet } from './storage.js'
 import { exportShareCard } from './share.js'
@@ -105,6 +105,8 @@ export default function App() {
   }))
   const [providers, setProviders] = useState(null)
   const [authNotice, setAuthNotice] = useState('')
+  // 已经自动开过箱的账号（provider/login），同一账号不重复扫
+  const autoScanned = useRef('')
 
   useSfxBus()
   const typed = useTypewriter(view === 'scan' ? (mode === 'owner' ? DIALOGS_OWNER : DIALOGS) : [])
@@ -229,14 +231,17 @@ export default function App() {
   }
 
   // 账号 → 该账号每个项目一个卡包（品质各自算）
-  const runOwner = async (info) => {
+  // self=true：读"我自己"的项目清单（走 /user/repos，能带出私有仓库）
+  const runOwner = async (info, opts = {}) => {
     setMode('owner')
     setView('scan')
     setStep(0)
+    setProgress(null)
 
     try {
       setStep(1)
       const res = await scanOwnerBox(info, {
+        self: opts.self,
         onProgress: (p) => { setProgress(p); setStep(2) },
       })
       if (!res.snaps.length) {
@@ -265,6 +270,30 @@ export default function App() {
       fail(e)
     }
   }
+
+  // 登录用户：不用输仓库，直接把自己名下所有项目开成一整箱
+  const runAccountBox = () => {
+    const p = auth.profile
+    if (!p?.authenticated) return
+    const provider = p.provider || 'github'
+    autoScanned.current = `${provider}/${p.login}`
+    setError('')
+    setBox(null)
+    setOpened(new Set())
+    setRevealedAll(false)
+    runOwner({ kind: 'owner', platform: provider, owner: p.login }, { self: true })
+  }
+
+  // 登录/切账号时自动开箱一次；同一账号不重复扫，避免每次回首页都烧配额
+  useEffect(() => {
+    if (auth.loading) return
+    const p = auth.profile
+    if (!p?.authenticated) { autoScanned.current = ''; return }
+    const key = `${p.provider || 'github'}/${p.login}`
+    if (autoScanned.current === key) return
+    autoScanned.current = key
+    runOwner({ kind: 'owner', platform: p.provider || 'github', owner: p.login }, { self: true })
+  }, [auth.loading, auth.profile?.id, auth.profile?.provider, auth.profile?.login])
 
   const afterReveal = () => {
     setView('reveal')
@@ -306,6 +335,13 @@ export default function App() {
     setProgress(null)
   }
 
+  // 登录用户从卡箱退回账号主页：保留这箱，方便再点开
+  const backToAccount = () => {
+    sfx.back()
+    setView('home')
+    setPet(null)
+  }
+
   return (
     <div className="app">
       <header className="topbar">
@@ -318,10 +354,16 @@ export default function App() {
             {muted ? '♪ OFF' : '♪ ON'}
           </button>
           {auth.profile?.authenticated ? (
-            <div className="user-chip" title={`${auth.profile.login} · 配额 ${quotaText(auth.profile)}`}>
+            <div
+              className="user-chip"
+              title={`${PROVIDER_LABEL[auth.profile.provider] || 'GitHub'} @${auth.profile.login} · 配额 ${quotaText(auth.profile)}`}
+            >
               {auth.profile.avatar
                 ? <img src={auth.profile.avatar} alt="" />
                 : <span className="user-dot" />}
+              <span className={`user-src${auth.profile.provider === 'gitee' ? ' is-gitee' : ''}`}>
+                {PROVIDER_LABEL[auth.profile.provider] || 'GitHub'}
+              </span>
               <span className="user-name">@{auth.profile.login}</span>
               <span className="user-quota">{quotaText(auth.profile)}</span>
               <button className="user-out" onClick={onLogout}>退出</button>
@@ -351,6 +393,45 @@ export default function App() {
 
       {view === 'home' && (
         <main className="home">
+          {auth.profile?.authenticated ? (
+            <section className="account-hero">
+              <div className="account-id">
+                {auth.profile.avatar
+                  ? <img className="account-avatar" src={auth.profile.avatar} alt="" />
+                  : <span className="account-avatar account-avatar-ph" />}
+                <div className="account-meta">
+                  <span className="account-badge">
+                    {PROVIDER_LABEL[auth.profile.provider] || 'GitHub'} · 已登录
+                  </span>
+                  <h2>{auth.profile.name || auth.profile.login}</h2>
+                  <p>
+                    @{auth.profile.login} ·{' '}
+                    {box
+                      ? <>名下 <b>{box.pets.length}</b> 个项目已生成卡包</>
+                      : '正在读取你名下的项目…'}
+                  </p>
+                </div>
+              </div>
+              <div className="account-actions">
+                <button className="primary-btn" onClick={runAccountBox}>
+                  {box ? '重新读取全部项目' : '读取我的项目'}
+                </button>
+                {box && (
+                  <button className="ghost-btn" onClick={() => { sfx.swoosh(); setView('box') }}>
+                    打开我的卡箱（{box.pets.length} 包）
+                  </button>
+                )}
+                <button className="ghost-btn" onClick={() => setView('battle')} disabled={collection.length === 0}>
+                  进入竞技场
+                </button>
+              </div>
+              {error && <p className="error">! {error}</p>}
+              <p className="account-note">
+                登录账号不用再输入仓库地址 —— 你名下<b>每个项目自动生成一个卡包</b>，
+                私有仓库也会一起读出来（令牌只读，不写代码）。
+              </p>
+            </section>
+          ) : (
           <section className="hero">
             <DecoSprite seed="deco-thunder-01" colors={['#f5c542', '#ffdf7e']} body="biped" size={96} className="d1" />
             <DecoSprite seed="deco-water-02" colors={['#4a9eff', '#a8d8ff']} body="winged" size={72} className="d2" />
@@ -371,22 +452,16 @@ export default function App() {
               <button onClick={run}>孵化</button>
             </div>
             {error && <p className="error">! {error}</p>}
-            {/限流|403|配额/.test(error) && !auth.profile?.authenticated && (
+            {/限流|403|配额/.test(error) && (
               <p className="quota-note">
                 匿名额度很容易打满
-                <button onClick={() => setView('auth')}>去登录 GitHub →</button>
+                <button onClick={() => setView('auth')}>去登录 GitHub / Gitee →</button>
               </p>
             )}
-            {auth.profile?.authenticated ? (
-              <p className="quota-note ok">
-                已登录 @{auth.profile.login} · 配额 {quotaText(auth.profile)}
-              </p>
-            ) : (
-              <p className="quota-note">
-                未登录：匿名每小时 60 次，整箱孵化容易打满
-                <button onClick={() => setView('auth')}>登录 GitHub →</button>
-              </p>
-            )}
+            <p className="quota-note">
+              游客模式：匿名每小时 60 次，整箱孵化容易打满
+              <button onClick={() => setView('auth')}>登录后自动读我的仓库 →</button>
+            </p>
             <div className="examples">
               <span>▶ 快试试：</span>
               {[
@@ -404,6 +479,7 @@ export default function App() {
               <b>项目 = 一包</b>　·　<b>账号 = 一整箱</b>（该账号每个项目各一包，品质各算各的）
             </p>
           </section>
+          )}
 
           <Collection list={collection} onPick={(p) => { setPet(p); setView('detail') }} />
 
@@ -471,7 +547,8 @@ export default function App() {
           onOpen={(p) => { setPet(p); setView('pack') }}
           onOpenAll={() => setRevealedAll(true)}
           onSaveAll={saveAll}
-          onExit={reset}
+          onExit={auth.profile?.authenticated ? backToAccount : reset}
+          exitLabel={auth.profile?.authenticated ? '回到我的主页' : '换个账号 / 仓库'}
         />
       )}
 

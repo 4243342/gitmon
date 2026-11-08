@@ -1194,3 +1194,112 @@ body::after {
 .auth-local-text em { font-size: 10.5px; font-style: normal; color: #9fb4ce; line-height: 1.5; }
 .auth-local-go { color: #6ee7a8; font-size: 15px; }
 .auth-github.is-secondary { padding: 10px 16px; font-size: 12.5px; }
+
+/* ---------- 双平台切换 ---------- */
+.auth-head-note { font-size: 11px; color: #5d6b86; letter-spacing: .5px; }
+.auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 4px;
+  margin-bottom: 16px;
+  border: 1px solid #2a3550;
+  border-radius: 13px;
+  background: rgba(10, 18, 32, .72);
+}
+.auth-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: none;
+  color: var(--dim);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: .4px;
+  cursor: pointer;
+  transition: color .16s, background .16s, border-color .16s;
+}
+.auth-tab:hover { color: #dfe8f7; }
+.auth-tab.is-on {
+  color: #0b101c;
+  background: linear-gradient(160deg, #ffffff, #dfe6f2);
+  border-color: rgba(255, 255, 255, .5);
+}
+.auth-tab .gh-mark svg, .auth-tab .gt-mark { width: 15px; height: 15px; font-size: 10.5px; }
+
+.gt-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: linear-gradient(150deg, #e63946, #b31d28);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  font-family: inherit;
+}
+.auth-github.is-gitee {
+  background: linear-gradient(160deg, #e63946, #b31d28);
+  color: #fff;
+}
+.auth-github.is-gitee:hover:not(:disabled) { box-shadow: 0 14px 26px -18px #e63946; }
+
+/* ---------- 登录后的账号首页 ---------- */
+.account-hero {
+  position: relative;
+  display: grid;
+  gap: 14px;
+  margin-bottom: 22px;
+  padding: 24px 26px;
+  border: 1px solid #2a3550;
+  border-radius: 18px;
+  background:
+    radial-gradient(520px 200px at 88% -20%, rgba(255, 203, 5, .14), transparent 70%),
+    linear-gradient(160deg, rgba(28, 38, 60, .94), rgba(14, 20, 33, .96));
+  box-shadow: 0 26px 60px -46px #000;
+}
+.account-id { display: flex; align-items: center; gap: 14px; }
+.account-avatar { width: 52px; height: 52px; border-radius: 50%; border: 1px solid #3a4a6b; display: block; }
+.account-avatar-ph { background: linear-gradient(135deg, #35c07d, #8cf0bf); }
+.account-meta { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.account-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 1px 8px;
+  border: 1px solid rgba(255, 203, 5, .4);
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  color: var(--accent);
+}
+.account-meta h2 { margin: 0; font-size: 20px; letter-spacing: .4px; }
+.account-meta p { margin: 0; font-size: 12px; color: var(--dim); }
+.account-meta p b { color: #ffe9a8; font-weight: 600; }
+.account-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.account-note { margin: 0; font-size: 11.5px; line-height: 1.8; color: var(--dim); }
+.account-note b { color: #8fb7ff; font-weight: 500; }
+
+@media (max-width: 640px) {
+  .account-hero { padding: 18px 16px; }
+  .account-actions > button { flex: 1 1 auto; }
+}
+
+.user-src {
+  padding: 1px 6px;
+  border: 1px solid #2a3550;
+  border-radius: 999px;
+  font-size: 9.5px;
+  letter-spacing: .6px;
+  color: #9fb4ce;
+}
+.user-src.is-gitee { border-color: rgba(230, 57, 70, .5); color: #ff9aa2; }

@@ -103,6 +103,12 @@ async function safeFetch(url, init) {
 }
 
 // ---------- GitHub ----------
+function ghRateMessage() {
+  return ghToken()
+    ? 'GitHub 配额用尽（5000 次/小时也会打满），稍后再试'
+    : 'GitHub 匿名配额用尽（60 次/小时），登录后是 5000 次/小时'
+}
+
 function ghHeaders() {
   const token = (() => {
     try { return localStorage.getItem('gitmon:gh_token') || '' } catch { return '' }
@@ -118,7 +124,7 @@ async function scanGitHub(info, prefetched) {
       headers: ghHeaders(),
     })
     if (repoRes.status === 404) throw new Error('仓库不存在或无权限访问')
-    if (repoRes.status === 403) throw new Error('GitHub 匿名配额用尽（60 次/小时），登录后是 5000 次/小时')
+    if (repoRes.status === 403) throw new Error(ghRateMessage())
     if (!repoRes.ok) throw new Error(`GitHub API 错误 ${repoRes.status}`)
     repo = await repoRes.json()
   }
@@ -134,7 +140,7 @@ async function scanGitHub(info, prefetched) {
 
   // 限流时子请求会 403：此时文件列表/语言全为空，品质会被判成 N —— 与其静默给出错判，不如直接报错
   if ([langsRes, rootRes, relRes, contribRes, commitRes].some((r) => r && (r.status === 403 || r.status === 429))) {
-    throw new Error('GitHub 匿名配额用尽（60 次/小时），登录后是 5000 次/小时')
+    throw new Error(ghRateMessage())
   }
 
   const langsRaw = langsRes && langsRes.ok ? await langsRes.json() : {}
@@ -199,18 +205,43 @@ async function scanGitHub(info, prefetched) {
 }
 
 // ---------- Gitee ----------
+const GITEE_BASE = 'https://gitee.com/api/v5'
+
+// Gitee 令牌走 query 参数（官方 v5 支持 access_token，也支持 Authorization: token）
+function giteeToken() {
+  try { return localStorage.getItem('gitmon:gitee_token') || '' } catch { return '' }
+}
+
+function giteeUrl(path, params = {}) {
+  const q = new URLSearchParams(params)
+  const t = giteeToken()
+  if (t) q.set('access_token', t)
+  const qs = q.toString()
+  return `${GITEE_BASE}${path}${qs ? `?${qs}` : ''}`
+}
+
+function giteeError(status) {
+  if (status === 403 || status === 429) {
+    return giteeToken()
+      ? 'Gitee 接口配额用尽（令牌也算额度），稍后再试'
+      : 'Gitee 匿名接口配额用尽（按 IP 算，很快打满），用 Gitee 令牌登录后额度高得多'
+  }
+  if (status === 404) return 'Gitee 仓库或账号不存在'
+  return `Gitee API 错误 ${status}`
+}
+
 async function scanGitee(info, prefetched) {
-  const base = 'https://gitee.com/api/v5'
+  const base = `${GITEE_BASE}/repos/${info.owner}/${info.repo}`
   let repo = prefetched
   if (!repo) {
-    const repoRes = await fetch(`${base}/repos/${info.owner}/${info.repo}`)
-    if (!repoRes.ok) throw new Error(`Gitee API 错误 ${repoRes.status}（匿名配额较低，可稍后重试）`)
+    const repoRes = await fetch(giteeUrl(`/repos/${info.owner}/${info.repo}`))
+    if (!repoRes.ok) throw new Error(giteeError(repoRes.status))
     repo = await repoRes.json()
   }
 
   const [rootRes, contribRes] = await Promise.all([
-    fetch(`${base}/repos/${info.owner}/${info.repo}/contents/`).catch(() => null),
-    fetch(`${base}/repos/${info.owner}/${info.repo}/contributors?per_page=1`).catch(() => null),
+    fetch(giteeUrl(`/repos/${info.owner}/${info.repo}/contents/`)).catch(() => null),
+    fetch(giteeUrl(`/repos/${info.owner}/${info.repo}/contributors`, { per_page: 1 })).catch(() => null),
   ])
 
   const rootNames = rootRes && rootRes.ok ? (await rootRes.json()).map((f) => f.name) : []
@@ -277,7 +308,7 @@ export async function scanRepo(input, opts = {}) {
 // 只有"单个项目"才是一个卡包；账号给的是"一整箱"，每包品质各自算
 // ============================================================
 
-function token() {
+function ghToken() {
   try { return localStorage.getItem('gitmon:gh_token') || '' } catch { return '' }
 }
 
@@ -306,14 +337,19 @@ function normalizeRepo(r, platform, owner) {
   }
 }
 
-async function listGitHubOwner(owner) {
+async function listGitHubOwner(owner, { self = false } = {}) {
   const base = 'https://api.github.com'
+  const userUrl = self ? `${base}/user` : `${base}/users/${owner}`
+  const reposUrl = self
+    ? `${base}/user/repos?per_page=100&sort=pushed&affiliation=owner`
+    : `${base}/users/${owner}/repos?per_page=100&sort=pushed&type=owner`
   const [userRes, reposRes] = await Promise.all([
-    fetch(`${base}/users/${owner}`, { headers: ghHeaders() }),
-    fetch(`${base}/users/${owner}/repos?per_page=100&sort=pushed&type=owner`, { headers: ghHeaders() }),
+    fetch(userUrl, { headers: ghHeaders() }),
+    fetch(reposUrl, { headers: ghHeaders() }),
   ])
+  if (userRes.status === 401) throw new Error('GitHub 令牌失效了，重新登录一次')
   if (userRes.status === 404) throw new Error(`GitHub 账号 @${owner} 不存在`)
-  if (userRes.status === 403) throw new Error('GitHub 匿名配额用尽（60 次/小时），登录后是 5000 次/小时')
+  if (userRes.status === 403) throw new Error('GitHub 配额用尽，稍后重试或重新登录')
   if (!userRes.ok) throw new Error(`GitHub API 错误 ${userRes.status}`)
   const user = await userRes.json()
   const repos = reposRes.ok ? await reposRes.json() : []
@@ -329,14 +365,15 @@ async function listGitHubOwner(owner) {
   }
 }
 
-async function listGiteeOwner(owner) {
-  const base = 'https://gitee.com/api/v5'
-  const [userRes, reposRes] = await Promise.all([
-    fetch(`${base}/users/${owner}`),
-    fetch(`${base}/users/${owner}/repos?per_page=100&sort=updated&type=owner`),
-  ])
+async function listGiteeOwner(owner, { self = false } = {}) {
+  const userUrl = self ? giteeUrl('/user') : giteeUrl(`/users/${owner}`)
+  const reposUrl = self
+    ? giteeUrl('/user/repos', { per_page: 100, sort: 'updated', affiliation: 'owner' })
+    : giteeUrl(`/users/${owner}/repos`, { per_page: 100, sort: 'updated', type: 'owner' })
+  const [userRes, reposRes] = await Promise.all([fetch(userUrl), fetch(reposUrl)])
+  if (userRes.status === 401) throw new Error('Gitee 令牌失效了，重新登录一次')
   if (userRes.status === 404) throw new Error(`Gitee 账号 @${owner} 不存在`)
-  if (!userRes.ok) throw new Error(`Gitee API 错误 ${userRes.status}（匿名配额较低，可稍后重试）`)
+  if (!userRes.ok) throw new Error(giteeError(userRes.status))
   const user = await userRes.json()
   const repos = reposRes.ok ? await reposRes.json() : []
   return {
@@ -352,22 +389,25 @@ async function listGiteeOwner(owner) {
 }
 
 // 项目清单：账号 → 该账号拥有的项目（缓存 6h，与仓库快照同策略）
-export async function loadOwner(input) {
+// self=true 表示"读我自己"：走 /user/repos，能带出私有仓库
+export async function loadOwner(input, { self = false } = {}) {
   const info = typeof input === 'string' ? parseRepoInput(input) : input
   if (!info || info.kind !== 'owner') throw new Error('请输入账号地址，例如 github.com/4243342')
 
-  const key = `gitmon:owner:${info.platform}/${info.owner}`
+  const key = `gitmon:owner:${info.platform}/${info.owner}${self ? ':self' : ''}`
   const cached = readCache(key)
   if (cached) return { ...cached, cached: true }
 
-  const owner = info.platform === 'gitee' ? await listGiteeOwner(info.owner) : await listGitHubOwner(info.owner)
+  const owner = info.platform === 'gitee'
+    ? await listGiteeOwner(info.owner, { self })
+    : await listGitHubOwner(info.owner, { self })
   writeCache(key, owner)
   return { ...owner, cached: false }
 }
 
 // 整箱孵化：项目清单 → 逐个项目判定 → 每项目一个卡包
-export async function scanOwnerBox(input, { limit, onProgress } = {}) {
-  const owner = await loadOwner(input)
+export async function scanOwnerBox(input, { limit, onProgress, self = false } = {}) {
+  const owner = await loadOwner(input, { self })
   const platform = owner.platform
 
   // 排除 fork / 空仓库：那不是"他拥有的项目"
@@ -375,9 +415,9 @@ export async function scanOwnerBox(input, { limit, onProgress } = {}) {
     .filter((r) => !r.fork && !r.empty)
     .sort((a, b) => new Date(b.pushedAt || 0) - new Date(a.pushedAt || 0))
 
-  // 匿名 GitHub 60 次/小时：每项目约 5 个请求，没 Token 时只开最近 6 个
-  const hasToken = platform === 'github' && !!token()
-  const cap = limit || (platform === 'github' ? (hasToken ? 30 : 6) : 10)
+  // 每项目约 5 个请求：匿名额度只开最近几个，登录后放开
+  const hasToken = platform === 'gitee' ? !!giteeToken() : !!ghToken()
+  const cap = limit || (hasToken ? 30 : platform === 'github' ? 6 : 5)
   const targets = candidates.slice(0, cap)
 
   const snaps = []

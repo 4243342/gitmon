@@ -238,6 +238,9 @@ body {
 .sprite { image-rendering: pixelated; position: relative; z-index: 1; }
 .sprite-float { animation: floaty 3s ease-in-out infinite; }
 @keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+/* 眨眼：新精灵部件版用轻微压扁代替重绘 */
+.sprite-blink { animation: sprite-blink .14s ease-in-out; }
+@keyframes sprite-blink { 50% { transform: scaleY(.9) translateY(3px); } }
 
 .card-row { display: flex; align-items: center; gap: 9px; position: relative; z-index: 2; }
 .lv { font-weight: 800; color: var(--accent); font-size: 13.5px; }

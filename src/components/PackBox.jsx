@@ -15,6 +15,7 @@ export default function PackBox({
   onOpenAll,
   onSaveAll,
   onExit,
+  exitLabel = '换个账号 / 仓库',
 }) {
   const { owner, pets, listed, limit, truncated, skipped, rateLimited, failed, partial } = box
   const counts = pets.reduce((acc, p) => {
@@ -117,7 +118,7 @@ export default function PackBox({
           </button>
         )}
         {allSaved && <span className="box-saved">✓ 全部已收入图鉴</span>}
-        <button className="ghost-btn" onClick={onExit}>换个账号 / 仓库</button>
+        <button className="ghost-btn" onClick={onExit}>{exitLabel}</button>
       </div>
 
       <p className="box-foot">

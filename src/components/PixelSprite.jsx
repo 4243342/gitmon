@@ -36,7 +36,7 @@ export default function PixelSprite({ pet, size = 180, animate = true }) {
       ref={ref}
       width={256}
       height={256}
-      className={animate ? 'sprite sprite-float' : 'sprite'}
+      className={blink ? 'sprite sprite-blink' : animate ? 'sprite sprite-float' : 'sprite'}
       style={{ width: size, height: size }}
     />
   )
