@@ -90,12 +90,12 @@ https://gitee.com/mirrors/vue          ← Gitee 也行
 
 ## 登录授权
 
-首屏先连 GitHub，两条路等价，都是一个 GitHub token：
+首屏先连 GitHub，两种方式都是走平台授权，不收手填令牌：
 
 | 方式 | 怎么做 | 适合 |
 |---|---|---|
-| **OAuth 授权** | 后端配 `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` 后，点「用 GitHub 授权登录」 | 正式部署 |
-| **个人访问令牌** | 自己去 [GitHub tokens](https://github.com/settings/tokens/new?scopes=repo,read:user) 生成 `ghp_xxx`，粘到授权页 | 本地开发 / 不想建应用 |
+| **OAuth 授权** | 后端配 `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` 后，点「用 GitHub 授权登录」 | 正式部署 / 任何设备 |
+| **本机登录** | 本机已 `gh auth login` 并且后端跑在 `127.0.0.1` 时，点「用本机已登录的 @xxx 直接进入」 | 本地开发，不用建 OAuth App |
 
 配 OAuth App 只需两分钟（<https://github.com/settings/developers> → New OAuth App）：
 
@@ -113,18 +113,18 @@ Authorization callback  http://127.0.0.1:8000/api/auth/github/callback
 ```
 React 18 · Vite 5 · PixiJS 8（开包舞台）· tsParticles 4（粒子）
 纯 CSS 动画 · Canvas 像素绘制 · WebAudio 芯片音效（零音频素材）
-零依赖的精灵生成器（种子确定性）· 自研战斗引擎（纯函数，可与官方 Showdown 对拍）
+monstrjs 手绘部件拼装精灵（种子确定性）· 自研战斗引擎（纯函数，可与官方 Showdown 对拍）
 ```
 
 | 模块 | 职责 |
 |---|---|
-| `src/auth.js` | 登录授权：GitHub OAuth / 个人令牌 → 会话、令牌落地、离线降级 |
-| `src/components/AuthPage.jsx` | 首屏登录授权页（额度说明、令牌登录、游客入口） |
+| `src/auth.js` | 登录授权：GitHub / Gitee OAuth → 会话、令牌落地、离线降级 |
+| `src/components/AuthPage.jsx` | 首屏登录授权页（额度说明、双平台切换、游客入口） |
 | `src/engine.js` | 判定引擎：仓库地址 → 品种 / 品质 / 等级 / 六维 / 技能（纯函数，可复现） |
 | `src/battle.js` | 战斗引擎：属性克制 / 伤害公式 / 状态 / 先制 / AI（纯函数 + 显式种子，可复现） |
 | `src/rivals.js` | 内置 36 个知名仓库的离线快照 → 对手精灵；在线扫描 / 同类型 / 随机三种挑选 |
 | `src/vfx.js` | 攻击特效层：按属性×威力选 [pixelfx](https://github.com/patch-gg/pixelfx) 特效并贴到精灵身上（懒加载分包） |
-| `src/sprite.js` | 种子 → 像素精灵（对称轮廓 + 属性配色 + 进化阶段装饰） |
+| `src/sprite.js` | 种子 → 像素精灵（[monstrjs](https://github.com/vcgtz/monstrjs) 手绘部件拼装：8 体型 × 眼嘴腮红耳尾四肢配饰，双属性配色 + 进化阶段配饰） |
 | `src/components/` | 卡包、精灵卡片、雷达图、竞技场 |
 
 > 每个库与每份素材的出处、许可证、以及"取了哪一部分"都在下方 [参考与借鉴（来源总表）](#参考与借鉴来源总表) 里逐条列出。
@@ -193,9 +193,9 @@ AI 味 ≥50 → 词条「根基不稳」，≥75 → 「生成体」；根基�
 - [x] 根基与性格词条（含"根基不稳"减益与修复提示）
 - [x] 离线 AI 味检测 CLI + 扫描钩子
 - [x] 竞技场对战：在线对手 / 同类型 / 随机宠物三种挑战 + 三档难度（`docs/BATTLE.md`）
-- [x] GitHub 登录授权：首屏授权页 + OAuth / 个人访问令牌（60 → 5000 次/小时）
+- [x] GitHub 登录授权：首屏授权页 + OAuth / 本机 gh 登录态（60 → 5000 次/小时）
 - [ ] 前端切到真实 API（判定仍在前端跑，扫描已用真实数据）
-- [ ] Gitee 登录授权（先用令牌 / 匿名）
+- [ ] Gitee 登录授权（OAuth 已接，未配置应用时走游客）
 - [ ] 精灵成长与每日同步的前端展示
 - [ ] AI 率按最近 90 天提交加权，让"补课"真能把词条洗掉
 - [ ] 全服排行榜页面
@@ -215,6 +215,7 @@ AI 味 ≥50 → 词条「根基不稳」，≥75 → 「生成体」；根基�
 | ↳ [Sprite Fusion Pixel Art VFX](https://www.spritefusion.com/pixel-art-vfx)（Hugo Duprez） | pixelfx 的 `core/sim.js` 与部分特效改写自此，为本项目的粒子物理/光照缓冲提供底层 | 间接依赖 | MIT |
 | ↳ [Hollow Crown](https://github.com/rehan-remade/hollow-crown)（rehan-remade） | pixelfx 的 `core/act.js` 借了它"技能演出"的节奏（12fps 定格、命中停顿、弹性靶子），本项目的特效时序即走这条链路 | 间接依赖 | MIT |
 | [Kenney Pixel UI Pack](https://kenney.nl/assets/pixel-ui-pack) | **整套 UI 图块**：9-slice 像素按钮（5 色 × 常态 / 按下）、面板、品质盾徽（N / R / SR / SSR）、剑（技能）、胶囊条（属性条）、箭头 / 手型 / 菱形指针 | [`src/assets/kenney/`](src/assets/kenney/) → 由 [`src/game-theme.css`](src/game-theme.css) 消费 | **CC0** |
+| [monstrjs](https://github.com/vcgtz/monstrjs) `1.0` | **精灵立绘部件库**：8 种手绘怪物体型（blob / bunny / kitty / birdie / puppy / bear / dino / alien）+ 眼睛 / 嘴 / 腮红 / 鼻子 / 眉毛 / 耳朵 / 尾巴 / 四肢 / 配饰 / 花纹位图与拼装合成器 | [`src/sprite.js`](src/sprite.js)：取其纯 JS 核心（`dist/sprites` / `dist/core/prng` / `dist/monster/grid`，CLI 与 sharp 渲染不进包）；6 生态体型映射怪物类型，调色板换成双属性五色盘，进化阶段控制配饰密度 | MIT |
 | [Fusion Pixel Font](https://github.com/TakWolf/fusion-pixel-font)（TakWolf） | 12px 中文像素字体，全量汉字 woff2（940 KB），界面正文与战报 | [`src/assets/fonts/`](src/assets/fonts/) | **OFL-1.1** |
 | [Press Start 2P](https://fonts.google.com/specimen/Press+Start+2P)（via [@fontsource](https://fontsource.org/fonts/press-start-2p)） | 街机标题字体：等级数字、品质徽标、按钮大写标签 | `src/main.jsx` 引入 `400.css` | **OFL-1.1** |
 | [scc](https://github.com/boyter/scc) | 后端浅克隆后统计 LOC / 注释行 / **圈复杂度** / COCOMO → 喂给工程量与「特防（可维护性）」维度 | `backend/`（`GITMON_USE_SCC=1`） | MIT |
@@ -228,7 +229,7 @@ AI 味 ≥50 → 词条「根基不稳」，≥75 → 「生成体」；根基�
 | 《赛尔号》(Seer) | 「克制 / 微弱 / 无效」三档克制呈现、以属性技能为核心的直球节奏 | 商业作品，零素材零代码 | — |
 | [pokemon-cards-css](https://github.com/simeydotme/pokemon-cards-css) ⚠️ | **全息闪卡的视觉语言**：多层渐变 + `blend-mode` + 滤镜，高光随指针位置移动 | GPL-3.0 有传染性 → 仅作视觉参考，CSS 全自研（`PetCard.jsx` 的 `--mx` / `--my` / `--rx` / `--ry` + `.holo-layer` / `.glare`） | GPL-3.0 |
 | [hover-tilt](https://github.com/simeydotme/hover-tilt) | 指针归一化到 −0.5..0.5 再映射倾斜角的换算方式与阻尼手感 | 自研 `useState` 实现，**未装依赖** | MIT |
-| [pixel-sprite-monster-generator](https://github.com/sempitern0/pixel-sprite-monster-generator) | **种子确定性立绘**：体型族 × 调色板 × 变体（心情 / 史诗）的三层生成结构 | 移植为 JS 程序化绘制（[`src/sprite.js`](src/sprite.js)），7 体型映射生态型，32×32 手工调参 | MIT |
+| [pixel-sprite-monster-generator](https://github.com/sempitern0/pixel-sprite-monster-generator) | **种子确定性立绘**：体型族 × 调色板 × 变体（心情 / 史诗）的三层生成结构 | v0.5 前的立绘方案（32×32 程序化绘制）；观感不佳，已被 monstrjs 部件拼装替代（见上表），保留致谢 | MIT |
 | [gen_me_a_pixamon](https://github.com/pixmusix/gen_me_a_pixamon) | 单 u64 种子 → 确定性 PNG 的极简路线（服务端预生成的取舍依据） | 未移植代码，只定架构方向 | MIT |
 | [github-readme-stats](https://github.com/anuraghazra/github-readme-stats) | 无状态 SVG 卡片端点架构：纯函数渲染 + 缓存头 + 主题参数 | SVG 渲染自研 | MIT |
 | github-tamagotchi | 「情绪状态机映射仓库健康度」的设计；宠物由仓库哈希派生的确定性思路 | 我们做的是品种 / 品质 / 等级，不做健康监控（见 [`docs/DESIGN.md` §11](docs/DESIGN.md)） | 参考 |
@@ -254,7 +255,7 @@ AI 味 ≥50 → 词条「根基不稳」，≥75 → 「生成体」；根基�
 - 本项目自身以 **MIT** 发布（见 [`LICENSE`](LICENSE)）。
 - **GPL 项目零代码复用**：`pokemon-cards-css` 只提供视觉参考，仓库内没有任何其代码片段；如未来需要可原地替换掉自研全息层。
 - **素材许可原文随仓库**：[`src/assets/kenney/LICENSE.txt`](src/assets/kenney/LICENSE.txt)（CC0）、[`src/assets/fonts/LICENSE-fusion-pixel.txt`](src/assets/fonts/LICENSE-fusion-pixel.txt)（OFL-1.1）。
-- **复制的第三方代码**单独声明在 [`THIRD-PARTY.md`](THIRD-PARTY.md)（当前仅 pixelfx，含上游 NOTICE 与打包范围说明）。
+- **复制的第三方代码**单独声明在 [`THIRD-PARTY.md`](THIRD-PARTY.md)（当前为 pixelfx 与 monstrjs，含打包范围说明）。
 - 更细的选型评估见 [`docs/DESIGN.md` §10 开源资源调研](docs/DESIGN.md)，竞品分析见 §11，对战借鉴边界见 [`docs/BATTLE.md` §0](docs/BATTLE.md)。
 
 ## 设计文档

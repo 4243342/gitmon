@@ -2,6 +2,15 @@
 
 本项目引入的第三方代码及其许可证。除下表所列，其余代码均为本项目自研（MIT，见 `LICENSE`）。
 
+## monstrjs（精灵立绘部件库）
+
+- 来源：<https://github.com/vcgtz/monstrjs>（通过 `npm i monstrjs` 引入，v1.0.0）
+- 许可证：MIT，Copyright (c) Vicente Gutierrez (@vcgtz)
+- 引入方式：**深路径引入纯 JS 核心**。`src/sprite.js` 只 import `monstrjs/dist/sprites/index.js`（8 种手绘体型位图 + 眼睛/嘴/腮红/耳/尾/四肢/配饰/花纹部件 + `composeMonster` 合成器）、`monstrjs/dist/core/prng.js`（Mulberry32）与 `monstrjs/dist/monster/grid.js`；CLI、sharp PNG 导出等 Node 侧代码不进入浏览器构建产物。
+- 使用范围：`src/sprite.js` 用它的部件位图与合成器绘制精灵：游戏 6 种生态体型（兽/鸟/元素/龙/幻兽/精灵）映射到 monster 类型（bear/birdie/blob/dino/alien/bunny），调色板由属性双色派生成五色盘（主色/肚皮/点缀/描边/高光），部件按 `spriteSeed` 确定性抽取，进化阶段（1–3）控制配饰与花纹密度。选片顺序、对称化（`applySymmetry`）等合成流程与上游一致。
+
+完整许可证文本见 <https://github.com/vcgtz/monstrjs/blob/main/LICENSE>。
+
 ## pixelfx（攻击特效库）
 
 - 来源：<https://github.com/patch-gg/pixelfx>（通过 `npm i github:patch-gg/pixelfx` 引入，锁 v0.3.0）

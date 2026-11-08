@@ -407,7 +407,7 @@ EngineeringScore =
 | `engine` | 纯函数判定层：snapshot → 品种 / 品质分 / 工程量分 / 六维 / 技能。**零 IO，可单测** | 低 |
 | `traits` | 纯函数：snapshot（+ ai_rate）→ 根基分档 / 性格词条 / 数值修正。**零 IO，可单测** | 低 |
 | `aitrace` | 离线 AI 味检测：本地目录 → 五类信号 → 0–100 区间 + 证据。**零网络、零依赖** | 中 |
-| `sprite` | 种子 → 像素精灵 PNG（移植 pixel-sprite-monster-generator 算法），磁盘缓存 | 中 |
+| `sprite` | 种子 → 像素精灵（v0.5 起基于 monstrjs 部件拼装，服务端只做缓存），磁盘缓存 | 中 |
 | `api` | REST 端点：孵化、详情、图鉴、同步触发 | 低 |
 | `badge` | 无状态 SVG/PNG 卡片端点，参考 github-readme-stats 架构 | 低 |
 
@@ -517,6 +517,7 @@ User     { id, github_login, gitee_login, created_at }   // P1 才需要
 | procedural-pixel-creatures | github.com/idlerunner00/procedural-pixel-creatures | 需核实 | C#/Godot，9 大族系+基因编辑+繁殖变异，质量高但引擎耦合重，适合远期参考 |
 
 > **选型决策**：立绘方案从原草案的"SVG 拼装"改为**种子确定性像素精灵**。理由：像素风与宝可梦调性天然契合；种子确定性满足 §2.2；服务端一次性预生成 PNG，前端零渲染负担；规避 AI 生图的不可控与成本。
+> **v0.5 更新**：32×32 程序化绘制观感不佳，改为 **[monstrjs](https://github.com/vcgtz/monstrjs)（MIT）手绘部件拼装**——64×64 网格，8 种体型位图 + 眼/嘴/腮红/耳/尾/四肢/配饰/花纹按种子组合，调色板换成双属性五色盘，进化阶段控制配饰密度（实现见 `src/sprite.js`，声明见 `THIRD-PARTY.md`）。
 
 ### 10.4 粒子特效（开包/升级氛围）
 

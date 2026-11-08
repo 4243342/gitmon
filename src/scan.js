@@ -223,8 +223,8 @@ function giteeUrl(path, params = {}) {
 function giteeError(status) {
   if (status === 403 || status === 429) {
     return giteeToken()
-      ? 'Gitee 接口配额用尽（令牌也算额度），稍后再试'
-      : 'Gitee 匿名接口配额用尽（按 IP 算，很快打满），用 Gitee 令牌登录后额度高得多'
+      ? 'Gitee 接口配额用尽（授权后也算额度），稍后再试'
+      : 'Gitee 匿名接口配额用尽（按 IP 算，很快打满），用 Gitee 授权登录后额度高得多'
   }
   if (status === 404) return 'Gitee 仓库或账号不存在'
   return `Gitee API 错误 ${status}`
@@ -347,7 +347,7 @@ async function listGitHubOwner(owner, { self = false } = {}) {
     fetch(userUrl, { headers: ghHeaders() }),
     fetch(reposUrl, { headers: ghHeaders() }),
   ])
-  if (userRes.status === 401) throw new Error('GitHub 令牌失效了，重新登录一次')
+  if (userRes.status === 401) throw new Error('GitHub 授权失效了，重新登录一次')
   if (userRes.status === 404) throw new Error(`GitHub 账号 @${owner} 不存在`)
   if (userRes.status === 403) throw new Error('GitHub 配额用尽，稍后重试或重新登录')
   if (!userRes.ok) throw new Error(`GitHub API 错误 ${userRes.status}`)
@@ -371,7 +371,7 @@ async function listGiteeOwner(owner, { self = false } = {}) {
     ? giteeUrl('/user/repos', { per_page: 100, sort: 'updated', affiliation: 'owner' })
     : giteeUrl(`/users/${owner}/repos`, { per_page: 100, sort: 'updated', type: 'owner' })
   const [userRes, reposRes] = await Promise.all([fetch(userUrl), fetch(reposUrl)])
-  if (userRes.status === 401) throw new Error('Gitee 令牌失效了，重新登录一次')
+  if (userRes.status === 401) throw new Error('Gitee 授权失效了，重新登录一次')
   if (userRes.status === 404) throw new Error(`Gitee 账号 @${owner} 不存在`)
   if (!userRes.ok) throw new Error(giteeError(userRes.status))
   const user = await userRes.json()

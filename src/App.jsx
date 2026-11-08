@@ -246,7 +246,7 @@ export default function App() {
       })
       if (!res.snaps.length) {
         throw new Error(res.rateLimited
-          ? 'API 触发限流，稍后再试（设置 Token 可提高额度）'
+          ? 'API 触发限流，稍后再试（登录后额度高得多）'
           : '这个账号没有可孵化的公开项目')
       }
       setStep(3)
@@ -428,7 +428,7 @@ export default function App() {
               {error && <p className="error">! {error}</p>}
               <p className="account-note">
                 登录账号不用再输入仓库地址 —— 你名下<b>每个项目自动生成一个卡包</b>，
-                私有仓库也会一起读出来（令牌只读，不写代码）。
+                私有仓库也会一起读出来（授权只读，不写代码）。
               </p>
             </section>
           ) : (

@@ -1,33 +1,20 @@
 import { useState } from 'react'
-import { loginLocal, loginWithToken, startLogin } from '../auth.js'
+import { loginLocal, startLogin } from '../auth.js'
 
 // 首页登录授权页：GitHub / Gitee 二选一 + 游客
 // 为什么要登录：匿名 60 次/小时 ≈ 扫 4 个仓库；登录之后自动把你名下所有项目开成一整箱。
+// 只提供平台授权（OAuth）与本机登录两条路，不再收手填令牌。
 
 const META = {
   github: {
     name: 'GitHub',
     title: '连上你的 GitHub',
-    tokenLabel: '个人访问令牌（PAT）',
-    placeholder: 'ghp_xxxxxxxxxxxxxxxx',
-    scopes: 'read:user + repo',
-    steps: [
-      <>打开 <a href="https://github.com/settings/tokens/new?scopes=repo,read:user&description=GitMon" target="_blank" rel="noreferrer">GitHub → New personal access token</a></>,
-      <>勾选 <code>read:user</code>；要孵化私有仓库再加 <code>repo</code></>,
-      <>生成后复制 <code>ghp_</code> 开头那串，粘到上面</>,
-    ],
+    env: 'GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET',
   },
   gitee: {
     name: 'Gitee',
     title: '连上你的 Gitee',
-    tokenLabel: '私人令牌（Private Token）',
-    placeholder: '32 位十六进制字符串',
-    scopes: 'user_info + projects',
-    steps: [
-      <>打开 <a href="https://gitee.com/profile/personal_access_tokens" target="_blank" rel="noreferrer">Gitee → 设置 → 私人令牌</a></>,
-      <>点「生成新令牌」，勾选 <code>user_info</code>、<code>projects</code></>,
-      <>复制生成的令牌（只显示一次），粘到上面</>,
-    ],
+    env: 'GITEE_CLIENT_ID / GITEE_CLIENT_SECRET',
   },
 }
 
@@ -46,10 +33,8 @@ function ProviderMark({ provider }) {
 
 export default function AuthPage({ online, providers, onAuthed, onGuest, notice }) {
   const [provider, setProvider] = useState('github')
-  const [token, setToken] = useState('')
   const [busy, setBusy] = useState('')
   const [error, setError] = useState(notice || '')
-  const [showHelp, setShowHelp] = useState(false)
 
   const meta = META[provider]
   const cfg = providers?.[provider] || {}
@@ -60,16 +45,13 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
   const switchProvider = (next) => {
     if (next === provider) return
     setProvider(next)
-    setToken('')
     setError('')
-    setShowHelp(false)
   }
 
   const startOAuth = () => {
     setError('')
     if (!oauthReady) {
-      setError(`后端还没配置 ${meta.name} 的 OAuth 应用，先用下面的${meta.tokenLabel}登录（额度一样够用）`)
-      document.getElementById('provider-token')?.focus()
+      setError(`后端还没配置 ${meta.name} 的 OAuth 应用（${meta.env}）`)
       return
     }
     setBusy('oauth')
@@ -85,23 +67,6 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
       onAuthed?.(result)
     } catch (e) {
       setError(e?.message || '本机登录失败')
-      setBusy('')
-    }
-  }
-
-  const submitToken = async () => {
-    setError('')
-    if (!token.trim()) {
-      setError('先粘贴令牌再登录')
-      return
-    }
-    setBusy('token')
-    try {
-      const result = await loginWithToken(token, provider)
-      onAuthed?.(result)
-    } catch (e) {
-      setError(e?.message || '登录失败')
-    } finally {
       setBusy('')
     }
   }
@@ -137,7 +102,7 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
 
         {online === false && (
           <p className="auth-warn">
-            后端没启动：令牌只会存在这台浏览器里，扫描仍然可用（浏览器直连平台 API），换设备需要重新登录。
+            后端没启动：登录不可用，但扫描仍然可以在浏览器里直接完成，先用游客进入即可。
           </p>
         )}
 
@@ -157,52 +122,26 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
         <button
           className={`auth-github${provider === 'gitee' ? ' is-gitee' : ''}${(provider === 'github' && local.available) ? ' is-secondary' : ''}`}
           onClick={startOAuth}
-          disabled={busy === 'oauth'}
+          disabled={busy === 'oauth' || !oauthReady}
         >
           <ProviderMark provider={provider} />
           {busy === 'oauth' ? `正在跳转 ${meta.name}…` : `用 ${meta.name} 授权登录`}
         </button>
         {!oauthReady && (
           <p className="auth-hint">
-            后端还没配 {meta.name} 的 OAuth 应用（{provider === 'gitee' ? 'GITEE_CLIENT_ID / GITEE_CLIENT_SECRET' : 'GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET'}）。
-            配好以后这个按钮直接可用；现在用下面的{meta.tokenLabel}更快。
+            后端还没配 {meta.name} 的 OAuth 应用（{meta.env}）。
+            配好以后这个按钮直接可用；现在可以先
+            {provider === 'github' && local.available ? '用本机登录，或' : ''}
+            游客进入。
           </p>
-        )}
-
-        <div className="auth-or"><span>或</span></div>
-
-        <label className="auth-label" htmlFor="provider-token">{meta.tokenLabel}</label>
-        <div className="auth-token-row">
-          <input
-            id="provider-token"
-            type="password"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && submitToken()}
-            placeholder={meta.placeholder}
-            spellCheck={false}
-            autoComplete="off"
-          />
-          <button onClick={submitToken} disabled={busy === 'token'}>
-            {busy === 'token' ? '校验中…' : '登录'}
-          </button>
-        </div>
-
-        <button className="auth-help-toggle" onClick={() => setShowHelp((v) => !v)}>
-          {showHelp ? '收起' : `怎么拿到${meta.tokenLabel}？三步`}
-        </button>
-        {showHelp && (
-          <ol className="auth-help">
-            {meta.steps.map((step, i) => <li key={i}>{step}</li>)}
-          </ol>
         )}
 
         {error && <p className="auth-error">! {error}</p>}
 
         <div className="auth-foot">
           <button className="auth-guest" onClick={onGuest}>游客进入（手填仓库，{quota.quotaPerHour} 次/小时）</button>
-          <span className="auth-security" title="令牌用 HMAC 流加密后存进本地 SQLite，浏览器只留会话 cookie">
-            令牌加密存在本地，随时可退出
+          <span className="auth-security" title="授权走平台官方 OAuth，只读仓库信息">
+            只读授权，随时可退出
           </span>
         </div>
       </section>
@@ -214,7 +153,7 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
         </div>
         <div>
           <b>私有仓库</b>
-          <span>授权后连私有项目也能孵出来（勾了 projects / repo 权限就行）</span>
+          <span>授权后连私有项目也能孵出来</span>
         </div>
         <div>
           <b>只读</b>

@@ -1,9 +1,11 @@
 // 登录授权（前端侧）：GitHub / Gitee 双平台 + 游客
 //
 // 三条路：
-// 1. GitHub OAuth / 个人访问令牌  → localStorage['gitmon:gh_token']  → 5000 次/小时
-// 2. Gitee  OAuth / 私人令牌      → localStorage['gitmon:gitee_token']
-// 3. 游客                         → 不登录，匿名 60 次/小时，手填仓库地址
+// 1. GitHub OAuth（或本机 gh 登录态）→ localStorage['gitmon:gh_token'] → 5000 次/小时
+// 2. Gitee  OAuth                    → localStorage['gitmon:gitee_token']
+// 3. 游客                            → 不登录，匿名 60 次/小时，手填仓库地址
+//
+// 不提供手填个人访问令牌：授权统一走平台 OAuth，令牌由后端换取后下发。
 //
 // 令牌落在 localStorage 是因为 scan.js 是浏览器直连平台 API 的（省一次中转）。
 // 后端不在（纯静态部署）时自动降级为"本地令牌"模式。
@@ -105,84 +107,6 @@ export function startLogin(provider = 'github', next = '/') {
 }
 
 export const startGithubLogin = (next = '/') => startLogin('github', next)
-
-// 个人访问令牌 / 私人令牌登录
-export async function loginWithToken(token, provider = 'github') {
-  const clean = String(token || '').trim()
-  if (clean.length < 8) {
-    throw new Error(provider === 'gitee' ? '令牌太短，Gitee 私人令牌是一长串字符' : '令牌太短，GitHub 令牌通常是 ghp_ 开头的一长串')
-  }
-  try {
-    const profile = await api(`/api/auth/${provider}/token`, {
-      method: 'POST',
-      body: JSON.stringify({ token: clean }),
-    })
-    storeToken(provider, clean)
-    cacheProfile(profile)
-    clearGuest()
-    return { online: true, profile }
-  } catch (e) {
-    // 后端没起：本地模式，直接存令牌（扫描仍然在浏览器里直连平台 API）
-    if (!e.status) {
-      const profile = await verifyTokenLocally(clean, provider)
-      storeToken(provider, clean)
-      cacheProfile(profile)
-      clearGuest()
-      return { online: false, profile }
-    }
-    throw e
-  }
-}
-
-// 离线自检：直接问平台"这个令牌是谁"
-async function verifyTokenLocally(token, provider) {
-  if (provider === 'gitee') {
-    let res
-    try {
-      res = await fetch(`https://gitee.com/api/v5/user?access_token=${encodeURIComponent(token)}`)
-    } catch {
-      throw new Error('无法连接 Gitee，检查网络后重试')
-    }
-    if (res.status === 401 || res.status === 403) throw new Error('Gitee 令牌无效或已过期')
-    if (!res.ok) throw new Error(`Gitee 返回 ${res.status}`)
-    const user = await res.json()
-    return {
-      authenticated: true,
-      provider: 'gitee',
-      login: user.login,
-      name: user.name || user.login,
-      avatar: user.avatar_url || '',
-      source: 'local',
-      hasToken: true,
-      quota: {},
-      oauth: false,
-    }
-  }
-
-  let res
-  try {
-    res = await fetch('https://api.github.com/user', {
-      headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}` },
-    })
-  } catch {
-    throw new Error('无法连接 GitHub，检查网络后重试')
-  }
-  if (res.status === 401) throw new Error('令牌无效或已过期')
-  if (!res.ok) throw new Error(`GitHub 返回 ${res.status}`)
-  const user = await res.json()
-  return {
-    authenticated: true,
-    provider: 'github',
-    login: user.login,
-    name: user.name || user.login,
-    avatar: user.avatar_url || '',
-    scopes: res.headers.get('x-oauth-scopes') || '',
-    source: 'local',
-    hasToken: true,
-    quota: {},
-    oauth: false,
-  }
-}
 
 // 本机已登录（后端复用 gh CLI 的令牌，仅 127.0.0.1 可用）
 export async function loginLocal() {

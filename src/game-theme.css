@@ -921,7 +921,7 @@ body::after {
 .hero-note b { color: var(--accent); font-weight: 400; }
 
 /* ============================================================
-   首页登录授权页（GitHub OAuth / 个人访问令牌）
+   首页登录授权页（GitHub / Gitee OAuth + 游客）
    ============================================================ */
 .auth-page {
   position: relative;
@@ -997,77 +997,6 @@ body::after {
 .auth-github:disabled { opacity: .4; cursor: not-allowed; }
 .gh-mark { display: inline-flex; }
 .auth-hint { margin-top: 9px; font-size: 11.5px; line-height: 1.75; color: var(--dim); }
-
-.auth-or {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 18px 0 14px;
-  font-size: 10.5px;
-  letter-spacing: 2px;
-  color: #5d6b86;
-}
-.auth-or::before,
-.auth-or::after { content: ''; flex: 1; height: 1px; background: #2a3550; }
-
-.auth-label { display: block; margin-bottom: 8px; font-size: 11.5px; color: var(--dim); letter-spacing: .5px; }
-.auth-token-row { display: flex; gap: 10px; }
-.auth-token-row input {
-  flex: 1;
-  min-width: 0;
-  padding: 12px 14px;
-  border-radius: 11px;
-  border: 1px solid #2a3550;
-  background: #0a1220;
-  color: var(--text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12.5px;
-  outline: none;
-  transition: border-color .18s, box-shadow .18s;
-}
-.auth-token-row input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(255, 203, 5, .13);
-}
-.auth-token-row button {
-  padding: 0 24px;
-  border: none;
-  border-radius: 11px;
-  background: linear-gradient(135deg, #ffcb05, #ff9f1a);
-  color: #221a00;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 800;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.auth-token-row button:disabled { opacity: .55; cursor: progress; }
-
-.auth-help-toggle {
-  margin-top: 12px;
-  padding: 0;
-  border: none;
-  background: none;
-  color: #8fb7ff;
-  font-family: inherit;
-  font-size: 11.5px;
-  cursor: pointer;
-}
-.auth-help {
-  margin-top: 8px;
-  padding-left: 20px;
-  font-size: 11.5px;
-  line-height: 1.95;
-  color: var(--dim);
-}
-.auth-help a { color: #8fb7ff; }
-.auth-help code {
-  padding: 1px 5px;
-  border-radius: 5px;
-  background: rgba(255, 203, 5, .12);
-  color: #ffe9a8;
-  font-size: 11px;
-}
 
 .auth-error { margin-top: 12px; font-size: 12.5px; color: #ff8a8a; }
 
@@ -1160,8 +1089,6 @@ body::after {
 @media (max-width: 640px) {
   .auth-points { grid-template-columns: 1fr; }
   .auth-card { padding: 20px 18px 18px; }
-  .auth-token-row { flex-direction: column; }
-  .auth-token-row button { padding: 11px 0; }
   .auth-deco { display: none; }
   .user-quota { display: none; }
 }
@@ -1193,7 +1120,18 @@ body::after {
 .auth-local-text b { font-size: 13px; font-weight: 700; letter-spacing: .3px; }
 .auth-local-text em { font-size: 10.5px; font-style: normal; color: #9fb4ce; line-height: 1.5; }
 .auth-local-go { color: #6ee7a8; font-size: 15px; }
-.auth-github.is-secondary { padding: 10px 16px; font-size: 12.5px; }
+.auth-github.is-secondary {
+  padding: 10px 16px;
+  font-size: 12.5px;
+  background: rgba(255, 255, 255, .06);
+  border: 1px solid #3a4a6b;
+  color: #dfe8f7;
+}
+.auth-github.is-secondary:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, .55);
+  background: rgba(255, 255, 255, .12);
+  box-shadow: none;
+}
 
 /* ---------- 双平台切换 ---------- */
 .auth-head-note { font-size: 11px; color: #5d6b86; letter-spacing: .5px; }
@@ -1303,3 +1241,6 @@ body::after {
   color: #9fb4ce;
 }
 .user-src.is-gitee { border-color: rgba(230, 57, 70, .5); color: #ff9aa2; }
+
+.ghost-btn:disabled { filter: grayscale(.75) brightness(.62); cursor: default; }
+@media (max-width: 640px) { .user-src { display: none; } }
