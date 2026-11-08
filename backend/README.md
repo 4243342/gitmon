@@ -8,16 +8,18 @@ backend/
 ├── gitmon_api/
 │   ├── main.py          # 应用装配：CORS / 限流 / 静态托管 / 每日结算
 │   ├── api.py           # REST 端点（只做校验与序列化）
+│   ├── auth.py          # GitHub 登录授权：OAuth 换 token / 会话 / 令牌加密
+│   ├── auth_api.py      # /api/auth/* 路由
 │   ├── services.py      # 编排：扫描 → 判定 → 落库 → 结算
 │   ├── engine.py        # 判定引擎（纯函数）：品种 / 品质 / 工程量 / 六维 / 技能
 │   ├── growth.py        # 养成：XP 曲线、升级、进化、沉睡
 │   ├── sprite.py        # 种子 → 像素 PNG（纯 stdlib，自写 PNG 编码）
 │   ├── badge.py         # README 徽章 / 分享卡片 SVG
-│   ├── db.py            # SQLite（WAL）：pets / growth_log / snapshots
+│   ├── db.py            # SQLite（WAL）：pets / growth_log / snapshots / users / sessions
 │   ├── queue.py         # 进程内扫描队列（单 worker 串行）
 │   ├── repo.py          # 仓库地址解析
 │   └── scanner/         # GitHub / Gitee 扫描器 + 文件树分析 + 依赖清单解析
-└── tests/               # 58 个用例：判定、养成、立绘、API 全链路
+└── tests/               # 90 个用例：判定、养成、立绘、登录授权、API 全链路
 ```
 
 ## 快速开始
@@ -38,6 +40,33 @@ curl -X POST localhost:8000/api/hatch/sync \
   -d '{"repo":"https://github.com/facebook/react"}'
 ```
 
+## 登录授权（GitHub）
+
+GitHub 匿名 API 只有 **60 次/小时**，一次扫描要 5~17 个请求，扫四个仓库就没了。
+登录授权后是 **5000 次/小时**，私有仓库也能孵化。两条路产出的东西一样，都是一个 GitHub token：
+
+| 方式 | 需要什么 | 适合 |
+|---|---|---|
+| OAuth 授权 | 注册一个 GitHub OAuth App（2 分钟） | 正式部署，用户点一下就登录 |
+| 个人访问令牌（PAT） | 用户自己去 GitHub 生成 `ghp_xxx` 贴进来 | 本地开发 / 不想建应用 |
+
+**配 OAuth App**：<https://github.com/settings/developers> → New OAuth App
+
+```
+Homepage URL            http://127.0.0.1:8000
+Authorization callback  http://127.0.0.1:8000/api/auth/github/callback
+```
+
+把 Client ID / Secret 写进环境变量 `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`，
+部署到域名时同时改 `GITMON_PUBLIC_URL=https://your.domain`（回调地址由它拼出来）。
+
+不配也能用：首页会提示"后端没配 OAuth"，用户走下面的令牌登录，额度同样是 5000 次/小时。
+
+安全做法：令牌用 HMAC-SHA256 计数器模式流加密后落库（密钥来自 `GITMON_SECRET`，
+留空则自动生成 `data/secret.key`，权限 0600）；浏览器只持有 HttpOnly 会话 cookie
+（库里存它的 sha256），令牌通过同源 `/api/auth/token` 单次下发，因为前端是浏览器直连
+GitHub API 扫描的。退出登录时会连同会话一起清掉，OAuth 令牌还会调 GitHub 撤销。
+
 ## 端点
 
 | 方法 | 路径 | 说明 |
@@ -56,6 +85,13 @@ curl -X POST localhost:8000/api/hatch/sync \
 | GET | `/card/{platform}/{owner}/{repo}.svg` | 分享卡片 |
 | GET | `/api/leaderboard` | 全服排行（按等级） |
 | GET | `/api/health` `/api/meta` | 健康检查 / 判定常量 |
+| GET | `/api/auth/providers` | 登录方式可用性（OAuth 是否配置、匿名/授权额度） |
+| GET | `/api/auth/github/start` | 302 跳 GitHub 授权页（`?next=` 指定回来后的路径） |
+| GET | `/api/auth/github/callback` | 授权回调：换 token → 建会话 → 回跳 `/?auth=ok` |
+| POST | `/api/auth/github/token` | 用个人访问令牌登录 `{"token":"ghp_..."}` |
+| GET | `/api/auth/me` | 当前登录用户（`?quota=1` 顺带查配额） |
+| GET | `/api/auth/token` | 取回令牌（仅登录态，供浏览器直连 GitHub） |
+| POST | `/api/auth/logout` | 退出登录 |
 
 README 里直接嵌：
 
@@ -90,14 +126,20 @@ issue / PR 计数与依赖清单（最多 6 份）——单次扫描 12~17 个�
 想让 LOC 和复杂度变成精确值：装好 [`scc`](https://github.com/boyter/scc) 后设 `GITMON_USE_SCC=1`，
 会浅克隆后跑 `scc --format json`，覆盖树体积估算值。
 
-配额提示：GitHub 匿名 60 次/小时，大约只够 4 次扫描；**务必配 `GITHUB_TOKEN`**（5000 次/小时）。
-Gitee 匿名配额更紧，建议配 `GITEE_TOKEN`。配额耗尽会返回 429 并附带 `Retry-After` 与配置提示。
+配额：GitHub 匿名 60 次/小时，大约只够 4 次扫描。**用户登录后自动用他自己的令牌**（5000 次/小时），
+服务端也可配 `GITHUB_TOKEN` 兜底；Gitee 匿名配额更紧，建议配 `GITEE_TOKEN`。
+配额耗尽会返回 429，带 `Retry-After` 和"去登录"的提示。
 
 ## 配置
 
 | 环境变量 | 默认 | 说明 |
 |---|---|---|
-| `GITHUB_TOKEN` / `GITEE_TOKEN` | 空 | 平台令牌，强烈建议配置 |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | 空 | OAuth App 凭证；不配就只能用个人访问令牌登录 |
+| `GITMON_PUBLIC_URL` | `http://127.0.0.1:8000` | 对外前缀，决定 OAuth 回调地址 |
+| `GITMON_WEB_URL` | 空（回 `/`） | 登录成功后跳回哪；vite 开发时设 `http://127.0.0.1:5173` |
+| `GITMON_SECRET` | 空（自动生成 `data/secret.key`） | 会话签名与令牌加密密钥 |
+| `GITMON_SESSION_TTL` | `2592000` | 会话有效期（秒） |
+| `GITHUB_TOKEN` / `GITEE_TOKEN` | 空 | 服务端兜底令牌（登录用户优先用自己令牌） |
 | `GITMON_DATA_DIR` | `./data` | SQLite 与立绘目录 |
 | `GITMON_CACHE_TTL` | `21600` | 快照缓存（秒） |
 | `GITMON_DAILY_SYNC` | `0` | 开 1 后每天定时结算一批精灵 |
@@ -108,7 +150,7 @@ Gitee 匿名配额更紧，建议配 `GITEE_TOKEN`。配额耗尽会返回 429 �
 | `GITMON_STATIC_DIR` | 自动探测 `../dist` | 前端构建产物目录 |
 
 `X-Gitmon-User` 头是匿名设备标识（前端 localStorage 生成），用来隔离每个人的图鉴；
-不传就落到公共图鉴 `public`。私有仓库需要 OAuth，当前明确不支持。
+不传就落到公共图鉴 `public`。私有仓库需要登录（令牌带 `repo` 权限）才能扫。
 
 ## 部署
 
@@ -122,7 +164,14 @@ docker run -p 8000:8000 -e GITHUB_TOKEN=xxx -v gitmon-data:/app/data gitmon
 
 ## 前端接入
 
-前端当前是纯 mock 引擎（`src/engine.js`），换成真实数据只需两步：
+首页已经是登录授权页（`src/components/AuthPage.jsx` + `src/auth.js`）：
+`/api/auth/me` 判断登录态 → 未登录且没点"先随便逛逛"就停在授权页，登录后
+令牌写入 `localStorage['gitmon:gh_token']`，`src/scan.js` 自动带上它直连 GitHub。
+`vite.config.js` 已经把 `/api` `/badge` `/card` 代理到后端（同源，cookie 才带得上）。
+
+后端不在（纯静态部署）时前端自动降级：令牌只存本机，扫描在浏览器里直连 GitHub 完成。
+
+服务端孵化接口的用法：
 
 ```js
 // src/api.js
@@ -163,16 +212,17 @@ server: { proxy: { '/api': 'http://127.0.0.1:8000', '/badge': 'http://127.0.0.1:
 ## 测试
 
 ```bash
-.venv/bin/python -m pytest        # 58 passed
+.venv/bin/python -m pytest        # 90 passed
 ```
 
 覆盖：地址解析、判定确定性、品种识别、品质单调性、工程量/等级映射、XP 上限与升级、
 沉睡与进化门槛、立绘确定性、徽章/卡片 SVG 转义、API 全链路（孵化 / 缓存命中 / 任务流 /
-用户隔离 / 同步加 XP / 立绘 / 徽章 / 删除 / 排行 / 静态托管）。
+用户隔离 / 同步加 XP / 立绘 / 徽章 / 删除 / 排行 / 静态托管）、登录授权（令牌加解密、
+state 验签与超时、PAT 登录、OAuth 回调建会话、退出、登录态下扫描用用户令牌）。
 
 ## 已知边界
 
-- **私有仓库**不支持（需 OAuth，见 DESIGN.md §12）。
+- **私有仓库**要登录且令牌带 `repo` 权限；匿名下 404（GitHub 对私有仓库也返回 404）。
 - **立绘与前端 canvas 不再逐像素一致**：前端已在做自己的 32×32 生成器，后端默认 `rich`
   风格是独立实现，靠同一个 `spriteSeed` 保持"同仓库同精灵"的确定性与可复现；
   若要复刻旧版 16×16 外观，设 `GITMON_SPRITE_STYLE=classic`。

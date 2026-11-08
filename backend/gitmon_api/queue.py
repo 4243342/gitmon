@@ -27,6 +27,8 @@ class Job:
     owner_key: str
     status: str = "queued"
     refresh: bool = False
+    # 登录用户的令牌（只在内存里传给 worker，不落库、不序列化）
+    token: str = ""
     created_at: float = field(default_factory=time.time)
     started_at: float | None = None
     finished_at: float | None = None
@@ -99,15 +101,18 @@ class ScanQueue:
                 self._queue.task_done()
 
     # ---------- 对外 ----------
-    def submit(self, kind: str, repo: str, owner_key: str, *, refresh: bool = False) -> Job:
+    def submit(self, kind: str, repo: str, owner_key: str, *, refresh: bool = False,
+               token: str = "") -> Job:
         self.start()
         with self._lock:
             self._prune()
             for existing in self._jobs.values():
                 if (existing.kind == kind and existing.repo.lower() == repo.lower()
-                        and existing.owner_key == owner_key and existing.status in {"queued", "running"}):
+                        and existing.owner_key == owner_key and existing.token == token
+                        and existing.status in {"queued", "running"}):
                     return existing
-            job = Job(id=uuid.uuid4().hex[:12], kind=kind, repo=repo, owner_key=owner_key, refresh=refresh)
+            job = Job(id=uuid.uuid4().hex[:12], kind=kind, repo=repo, owner_key=owner_key,
+                      refresh=refresh, token=token)
             self._jobs[job.id] = job
         self._queue.put(job.id)
         return job
@@ -132,8 +137,8 @@ def _worker(job: Job) -> dict[str, Any]:
     from . import services
 
     if job.kind == "sync":
-        return services.sync_by_ref(services.parse_repo(job.repo), job.owner_key)
-    return services.hatch(job.repo, job.owner_key, refresh=job.refresh)
+        return services.sync_by_ref(services.parse_repo(job.repo), job.owner_key, token=job.token or None)
+    return services.hatch(job.repo, job.owner_key, refresh=job.refresh, token=job.token or None)
 
 
 scan_queue = ScanQueue(_worker)

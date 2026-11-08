@@ -232,6 +232,212 @@ const RIVALS = [
     hasDocs: true, hasChangelog: false, hasContributing: true, hasLicense: true, license: 'Apache-2.0', archived: false,
     aiRate: 22,
   },
+
+  // ---- 以下补足各属性的同族对手（同类型对战需要每个属性都有得挑） ----
+  {
+    fullName: 'django/django', repo: 'django', platform: 'github',
+    description: 'The Web framework for perfectionists with deadlines.',
+    topics: ['python', 'django', 'web', 'framework', 'orm'],
+    languages: [{ name: 'Python', pct: 94 }, { name: 'JavaScript', pct: 3 }],
+    rootFiles: ['django', 'docs', 'tests', 'setup.cfg', 'README.rst', 'LICENSE', '.github', 'pyproject.toml'],
+    sizeKb: 220000, commits: 36000, ageMonths: 220, contributors: 2400, stars: 82000, forks: 32000,
+    openIssues: 200, daysSincePush: 1, releaseCount: 400,
+    hasTests: true, hasCI: true, hasTypeConfig: true, hasLockfile: false, hasDocker: false,
+    hasDocs: true, hasChangelog: true, hasContributing: true, hasLicense: true, license: 'BSD-3-Clause', archived: false,
+    aiRate: 8,
+  },
+  {
+    fullName: 'numpy/numpy', repo: 'numpy', platform: 'github',
+    description: 'The fundamental package for scientific computing with Python.',
+    topics: ['python', 'numpy', 'scientific-computing', 'arrays', 'math'],
+    languages: [{ name: 'Python', pct: 62 }, { name: 'C', pct: 34 }],
+    rootFiles: ['numpy', 'doc', 'benchmarks', 'setup.py', 'meson.build', 'README.md', 'LICENSE.txt', '.github'],
+    sizeKb: 60000, commits: 28000, ageMonths: 240, contributors: 1500, stars: 29000, forks: 10000,
+    openIssues: 2100, daysSincePush: 1, releaseCount: 180,
+    hasTests: true, hasCI: true, hasTypeConfig: true, hasLockfile: false, hasDocker: true,
+    hasDocs: true, hasChangelog: true, hasContributing: true, hasLicense: true, license: 'BSD-3-Clause', archived: false,
+    aiRate: 9,
+  },
+  {
+    fullName: 'scikit-learn/scikit-learn', repo: 'scikit-learn', platform: 'github',
+    description: 'scikit-learn: machine learning in Python.',
+    topics: ['machine-learning', 'python', 'data-science', 'statistics', '模型'],
+    languages: [{ name: 'Python', pct: 88 }, { name: 'Cython', pct: 9 }],
+    rootFiles: ['sklearn', 'doc', 'examples', 'benchmarks', 'setup.py', 'README.rst', 'LICENSE', '.github'],
+    sizeKb: 200000, commits: 30000, ageMonths: 240, contributors: 3200, stars: 62000, forks: 26000,
+    openIssues: 2400, daysSincePush: 0, releaseCount: 120,
+    hasTests: true, hasCI: true, hasTypeConfig: true, hasLockfile: false, hasDocker: true,
+    hasDocs: true, hasChangelog: true, hasContributing: true, hasLicense: true, license: 'BSD-3-Clause', archived: false,
+    aiRate: 12,
+  },
+  {
+    fullName: 'BurntSushi/ripgrep', repo: 'ripgrep', platform: 'github',
+    description: 'ripgrep recursively searches directories for a regex pattern.',
+    topics: ['rust', 'cli', 'search', 'regex', 'tool'],
+    languages: [{ name: 'Rust', pct: 96 }, { name: 'Shell', pct: 2 }],
+    rootFiles: ['crates', 'tests', 'Cargo.toml', 'README.md', 'LICENSE-MIT', '.github', 'benchsuite'],
+    sizeKb: 9000, commits: 1900, ageMonths: 120, contributors: 180, stars: 52000, forks: 2100,
+    openIssues: 90, daysSincePush: 12, releaseCount: 60,
+    hasTests: true, hasCI: true, hasTypeConfig: true, hasLockfile: true, hasDocker: false,
+    hasDocs: true, hasChangelog: true, hasContributing: true, hasLicense: true, license: 'Unlicense', archived: false,
+    aiRate: 7,
+  },
+  {
+    fullName: 'tokio-rs/tokio', repo: 'tokio', platform: 'github',
+    description: 'A runtime for writing reliable asynchronous applications with Rust.',
+    topics: ['rust', 'async', 'runtime', 'concurrency', 'network'],
+    languages: [{ name: 'Rust', pct: 98 }],
+    rootFiles: ['tokio', 'tokio-util', 'tests', 'Cargo.toml', 'README.md', 'LICENSE', '.github'],
+    sizeKb: 12000, commits: 4200, ageMonths: 96, contributors: 900, stars: 28000, forks: 2600,
+    openIssues: 320, daysSincePush: 0, releaseCount: 100,
+    hasTests: true, hasCI: true, hasTypeConfig: true, hasLockfile: true, hasDocker: false,
+    hasDocs: true, hasChangelog: false, hasContributing: true, hasLicense: true, license: 'MIT', archived: false,
+    aiRate: 11,
+  },
+  {
+    fullName: 'curl/curl', repo: 'curl', platform: 'github',
+    description: 'A command line tool and library for transferring data with URL syntax.',
+    topics: ['c', 'http', 'network', 'curl', 'library'],
+    languages: [{ name: 'C', pct: 82 }, { name: 'Perl', pct: 8 }, { name: 'Shell', pct: 5 }],
+    rootFiles: ['lib', 'src', 'tests', 'docs', 'CMakeLists.txt', 'README.md', 'LICENSE.txt', '.github'],
+    sizeKb: 90000, commits: 33000, ageMonths: 240, contributors: 3200, stars: 37000, forks: 6600,
+    openIssues: 60, daysSincePush: 0, releaseCount: 220,
+    hasTests: true, hasCI: true, hasTypeConfig: false, hasLockfile: false, hasDocker: true,
+    hasDocs: true, hasChangelog: true, hasContributing: true, hasLicense: true, license: 'curl', archived: false,
+    aiRate: 4,
+  },
+  {
+    fullName: 'sqlite/sqlite', repo: 'sqlite', platform: 'github',
+    description: 'Official Git mirror of the SQLite source tree.',
+    topics: ['c', 'database', 'sqlite', 'sql', 'embedded'],
+    languages: [{ name: 'C', pct: 97 }, { name: 'Tcl', pct: 2 }],
+    rootFiles: ['src', 'ext', 'test', 'tool', 'doc', 'Makefile.in', 'README.md', 'manifest.uuid'],
+    sizeKb: 350000, commits: 26000, ageMonths: 240, contributors: 120, stars: 7200, forks: 1800,
+    openIssues: 0, daysSincePush: 2, releaseCount: 300,
+    hasTests: true, hasCI: false, hasTypeConfig: false, hasLockfile: false, hasDocker: false,
+    hasDocs: true, hasChangelog: true, hasContributing: false, hasLicense: true, license: 'Public-Domain', archived: false,
+    aiRate: 3,
+  },
+  {
+    fullName: 'kubernetes/kubernetes', repo: 'kubernetes', platform: 'github',
+    description: 'Production-Grade Container Scheduling and Management.',
+    topics: ['go', 'kubernetes', 'container', 'orchestration', 'cloud'],
+    languages: [{ name: 'Go', pct: 94 }, { name: 'Shell', pct: 3 }],
+    rootFiles: ['cmd', 'pkg', 'staging', 'test', 'hack', 'go.mod', 'README.md', 'LICENSE', '.github'],
+    sizeKb: 900000, commits: 120000, ageMonths: 132, contributors: 4000, stars: 118000, forks: 41000,
+    openIssues: 1900, daysSincePush: 0, releaseCount: 700,
+    hasTests: true, hasCI: true, hasTypeConfig: true, hasLockfile: true, hasDocker: true,
+    hasDocs: true, hasChangelog: true, hasContributing: true, hasLicense: true, license: 'Apache-2.0', archived: false,
+    aiRate: 10,
+  },
+  {
+    fullName: 'gin-gonic/gin', repo: 'gin', platform: 'github',
+    description: 'Gin is a high-performance HTTP web framework written in Go.',
+    topics: ['go', 'web', 'framework', 'http', 'router'],
+    languages: [{ name: 'Go', pct: 99 }],
+    rootFiles: ['binding', 'render', 'gin.go', 'go.mod', 'README.md', 'LICENSE', '.github', 'docs'],
+    sizeKb: 5200, commits: 3800, ageMonths: 120, contributors: 700, stars: 82000, forks: 8200,
+    openIssues: 700, daysSincePush: 3, releaseCount: 90,
+    hasTests: true, hasCI: true, hasTypeConfig: true, hasLockfile: true, hasDocker: false,
+    hasDocs: true, hasChangelog: false, hasContributing: true, hasLicense: true, license: 'MIT', archived: false,
+    aiRate: 13,
+  },
+  {
+    fullName: 'etcd-io/etcd', repo: 'etcd', platform: 'github',
+    description: 'Distributed reliable key-value store for the most critical data.',
+    topics: ['go', 'etcd', 'distributed', 'consensus', 'database'],
+    languages: [{ name: 'Go', pct: 97 }, { name: 'Shell', pct: 2 }],
+    rootFiles: ['server', 'client', 'tests', 'etcdctl', 'go.mod', 'README.md', 'LICENSE', '.github'],
+    sizeKb: 60000, commits: 22000, ageMonths: 150, contributors: 900, stars: 50000, forks: 10000,
+    openIssues: 240, daysSincePush: 1, releaseCount: 300,
+    hasTests: true, hasCI: true, hasTypeConfig: true, hasLockfile: true, hasDocker: true,
+    hasDocs: true, hasChangelog: true, hasContributing: true, hasLicense: true, license: 'Apache-2.0', archived: false,
+    aiRate: 8,
+  },
+  {
+    fullName: 'apache/kafka', repo: 'kafka', platform: 'github',
+    description: 'Mirror of Apache Kafka — distributed event streaming platform.',
+    topics: ['java', 'kafka', 'streaming', 'messaging', 'distributed'],
+    languages: [{ name: 'Java', pct: 94 }, { name: 'Scala', pct: 4 }],
+    rootFiles: ['clients', 'core', 'streams', 'connect', 'build.gradle', 'README.md', 'LICENSE', '.github'],
+    sizeKb: 300000, commits: 15000, ageMonths: 180, contributors: 1200, stars: 30000, forks: 14000,
+    openIssues: 1200, daysSincePush: 0, releaseCount: 400,
+    hasTests: true, hasCI: true, hasTypeConfig: true, hasLockfile: false, hasDocker: true,
+    hasDocs: true, hasChangelog: false, hasContributing: true, hasLicense: true, license: 'Apache-2.0', archived: false,
+    aiRate: 9,
+  },
+  {
+    fullName: 'elastic/elasticsearch', repo: 'elasticsearch', platform: 'github',
+    description: 'Free and Open Source, Distributed, RESTful Search Engine.',
+    topics: ['java', 'search', 'elasticsearch', 'lucene', 'database'],
+    languages: [{ name: 'Java', pct: 92 }, { name: 'Groovy', pct: 3 }],
+    rootFiles: ['server', 'client', 'plugins', 'modules', 'build.gradle', 'README.md', 'LICENSE.txt', '.ci'],
+    sizeKb: 3000000, commits: 65000, ageMonths: 200, contributors: 2200, stars: 72000, forks: 25000,
+    openIssues: 4500, daysSincePush: 0, releaseCount: 600,
+    hasTests: true, hasCI: true, hasTypeConfig: true, hasLockfile: false, hasDocker: true,
+    hasDocs: true, hasChangelog: true, hasContributing: false, hasLicense: true, license: 'SSPL-1.0', archived: false,
+    aiRate: 11,
+  },
+  {
+    fullName: 'Homebrew/brew', repo: 'brew', platform: 'github',
+    description: '🍺 The missing package manager for macOS (or Linux).',
+    topics: ['ruby', 'macos', 'package-manager', 'homebrew', 'cli'],
+    languages: [{ name: 'Ruby', pct: 96 }, { name: 'Shell', pct: 3 }],
+    rootFiles: ['Library', 'bin', 'docs', 'manpages', 'README.md', 'LICENSE.txt', '.github'],
+    sizeKb: 45000, commits: 40000, ageMonths: 160, contributors: 1300, stars: 44000, forks: 10000,
+    openIssues: 40, daysSincePush: 0, releaseCount: 90,
+    hasTests: true, hasCI: true, hasTypeConfig: true, hasLockfile: false, hasDocker: true,
+    hasDocs: true, hasChangelog: false, hasContributing: true, hasLicense: true, license: 'BSD-2-Clause', archived: false,
+    aiRate: 14,
+  },
+  {
+    fullName: 'laravel/laravel', repo: 'laravel', platform: 'github',
+    description: 'Laravel is a web application framework with expressive, elegant syntax.',
+    topics: ['php', 'laravel', 'web', 'framework', 'mvc'],
+    languages: [{ name: 'PHP', pct: 80 }, { name: 'Blade', pct: 12 }],
+    rootFiles: ['app', 'config', 'routes', 'resources', 'tests', 'composer.json', 'README.md', 'LICENSE.md'],
+    sizeKb: 30000, commits: 10000, ageMonths: 160, contributors: 4000, stars: 79000, forks: 24000,
+    openIssues: 30, daysSincePush: 2, releaseCount: 100,
+    hasTests: true, hasCI: true, hasTypeConfig: true, hasLockfile: true, hasDocker: false,
+    hasDocs: true, hasChangelog: false, hasContributing: true, hasLicense: true, license: 'MIT', archived: false,
+    aiRate: 16,
+  },
+  {
+    fullName: 'flutter/flutter', repo: 'flutter', platform: 'github',
+    description: "Flutter makes it easy and fast to build beautiful apps for mobile and beyond.",
+    topics: ['dart', 'flutter', 'mobile', 'ui', 'cross-platform'],
+    languages: [{ name: 'Dart', pct: 74 }, { name: 'C++', pct: 18 }],
+    rootFiles: ['packages', 'bin', 'dev', 'examples', 'engine', 'README.md', 'LICENSE', '.github'],
+    sizeKb: 500000, commits: 55000, ageMonths: 120, contributors: 1500, stars: 172000, forks: 29000,
+    openIssues: 12000, daysSincePush: 0, releaseCount: 200,
+    hasTests: true, hasCI: true, hasTypeConfig: true, hasLockfile: true, hasDocker: true,
+    hasDocs: true, hasChangelog: true, hasContributing: true, hasLicense: true, license: 'BSD-3-Clause', archived: false,
+    aiRate: 12,
+  },
+  {
+    fullName: 'ReactiveX/RxSwift', repo: 'RxSwift', platform: 'github',
+    description: 'Reactive Programming in Swift.',
+    topics: ['swift', 'ios', 'reactive', 'rx', 'mobile'],
+    languages: [{ name: 'Swift', pct: 97 }],
+    rootFiles: ['RxSwift', 'RxCocoa', 'Tests', 'Package.swift', 'README.md', 'LICENSE.md', '.github'],
+    sizeKb: 8000, commits: 2100, ageMonths: 130, contributors: 300, stars: 24000, forks: 4100,
+    openIssues: 40, daysSincePush: 20, releaseCount: 60,
+    hasTests: true, hasCI: true, hasTypeConfig: true, hasLockfile: true, hasDocker: false,
+    hasDocs: true, hasChangelog: true, hasContributing: true, hasLicense: true, license: 'MIT', archived: false,
+    aiRate: 9,
+  },
+  {
+    fullName: 'github/gitignore', repo: 'gitignore', platform: 'github',
+    description: 'A collection of useful .gitignore templates.',
+    topics: ['gitignore', 'templates', 'git', 'utility'],
+    languages: [],
+    rootFiles: ['Global', 'community', 'README.md', 'LICENSE', '.github'],
+    sizeKb: 2000, commits: 3200, ageMonths: 200, contributors: 2000, stars: 168000, forks: 75000,
+    openIssues: 60, daysSincePush: 5, releaseCount: 0,
+    hasTests: false, hasCI: true, hasTypeConfig: false, hasLockfile: false, hasDocker: false,
+    hasDocs: true, hasChangelog: false, hasContributing: true, hasLicense: true, license: 'CC0-1.0', archived: false,
+    aiRate: 5,
+  },
 ]
 
 let cache = null
@@ -260,27 +466,125 @@ const DIFFICULTY_TEXT = {
   hard: '强敌',
 }
 
-// 依据玩家队伍的等级中位数挑选对手，保证「打得动」也「打得疼」
-export function pickRivalTeam(playerTeam = [], seed = Date.now(), difficulty = 'normal') {
-  const pool = rivalPets()
-  const levels = playerTeam.map((p) => Number(p.level) || 1)
-  const mid = levels.length ? levels.sort((a, b) => a - b)[Math.floor(levels.length / 2)] : 200
+// 难度 = 对手六维的实打实倍率（在线对手不吃这套，按仓库真实实力打）
+export const DIFFICULTY_FACTOR = { easy: 0.65, normal: 1, hard: 1.35 }
 
-  const factor = { easy: 0.55, normal: 1, hard: 1.8 }[difficulty] || 1
-  const target = Math.max(1, mid * factor)
-  const sorted = [...pool].sort((a, b) => Math.abs(a.level - target) - Math.abs(b.level - target))
+const clampNum = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v)))
 
-  // 取最接近的 5 只，按种子稳定地挑 3 只
-  const near = sorted.slice(0, 5)
-  const picked = []
-  let cursor = Math.abs(Math.floor(seed)) % near.length
-  while (picked.length < 3 && picked.length < near.length) {
-    picked.push(near[cursor % near.length])
-    cursor += 1
+// 战力总和：用来判断「这只对手大概几斤几两」
+export function powerOf(pet) {
+  return (pet?.stats || []).reduce((sum, s) => sum + (Number(s.value) || 0), 0)
+}
+
+// 按倍率缩放一只对手（等级同步缩放，界面上看到的强度就是实际强度）
+export function scaleRival(pet, factor = 1) {
+  const f = Number(factor) || 1
+  if (f === 1) return { ...pet, scaled: 1 }
+  return {
+    ...pet,
+    level: clampNum((Number(pet.level) || 1) * f, 1, 999),
+    stats: (pet.stats || []).map((s) => ({ ...s, value: clampNum((Number(s.value) || 0) * f, 6, 150) })),
+    scaled: f,
   }
+}
+
+// 同属性对手池：主属性相同的排前面，副属性相同的补在后面
+export function sameTypePool(elementKey) {
+  const pool = rivalPets()
+  if (!elementKey) return pool
+  const primary = pool.filter((p) => p.element?.key === elementKey)
+  const secondary = pool.filter((p) => p.element?.key !== elementKey && p.elementSecondary?.key === elementKey)
+  return [...primary, ...secondary]
+}
+
+// 依据玩家队伍等级中位数，从池子里取「打得动、也打得疼」的几只
+function drawNear(pool, playerTeam, count, seed) {
+  if (!pool.length) return []
+  const levels = playerTeam.map((p) => Number(p.level) || 1).sort((a, b) => a - b)
+  const mid = levels.length ? levels[Math.floor(levels.length / 2)] : 200
+  const sorted = [...pool].sort((a, b) => Math.abs(a.level - mid) - Math.abs(b.level - mid))
+
+  const window = Math.min(sorted.length, Math.max(count + 2, count))
+  const near = sorted.slice(0, window)
+  const start = Math.abs(Math.floor(seed)) % near.length
+  const picked = []
+  for (let i = 0; i < Math.min(count, near.length); i++) picked.push(near[(start + i) % near.length])
   return picked
 }
 
-export function rivalTeamLabel(difficulty) {
-  return DIFFICULTY_TEXT[difficulty] || DIFFICULTY_TEXT.normal
+// 完全随机抽取
+function drawRandom(pool, count, seed) {
+  const arr = [...pool]
+  let s = (Math.abs(Math.floor(seed)) || 1) >>> 0
+  for (let i = arr.length - 1; i > 0; i--) {
+    s = (Math.imul(s, 1103515245) + 12345) >>> 0
+    const j = s % (i + 1)
+    ;[arr[i], arr[j]] = [arr[j], arr[i]]
+  }
+  return arr.slice(0, count)
+}
+
+function teamSize(playerTeam, cap = 3) {
+  return Math.max(1, Math.min(cap, playerTeam.length || 1))
+}
+
+// 同类型对战：只找和你先发同属性的仓库，按难度缩放
+export function pickSameTypeTeam(playerTeam = [], seed = Date.now(), difficulty = 'normal', cap = 3) {
+  const lead = playerTeam[0]
+  const key = lead?.element?.key
+  const pool = sameTypePool(key)
+  const picked = drawNear(pool, playerTeam, teamSize(playerTeam, cap), seed)
+  const factor = DIFFICULTY_FACTOR[difficulty] ?? 1
+  return picked.map((p) => scaleRival(p, factor))
+}
+
+// 随机宠物：全体随机，不看等级匹配
+export function pickRandomTeam(playerTeam = [], seed = Date.now(), difficulty = 'normal', cap = 3) {
+  const picked = drawRandom(rivalPets(), teamSize(playerTeam, cap), seed)
+  const factor = DIFFICULTY_FACTOR[difficulty] ?? 1
+  return picked.map((p) => scaleRival(p, factor))
+}
+
+// 兼容旧调用：等同「随机宠物」但按等级贴近挑选
+export function pickRivalTeam(playerTeam = [], seed = Date.now(), difficulty = 'normal', cap = 3) {
+  const picked = drawNear(rivalPets(), playerTeam, teamSize(playerTeam, cap), seed)
+  const factor = DIFFICULTY_FACTOR[difficulty] ?? 1
+  return picked.map((p) => scaleRival(p, factor))
+}
+
+// 内置快照命中（在线对手直接打内置数据，不耗网络）
+export function matchBuiltinRival(platform, fullName) {
+  if (!fullName) return null
+  const target = `${platform === 'gitee' ? 'gitee.com/' : ''}${fullName}`.toLowerCase()
+  return rivalPets().find((p) => String(p.fullName).toLowerCase() === target) || null
+}
+
+// 整仓：该账号在内置池里的全部项目（能凑出多只就离线打，不用联网）
+export function matchBuiltinOwnerTeam(platform, owner) {
+  if (!owner) return []
+  const prefix = `${platform === 'gitee' ? 'gitee.com/' : ''}${owner}/`.toLowerCase()
+  return rivalPets()
+    .filter((p) => String(p.fullName).toLowerCase().startsWith(prefix))
+    .sort((a, b) => b.level - a.level)
+}
+
+// 在线扫描结果 → 对手精灵
+export function rivalFromSnapshot(snap) {
+  const pet = judge(snap)
+  return { ...pet, isRival: true, battleLevel: pet.level, source: snap.source || 'live' }
+}
+
+const MODE_TEXT = { online: '在线对手', same: '同类型', random: '随机宠物' }
+
+export function modeLabel(mode) {
+  return MODE_TEXT[mode] || MODE_TEXT.random
+}
+
+export function rivalTeamLabel(difficulty, mode = 'random', onlineSize = 'single') {
+  if (mode === 'online') return `${MODE_TEXT.online} · ${onlineSize === 'team' ? '整仓' : '单项目'}`
+  return `${MODE_TEXT[mode] || MODE_TEXT.random} · ${DIFFICULTY_TEXT[difficulty] || DIFFICULTY_TEXT.normal}`
+}
+
+export function onlineSizeLabel(size = 'single') {
+  return size === 'team' ? '整仓' : '单项目'
 }

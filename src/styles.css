@@ -527,6 +527,8 @@ body {
 .picker-info small { font-size: 10.5px; color: var(--dim); }
 .picker-check { font-size: 15px; color: #5c6b88; }
 .picker-card.picked .picker-check { color: var(--accent); }
+.picker-card.blocked { opacity: .45; }
+.picker-card.blocked:hover { border-color: #26314a; transform: none; }
 
 .difficulty-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .difficulty-label { font-size: 12px; color: var(--dim); margin-right: 2px; }
@@ -542,6 +544,116 @@ body {
 .picker-actions { display: flex; gap: 10px; margin-top: 20px; align-items: center; }
 .picker-empty { text-align: center; padding: 40px 0; color: var(--dim); font-size: 13px; }
 .picker-empty .primary-btn { margin-top: 16px; }
+
+/* 挑战方式（三种入口） */
+.mode-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(196px, 1fr)); gap: 12px; margin: 20px 0 4px; }
+.mode-card {
+  display: flex; flex-direction: column; gap: 7px; text-align: left; cursor: pointer;
+  padding: 14px 15px 12px; color: var(--text);
+  border: 1px solid #26314a; border-radius: 14px;
+  background: linear-gradient(160deg, rgba(26, 36, 55, .95), rgba(14, 21, 34, .95));
+  transition: transform .16s ease, border-color .18s, box-shadow .2s;
+}
+.mode-card:hover { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 18px 34px -26px #ffcb05; }
+.mode-top { display: flex; align-items: center; justify-content: space-between; }
+.mode-index {
+  font-size: 10px; font-weight: 900; letter-spacing: 1px;
+  color: #0b101c; background: var(--accent);
+  padding: 2px 6px; border-radius: 6px;
+}
+.mode-go { font-size: 10.5px; color: #5f6e8a; }
+.mode-card:hover .mode-go { color: var(--accent); }
+.mode-title { font-size: 15px; font-weight: 700; letter-spacing: .4px; }
+.mode-tag { font-size: 10.5px; color: #94a3bd; }
+.mode-desc { font-size: 11.5px; color: var(--dim); line-height: 1.75; min-height: 62px; }
+.mode-foot { font-size: 10px; color: #5f6e8a; border-top: 1px dashed #24304a; padding-top: 7px; }
+
+.mode-online { border-left: 3px solid #4a9eff; }
+.mode-same { border-left: 3px solid #ff8a3d; }
+.mode-random { border-left: 3px solid #b06cf0; }
+
+/* 选对手：返回 + 子标题 */
+.back-link {
+  background: none; border: none; cursor: pointer; color: #7f8fb0;
+  font-size: 11.5px; padding: 0 0 12px; font-family: inherit;
+}
+.back-link:hover { color: var(--accent); }
+.picker-subhead {
+  display: flex; align-items: baseline; gap: 10px; margin-top: 18px;
+  font-size: 12px; color: #9fb0cc;
+}
+.picker-subhead em { font-size: 10.5px; color: #67748e; font-style: normal; }
+
+/* 在线对手 */
+.online-setup { margin-top: 16px; }
+
+/* 单项目 / 整仓 */
+.size-toggle { display: flex; gap: 8px; margin-bottom: 10px; }
+.size-btn {
+  display: flex; flex-direction: column; gap: 2px; cursor: pointer;
+  padding: 7px 16px; text-align: left; font-size: 12.5px;
+  color: #a9b8d4; background: rgba(18, 26, 41, .9);
+  border: 1px solid #26314a; border-radius: 10px;
+  transition: border-color .16s, color .16s, background .16s;
+}
+.size-btn b { font-weight: 700; }
+.size-btn small { font-size: 9.5px; color: #67748e; }
+.size-btn:hover:not(:disabled) { border-color: #3c4b6b; }
+.size-btn.on { border-color: var(--accent); color: #ffd75e; background: rgba(255, 203, 5, .07); }
+.size-btn.on small { color: #b99b3f; }
+.size-btn:disabled { opacity: .5; cursor: default; }
+
+.repo-row { display: flex; gap: 8px; }
+.repo-row input {
+  flex: 1; min-width: 0; padding: 9px 12px; border-radius: 10px;
+  background: rgba(10, 17, 28, .9); border: 1px solid #26314a;
+  color: var(--text); font-size: 12px; font-family: inherit;
+}
+.repo-row input:focus { outline: none; border-color: var(--accent); }
+.repo-row input:disabled { opacity: .6; }
+.repo-row .primary-btn { padding: 9px 16px; font-size: 12px; white-space: nowrap; }
+.online-error { margin-top: 8px; font-size: 11.5px; color: #ff8a8a; }
+.online-hint { margin-top: 10px; font-size: 11px; color: #67748e; line-height: 1.8; }
+.opponent-card {
+  display: flex; align-items: center; gap: 12px; margin-top: 12px;
+  padding: 10px 12px; border-radius: 12px;
+  border: 1px solid #3a2b3f; background: rgba(18, 26, 41, .92);
+}
+.opponent-info { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.opponent-name { display: flex; align-items: center; gap: 8px; }
+.opponent-name b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opponent-info small { font-size: 10.5px; color: var(--dim); }
+.opponent-source {
+  align-self: flex-start; font-size: 9.5px; color: #7f8fb0;
+  border: 1px dashed #2c3855; border-radius: 999px; padding: 1px 7px;
+}
+
+/* 整仓：多只对手 */
+.opponent-team {
+  margin-top: 12px; padding: 10px 12px; border-radius: 12px;
+  border: 1px solid #3a2b3f; background: rgba(18, 26, 41, .92);
+}
+.opponent-team-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  font-size: 11px; color: #94a3bd; margin-bottom: 9px;
+}
+.opponent-team-head .opponent-source { margin-right: auto; }
+.opponent-team-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 8px; }
+.opponent-card.mini { margin-top: 0; padding: 7px 9px; gap: 8px; }
+.opponent-card.mini .opponent-name b { font-size: 12px; }
+.opponent-card.mini small { font-size: 10px; }
+
+/* 同类型 / 随机：属性与池子提示 */
+.same-type-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 14px; padding: 10px 12px; border-radius: 12px;
+  border: 1px solid #26314a; background: rgba(14, 21, 34, .7);
+  font-size: 11px; color: #8393ae;
+}
+.same-label { font-size: 10.5px; color: #67748e; }
+.same-pool { font-size: 10.5px; color: #94a3bd; line-height: 1.7; }
+.type-chip.big { font-size: 11px; padding: 3px 10px; }
+.fixed-diff { font-size: 10.5px; color: #67748e; }
 
 @keyframes battle-hit {
   0%, 100% { transform: translateX(0); }

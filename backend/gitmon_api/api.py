@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
-from . import engine, growth, services
+from . import auth, engine, growth, services
 from .badge import badge_svg, card_svg, placeholder_badge
 from .config import settings
 from .errors import PetNotFound, ScanError
@@ -28,6 +28,12 @@ def owner_key(x_gitmon_user: str | None = Header(default=None, alias="X-Gitmon-U
         return "public"
     cleaned = _USER_RE.sub("", x_gitmon_user)[:64]
     return cleaned or "public"
+
+
+def session_token(request: Request) -> str:
+    """登录用户的 GitHub 令牌；未登录返回空串，退回服务端兜底令牌。"""
+    user = auth.resolve_session(request.cookies.get(auth.SESSION_COOKIE, ""))
+    return (user or {}).get("token", "") if user else ""
 
 
 class HatchRequest(BaseModel):
@@ -66,6 +72,7 @@ def health() -> dict[str, Any]:
         "ok": True,
         "version": "0.2.0",
         "tokens": {"github": bool(settings.github_token), "gitee": bool(settings.gitee_token)},
+        "login": {"githubOAuth": auth.oauth_enabled(), "callback": auth.callback_url()},
         "queue": scan_queue.pending(),
         "cacheTtl": settings.cache_ttl,
         "scc": settings.use_scc,
@@ -89,17 +96,19 @@ def meta() -> dict[str, Any]:
 # ---------------------------------------------------------------- 孵化
 
 @router.post("/api/hatch", status_code=202, tags=["hatch"])
-def hatch_async(payload: HatchRequest, user: str = Depends(owner_key)) -> dict[str, Any]:
+def hatch_async(payload: HatchRequest, user: str = Depends(owner_key),
+                token: str = Depends(session_token)) -> dict[str, Any]:
     """提交扫描任务，立即返回 jobId；前端轮询 /api/jobs/{jobId}。"""
     ref = parse_repo(payload.repo)  # 先校验，非法地址不进队列
-    job = scan_queue.submit("hatch", ref.html_url, user, refresh=payload.refresh)
+    job = scan_queue.submit("hatch", ref.html_url, user, refresh=payload.refresh, token=token)
     return {"jobId": job.id, "status": job.status, "repo": ref.full_name, "platform": ref.platform}
 
 
 @router.post("/api/hatch/sync", tags=["hatch"])
-def hatch_now(payload: HatchRequest, user: str = Depends(owner_key)) -> dict[str, Any]:
+def hatch_now(payload: HatchRequest, user: str = Depends(owner_key),
+              token: str = Depends(session_token)) -> dict[str, Any]:
     """同步孵化：小仓库通常 1~3 秒，适合脚本/冷启动预热。"""
-    return services.hatch(payload.repo, user, refresh=payload.refresh)
+    return services.hatch(payload.repo, user, refresh=payload.refresh, token=token)
 
 
 @router.get("/api/jobs/{job_id}", response_model=JobResponse, tags=["hatch"])
@@ -133,8 +142,8 @@ def delete_pet(pet_id: str) -> Response:
 
 
 @router.post("/api/pets/{pet_id}/sync", tags=["pets"])
-def sync_pet(pet_id: str) -> dict[str, Any]:
-    return services.sync(pet_id)
+def sync_pet(pet_id: str, token: str = Depends(session_token)) -> dict[str, Any]:
+    return services.sync(pet_id, token=token)
 
 
 @router.get("/api/pets/{pet_id}/growth", tags=["pets"])
@@ -177,21 +186,21 @@ def sprite_by_repo(platform: str, owner: str, repo: str,
 
 
 @router.get("/badge/{platform}/{owner}/{repo}.svg", tags=["render"])
-def repo_badge(platform: str, owner: str, repo: str) -> Response:
+def repo_badge(platform: str, owner: str, repo: str, token: str = Depends(session_token)) -> Response:
     try:
         ref = ref_from_parts(platform, owner, repo)
     except InvalidRepo:
         return _svg(placeholder_badge("invalid repo"), max_age=300)
-    api = services.ensure_pet_for_badge(ref)
+    api = services.ensure_pet_for_badge(ref, token=token)
     if api is None:
         return _svg(placeholder_badge("scan pending"), max_age=300)
     return _svg(badge_svg(api))
 
 
 @router.get("/card/{platform}/{owner}/{repo}.svg", tags=["render"])
-def repo_card(platform: str, owner: str, repo: str) -> Response:
+def repo_card(platform: str, owner: str, repo: str, token: str = Depends(session_token)) -> Response:
     ref = ref_from_parts(platform, owner, repo)
-    api = services.ensure_pet_for_badge(ref)
+    api = services.ensure_pet_for_badge(ref, token=token)
     if api is None:
         return _svg(placeholder_badge("scan pending"), max_age=300)
     return _svg(card_svg(api))

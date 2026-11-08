@@ -76,6 +76,31 @@ CREATE TABLE IF NOT EXISTS snapshots (
     payload     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_snapshots_fetched ON snapshots(fetched_at);
+
+-- 登录授权的用户与浏览器会话（令牌加密后落库，密钥见 GITMON_SECRET）
+CREATE TABLE IF NOT EXISTS users (
+    id            TEXT PRIMARY KEY,
+    provider      TEXT NOT NULL,
+    login         TEXT NOT NULL,
+    name          TEXT NOT NULL DEFAULT '',
+    avatar        TEXT NOT NULL DEFAULT '',
+    email         TEXT NOT NULL DEFAULT '',
+    token_cipher  TEXT NOT NULL DEFAULT '',
+    scopes        TEXT NOT NULL DEFAULT '',
+    source        TEXT NOT NULL DEFAULT 'oauth',
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL,
+    last_login_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_login ON users(provider, login);
+
+CREATE TABLE IF NOT EXISTS sessions (
+    sid_hash   TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 """
 
 

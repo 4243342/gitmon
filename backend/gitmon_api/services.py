@@ -33,17 +33,18 @@ from .scanner.snapshot import RepoSnapshot
 
 # ---------------------------------------------------------------- 快照
 
-def _scan(ref: RepoRef, since: str | None = None) -> RepoSnapshot:
+def _scan(ref: RepoRef, since: str | None = None, token: str | None = None) -> RepoSnapshot:
     """真正的网络扫描。测试通过 monkeypatch 这个函数注入假数据。"""
-    return scan_remote(ref, since=since)
+    return scan_remote(ref, since=since, token=token)
 
 
-def scan_snapshot(conn, ref: RepoRef, *, force: bool = False, since: str | None = None) -> RepoSnapshot:
+def scan_snapshot(conn, ref: RepoRef, *, force: bool = False, since: str | None = None,
+                  token: str | None = None) -> RepoSnapshot:
     if not force:
         cached = get_snapshot_cache(conn, ref.cache_key, settings.cache_ttl)
         if cached:
             return RepoSnapshot.from_dict(cached)
-    snapshot = _scan(ref, since=since)
+    snapshot = _scan(ref, since=since, token=token)
     put_snapshot_cache(conn, ref.cache_key, ref.platform, ref.full_name, snapshot.to_dict())
     return snapshot
 
@@ -199,14 +200,15 @@ def _compose(existing: dict[str, Any] | None, spec: dict[str, Any], ref: RepoRef
 
 # ---------------------------------------------------------------- 孵化
 
-def hatch(repo_value: str, owner_key: str = "public", *, refresh: bool = False) -> dict[str, Any]:
+def hatch(repo_value: str, owner_key: str = "public", *, refresh: bool = False,
+          token: str | None = None) -> dict[str, Any]:
     ref = parse_repo(repo_value)
     with db.connect() as conn:
         existing = find_pet(conn, ref.platform, ref.full_name, owner_key)
         if existing and not refresh and _fresh(existing):
             return pet_to_api(existing)
 
-        snapshot = scan_snapshot(conn, ref, force=refresh)
+        snapshot = scan_snapshot(conn, ref, force=refresh, token=token)
         keep = None
         if existing:
             keep = (existing["element_key"], existing.get("element_secondary"), existing["species_key"])
@@ -230,23 +232,23 @@ def hatch(repo_value: str, owner_key: str = "public", *, refresh: bool = False) 
 
 # ---------------------------------------------------------------- 同步结算
 
-def sync(pet_id: str) -> dict[str, Any]:
+def sync(pet_id: str, *, token: str | None = None) -> dict[str, Any]:
     with db.connect() as conn:
         pet = get_pet(conn, pet_id)
         if pet is None:
             raise PetNotFound()
         ref = _ref_of(pet)
-        snapshot = scan_snapshot(conn, ref, force=True, since=pet.get("synced_at"))
+        snapshot = scan_snapshot(conn, ref, force=True, since=pet.get("synced_at"), token=token)
         return _apply_sync(conn, pet, snapshot)
 
 
-def sync_by_ref(ref: RepoRef, owner_key: str = "public") -> dict[str, Any]:
+def sync_by_ref(ref: RepoRef, owner_key: str = "public", *, token: str | None = None) -> dict[str, Any]:
     with db.connect() as conn:
         pet = find_pet(conn, ref.platform, ref.full_name, owner_key)
     if pet is None:
-        return hatch(ref.html_url, owner_key)
+        return hatch(ref.html_url, owner_key, token=token)
     with db.connect() as conn:
-        snapshot = scan_snapshot(conn, ref, force=True, since=pet.get("synced_at"))
+        snapshot = scan_snapshot(conn, ref, force=True, since=pet.get("synced_at"), token=token)
         return _apply_sync(conn, pet, snapshot)
 
 
@@ -387,14 +389,14 @@ def sprite_by_ref(ref: RepoRef, *, stage: int | None = None) -> tuple[bytes, str
     return payload, element["color"]
 
 
-def ensure_pet_for_badge(ref: RepoRef) -> dict[str, Any] | None:
+def ensure_pet_for_badge(ref: RepoRef, *, token: str | None = None) -> dict[str, Any] | None:
     """徽章端点用：已入库直接取，否则扫一次并登记到公共图鉴。"""
     with db.connect() as conn:
         pet = find_pet(conn, ref.platform, ref.full_name, "public")
     if pet:
         return pet_to_api(pet)
     try:
-        return hatch(ref.html_url, "public")
+        return hatch(ref.html_url, "public", token=token)
     except Exception:
         return None
 
@@ -410,7 +412,7 @@ def daily_sync(limit: int = 30) -> dict[str, Any]:
         try:
             ref = _ref_of(pet)
             with db.connect() as conn:
-                snapshot = scan_snapshot(conn, ref, force=True, since=pet.get("synced_at"))
+                snapshot = scan_snapshot(conn, ref, force=True, since=pet.get("synced_at"), token=token)
                 _apply_sync(conn, pet, snapshot)
             synced += 1
         except Exception:

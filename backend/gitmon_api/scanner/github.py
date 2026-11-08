@@ -21,10 +21,13 @@ _RAW_ACCEPT = "application/vnd.github.raw+json"
 class GitHubScanner:
     platform = "github"
 
-    def __init__(self, http: HttpClient, *, timeout: float, max_tree_entries: int = 20000) -> None:
+    def __init__(self, http: HttpClient, *, timeout: float, max_tree_entries: int = 20000,
+                 token: str | None = None) -> None:
         self.http = http
         self.timeout = timeout
         self.max_tree_entries = max_tree_entries
+        # 登录用户的令牌优先于服务端兜底令牌（5000 次/小时而不是 60）
+        self.token = token or ""
         self._limit_hits = 0
 
     # ---------- 公共入口 ----------
@@ -142,7 +145,7 @@ class GitHubScanner:
 
     def _headers(self, accept: str = _ACCEPT) -> dict[str, str]:
         headers = {"Accept": accept, "X-GitHub-Api-Version": "2022-11-28"}
-        token = _github_token()
+        token = self.token or _github_token()
         if token:
             headers["Authorization"] = f"Bearer {token}"
         return headers

@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from . import services
 from .api import install_error_handlers
 from .api import router as api_router
+from .auth_api import router as auth_router
 from .config import Settings, settings as default_settings
 from .db import db
 
@@ -74,6 +75,7 @@ def create_app(settings: Settings | None = None, *, start_queue: bool = True) ->
         version="0.2.0",
         description="把任意 GitHub / Gitee 仓库孵化为一只精灵：扫描 → 判定 → 养成。",
         openapi_tags=[
+            {"name": "auth", "description": "GitHub 登录授权（OAuth / 个人访问令牌）"},
             {"name": "hatch", "description": "孵化与扫描任务"},
             {"name": "pets", "description": "图鉴、详情与同步结算"},
             {"name": "render", "description": "立绘 PNG、徽章与分享卡片 SVG"},
@@ -112,6 +114,7 @@ def create_app(settings: Settings | None = None, *, start_queue: bool = True) ->
         return response
 
     app.include_router(api_router)
+    app.include_router(auth_router)
     install_error_handlers(app)
 
     # 前端构建产物（单容器部署）：必须在 API 路由之后挂载

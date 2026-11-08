@@ -9,15 +9,58 @@ import {
   hpPercent,
   moveEffectiveness,
 } from '../battle.js'
-import { pickRivalTeam, rivalTeamLabel } from '../rivals.js'
+import {
+  matchBuiltinOwnerTeam,
+  matchBuiltinRival,
+  modeLabel,
+  pickRandomTeam,
+  pickSameTypeTeam,
+  powerOf,
+  rivalFromSnapshot,
+  rivalPets,
+  rivalTeamLabel,
+  sameTypePool,
+} from '../rivals.js'
+import { parseRepoInput, scanOwnerBox, scanRepo } from '../scan.js'
+
+// 三种挑战：在线对手（输入仓库/账号，真实强度）／同类型（找同属性仓库）／随机宠物
+const MODES = [
+  {
+    key: 'online',
+    index: '01',
+    name: '在线对手',
+    tag: '单项目 1v1 · 整仓 3v3',
+    desc: '填一个仓库打它的单项目，或填一个账号让它的整仓项目排队上。按对方的真实强度来，不设难度。',
+  },
+  {
+    key: 'same',
+    index: '02',
+    name: '同类型对战',
+    tag: '找同属性的仓库',
+    desc: '只从和你先发精灵同属性的知名仓库里挑对手。克制关系一眼看得懂，适合摸清属性打法。',
+  },
+  {
+    key: 'random',
+    index: '03',
+    name: '随机宠物',
+    tag: '抽到谁打谁',
+    desc: '从全部对手池里随机抽。可能撞上 SSR 巨兽，也可能抽到 N 级小玩意——难度自己定。',
+  },
+]
 
 const DIFFICULTIES = [
-  { key: 'easy', name: '新手', desc: '对手等级约 55%' },
-  { key: 'normal', name: '相当', desc: '对手等级相当' },
-  { key: 'hard', name: '强敌', desc: '对手等级约 180%' },
+  { key: 'easy', name: '新手', desc: '对手六维 ×0.65' },
+  { key: 'normal', name: '相当', desc: '对手原样实力' },
+  { key: 'hard', name: '强敌', desc: '对手六维 ×1.35' },
 ]
 
 const XP_BASE = { easy: 90, normal: 150, hard: 240 }
+const ONLINE_XP = { single: 200, team: 280 }
+
+const ONLINE_SIZES = [
+  { key: 'single', name: '单项目', hint: '1v1 · 一个仓库' },
+  { key: 'team', name: '整仓', hint: '3v3 · 整个账号' },
+]
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -104,69 +147,264 @@ function MoveButton({ move, foe, disabled, onClick }) {
   )
 }
 
-function TeamPicker({ pets, team, setTeam, difficulty, setDifficulty, onStart, onExit }) {
-  const toggle = (pet) => {
-    const exists = team.some((p) => p.fullName === pet.fullName && p.platform === pet.platform)
-    if (exists) setTeam(team.filter((p) => !(p.fullName === pet.fullName && p.platform === pet.platform)))
-    else if (team.length < 3) setTeam([...team, pet])
-  }
+function EmptyState({ onExit }) {
+  return (
+    <div className="picker-empty">
+      <p>图鉴里还没有精灵。</p>
+      <button className="primary-btn" onClick={onExit}>先去孵化一只</button>
+    </div>
+  )
+}
 
+// 第一步：选挑战方式
+function ModePicker({ pets, onPick, onExit }) {
   return (
     <div className="battle-picker">
       <div className="picker-head">
         <h2>竞技场</h2>
-        <p>选 1–3 只精灵出战。属性克制、先制、状态与换人都会影响胜负——不是数值碾压就行。</p>
+        <p>挑一种挑战方式。在线对手打的是对方仓库的真实实力；同类型和随机宠物可以自己定难度。</p>
       </div>
 
       {pets.length === 0 ? (
-        <div className="picker-empty">
-          <p>图鉴里还没有精灵。</p>
-          <button className="primary-btn" onClick={onExit}>先去孵化一只</button>
+        <EmptyState onExit={onExit} />
+      ) : (
+        <div className="mode-grid">
+          {MODES.map((m) => (
+            <button key={m.key} className={`mode-card mode-${m.key}`} onClick={() => onPick(m.key)}>
+              <span className="mode-top">
+                <span className="mode-index">{m.index}</span>
+                <span className="mode-go">选择 →</span>
+              </span>
+              <span className="mode-title">{m.name}</span>
+              <span className="mode-tag">{m.tag}</span>
+              <span className="mode-desc">{m.desc}</span>
+              <span className="mode-foot">
+                {m.key === 'online' ? '1v1 · 固定真实强度' : '1–3v1–3 · 可选难度'}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="picker-actions">
+        <button className="ghost-btn" onClick={onExit}>返回</button>
+      </div>
+    </div>
+  )
+}
+
+// 在线对手：单项目（一个仓库 1v1）／整仓（一个账号的全部项目 3v3）
+function OnlineSetup({ size, setSize, repoInput, setRepoInput, onScan, scanning, scanError, opponent, ownerTeam, opponentNote, onClear }) {
+  const isTeam = size === 'team'
+  const hasOpponent = isTeam ? ownerTeam.length > 0 : !!opponent
+  return (
+    <div className="online-setup">
+      <div className="size-toggle">
+        {ONLINE_SIZES.map((s) => (
+          <button
+            key={s.key}
+            className={`size-btn ${size === s.key ? 'on' : ''}`}
+            onClick={() => setSize(s.key)}
+            disabled={scanning}
+          >
+            <b>{s.name}</b>
+            <small>{s.hint}</small>
+          </button>
+        ))}
+      </div>
+
+      <div className="repo-row">
+        <input
+          value={repoInput}
+          onChange={(e) => setRepoInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !scanning) onScan() }}
+          placeholder={isTeam ? '对方账号：github.com/owner（也可填仓库，按它的账号整仓出战）' : '对方的仓库：https://github.com/owner/repo'}
+          spellCheck={false}
+          disabled={scanning}
+        />
+        <button className="primary-btn" onClick={onScan} disabled={scanning}>
+          {scanning ? (isTeam ? '整仓扫描中…' : '扫描中…') : hasOpponent ? '重新扫描' : isTeam ? '扫描整仓' : '扫描仓库'}
+        </button>
+      </div>
+      {scanError && <p className="online-error">! {scanError}</p>}
+
+      {isTeam ? (
+        ownerTeam.length > 0 ? (
+          <div className="opponent-team">
+            <div className="opponent-team-head">
+              <span>整仓出战 · {ownerTeam.length} 个项目</span>
+              <span className="opponent-source">{opponentNote}</span>
+              <button className="ghost-btn tiny" onClick={onClear}>换一个</button>
+            </div>
+            <div className="opponent-team-list">
+              {ownerTeam.map((p) => (
+                <div key={p.fullName} className="opponent-card mini">
+                  <PixelSprite pet={p} size={54} animate={false} />
+                  <div className="opponent-info">
+                    <div className="opponent-name">
+                      <b>{p.repo}</b>
+                      <span className={`mini-quality q-${p.qualityKey}`}>{p.qualityKey}</span>
+                    </div>
+                    <small>Lv.{p.level} · {p.element.name}系</small>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="online-hint">
+            整仓 = 对方账号下的项目依次上场，最多 3 只。整仓按真实数值打，不叠难度；扫描会消耗 API 额度，内置快照账号可离线直接打。
+          </p>
+        )
+      ) : opponent ? (
+        <div className="opponent-card">
+          <PixelSprite pet={opponent} size={76} animate={false} />
+          <div className="opponent-info">
+            <div className="opponent-name">
+              <b>{opponent.fullName || opponent.repo}</b>
+              <span className={`mini-quality q-${opponent.qualityKey}`}>{opponent.qualityKey}</span>
+            </div>
+            <small>
+              Lv.{opponent.level} · {opponent.element.name}系
+              {opponent.elementSecondary ? `/${opponent.elementSecondary.name}` : ''} · {opponent.species?.name}
+            </small>
+            <span className="opponent-source">{opponentNote}</span>
+          </div>
+          <button className="ghost-btn tiny" onClick={onClear}>换一个</button>
         </div>
       ) : (
-        <>
-          <div className="picker-list">
-            {pets.map((pet) => {
-              const active = team.some((p) => p.fullName === pet.fullName && p.platform === pet.platform)
-              return (
-                <button
-                  key={`${pet.platform}/${pet.fullName}`}
-                  className={`picker-card ${active ? 'picked' : ''}`}
-                  onClick={() => toggle(pet)}
-                >
-                  <PixelSprite pet={pet} size={64} animate={false} />
-                  <span className="picker-info">
-                    <b>{pet.repo}</b>
-                    <small>Lv.{pet.level} · {pet.element.name}系 · {pet.quality.key}</small>
-                  </span>
-                  <span className="picker-check">{active ? '✓' : '+'}</span>
-                </button>
-              )
-            })}
-          </div>
-
-          <div className="difficulty-row">
-            <span className="difficulty-label">对手强度</span>
-            {DIFFICULTIES.map((d) => (
-              <button
-                key={d.key}
-                className={`diff-btn ${difficulty === d.key ? 'on' : ''}`}
-                onClick={() => setDifficulty(d.key)}
-              >
-                {d.name}
-                <small>{d.desc}</small>
-              </button>
-            ))}
-          </div>
-
-          <div className="picker-actions">
-            <button className="primary-btn" disabled={team.length === 0} onClick={onStart}>
-              出战（{team.length}/3）
-            </button>
-            <button className="ghost-btn" onClick={onExit}>返回</button>
-          </div>
-        </>
+        <p className="online-hint">
+          单项目 PK 只打对方一个仓库，按仓库真实数值生成，等级、品质、六维都是它自己的，不叠加难度系数。已经内置快照的仓库可以离线直接打。
+        </p>
       )}
+    </div>
+  )
+}
+
+function Setup({ mode, pets, team, setTeam, difficulty, setDifficulty, onStart, onBack, onExit, online }) {
+  const onlineCap = online.size === 'team' ? Math.max(1, online.ownerTeam.length) : 1
+  const cap = mode === 'online' ? onlineCap : 3
+  const toggle = (pet) => {
+    const exists = team.some((p) => p.fullName === pet.fullName && p.platform === pet.platform)
+    if (exists) setTeam(team.filter((p) => !(p.fullName === pet.fullName && p.platform === pet.platform)))
+    else if (team.length < cap) setTeam([...team, pet])
+  }
+
+  const lead = team[0]
+  const samePool = useMemo(
+    () => (mode === 'same' && lead ? sameTypePool(lead.element?.key) : []),
+    [mode, lead],
+  )
+
+  const modeInfo = MODES.find((m) => m.key === mode)
+  const hasEnemy = online.size === 'team' ? online.ownerTeam.length > 0 : !!online.opponent
+  const ready = team.length > 0 && (mode !== 'online' || hasEnemy)
+
+  return (
+    <div className="battle-picker">
+      <button className="back-link" onClick={onBack}>← 换挑战方式</button>
+
+      <div className="picker-head">
+        <h2>{modeInfo.name}</h2>
+        <p>{modeInfo.desc}</p>
+      </div>
+
+      {mode === 'online' && <OnlineSetup {...online} />}
+
+      {mode === 'same' && (
+        <div className="same-type-bar">
+          {lead ? (
+            <>
+              <span className="same-label">你的先发属性</span>
+              <span className="type-chip big" style={{ color: lead.element.color, borderColor: `${lead.element.color}66` }}>
+                {lead.element.name}系
+              </span>
+              <span className="same-pool">
+                同属性仓库 {samePool.length} 个：
+                {samePool.slice(0, 6).map((p) => p.repo).join(' · ')}
+                {samePool.length > 6 ? ' …' : ''}
+              </span>
+            </>
+          ) : (
+            <span className="same-pool">先选一只精灵，我再去找和它同属性的仓库。</span>
+          )}
+        </div>
+      )}
+
+      {mode === 'random' && (
+        <div className="same-type-bar">
+          <span className="same-label">对手池</span>
+          <span className="same-pool">全部 {rivalPets().length} 只知名仓库精灵随机抽取，抽到谁都事先不知道。</span>
+        </div>
+      )}
+
+      <div className="picker-subhead">
+        <span>出战精灵（{team.length}/{cap}）</span>
+        {mode === 'online' && (
+          <em>
+            {online.size === 'team'
+              ? `整仓 ${cap}v${cap}：对方账号下每个项目一只`
+              : '单项目 1v1：只能带一只'}
+          </em>
+        )}
+      </div>
+
+      {pets.length === 0 ? (
+        <EmptyState onExit={onExit} />
+      ) : (
+        <div className="picker-list">
+          {pets.map((pet) => {
+            const active = team.some((p) => p.fullName === pet.fullName && p.platform === pet.platform)
+            const blocked = !active && team.length >= cap
+            return (
+              <button
+                key={`${pet.platform}/${pet.fullName}`}
+                className={`picker-card ${active ? 'picked' : ''} ${blocked ? 'blocked' : ''}`}
+                onClick={() => toggle(pet)}
+              >
+                <PixelSprite pet={pet} size={64} animate={false} />
+                <span className="picker-info">
+                  <b>{pet.repo}</b>
+                  <small>Lv.{pet.level} · {pet.element.name}系 · {pet.quality.key}</small>
+                </span>
+                <span className="picker-check">{active ? '✓' : '+'}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {mode !== 'online' ? (
+        <div className="difficulty-row">
+          <span className="difficulty-label">对手强度</span>
+          {DIFFICULTIES.map((d) => (
+            <button
+              key={d.key}
+              className={`diff-btn ${difficulty === d.key ? 'on' : ''}`}
+              onClick={() => setDifficulty(d.key)}
+            >
+              {d.name}
+              <small>{d.desc}</small>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="difficulty-row">
+          <span className="difficulty-label">对手强度</span>
+          <span className="fixed-diff">在线对战按仓库真实实力，不设难度</span>
+        </div>
+      )}
+
+      <div className="picker-actions">
+        <button className="primary-btn" disabled={!ready} onClick={onStart}>
+          {mode === 'online'
+            ? online.size === 'team'
+              ? online.ownerTeam.length ? `整仓出战（${team.length}/${cap}）` : '先扫描整仓'
+              : online.opponent ? `挑战 ${online.opponent.repo}` : '先扫描对手仓库'
+            : `出战（${team.length}/${cap}）`}
+        </button>
+        <button className="ghost-btn" onClick={onExit}>返回</button>
+      </div>
     </div>
   )
 }
@@ -178,7 +416,8 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
     return list
   }, [pets, initial])
 
-  const [phase, setPhase] = useState('select')
+  const [phase, setPhase] = useState('mode') // mode | select | fight | result
+  const [mode, setMode] = useState('random')
   const [team, setTeam] = useState(() => (initial ? [initial] : candidates.slice(0, 3)))
   const [difficulty, setDifficulty] = useState('normal')
   const [state, setState] = useState(null)
@@ -190,6 +429,16 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
   const [reward, setReward] = useState(0)
   const [lunging, setLunging] = useState(null)
   const [hurt, setHurt] = useState({ player: false, enemy: false })
+
+  // 在线对手：单项目（一个仓库）／整仓（一个账号的项目）
+  const [onlineSize, setOnlineSize] = useState('single')
+  const [repoInput, setRepoInput] = useState('')
+  const [scanning, setScanning] = useState(false)
+  const [scanError, setScanError] = useState('')
+  const [opponent, setOpponent] = useState(null)
+  const [ownerTeam, setOwnerTeam] = useState([])
+  const [opponentNote, setOpponentNote] = useState('')
+
   const rewardedRef = useRef(false)
   const logRef = useRef(null)
   const fxLayerRef = useRef(null)
@@ -218,14 +467,110 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
   const playerUnit = state ? state.sides.player.team[state.sides.player.active] : null
   const enemyUnit = state ? state.sides.enemy.team[state.sides.enemy.active] : null
 
+  const pickMode = (key) => {
+    setMode(key)
+    setPhase('select')
+    setScanError('')
+    // 在线对战 1v1：多带的先收回去
+    if (key === 'online' && team.length > 1) setTeam(team.slice(0, 1))
+  }
+
+  const clearOpponent = () => {
+    setOpponent(null)
+    setOwnerTeam([])
+    setOpponentNote('')
+  }
+
+  // 切换单项目 / 整仓：多余的人先收回去
+  const changeOnlineSize = (size) => {
+    setOnlineSize(size)
+    setScanError('')
+    clearOpponent()
+    const cap = size === 'team' ? 3 : 1
+    if (team.length > cap) setTeam(team.slice(0, cap))
+  }
+
+  const scanOpponent = async () => {
+    const raw = repoInput.trim()
+    if (!raw) { setScanError(onlineSize === 'team' ? '先填一个账号或仓库地址' : '先填一个仓库地址'); return }
+    const info = parseRepoInput(raw)
+    if (!info) { setScanError('无法识别的地址，请输入 GitHub / Gitee 仓库或账号链接'); return }
+
+    setScanError('')
+    setScanning(true)
+    try {
+      // ① 单项目：只打对方一个仓库
+      if (onlineSize === 'single') {
+        if (info.kind !== 'repo') throw new Error('单项目 PK 需要具体仓库地址，例如 github.com/owner/repo')
+        const builtin = matchBuiltinRival(info.platform, info.fullName)
+        if (builtin) {
+          setOpponent(builtin)
+          setOpponentNote('内置快照 · 离线可打')
+          return
+        }
+        const snap = await scanRepo(raw)
+        setOpponent(rivalFromSnapshot(snap))
+        setOpponentNote(snap.cached ? '线上数据 · 本地缓存' : '线上数据 · 刚刚扫描')
+        return
+      }
+
+      // ② 整仓：对方账号下的项目依次上场（填仓库时按它的账号算）
+      const owner = info.owner
+      const platform = info.platform
+      const localTeam = matchBuiltinOwnerTeam(platform, owner)
+      if (localTeam.length >= 2) {
+        const picked = localTeam.slice(0, 3)
+        setOwnerTeam(picked)
+        setTeam((prev) => prev.slice(0, picked.length))
+        setOpponentNote(`内置快照 · ${owner} 的 ${picked.length} 个项目`)
+        return
+      }
+      const res = await scanOwnerBox({ kind: 'owner', platform, owner }, { limit: 4 })
+      if (!res.snaps.length) {
+        throw new Error(res.rateLimited
+          ? 'API 触发限流，稍后再试（设置 Token 可提高额度）'
+          : '这个账号没有可挑战的公开项目')
+      }
+      const pets = res.snaps
+        .map((s) => rivalFromSnapshot(s))
+        .sort((a, b) => powerOf(b) - powerOf(a))
+        .slice(0, 3)
+      if (!pets.length) throw new Error('这个账号没有可挑战的公开项目')
+      setOwnerTeam(pets)
+      setTeam((prev) => prev.slice(0, pets.length))
+      setOpponentNote(`线上数据 · ${owner} 的 ${pets.length} 个项目`)
+    } catch (e) {
+      setScanError(e.message || '扫描失败，请检查地址')
+    } finally {
+      setScanning(false)
+    }
+  }
+
   const start = () => {
+    if (!team.length) return
+    const teamMode = mode === 'online' && onlineSize === 'team'
+    if (mode === 'online') {
+      if (teamMode ? !ownerTeam.length : !opponent) return
+    }
+
     const seed = (Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0
-    const enemies = pickRivalTeam(team, seed, difficulty).slice(0, Math.max(1, team.length))
+    const cap = mode === 'online' ? (teamMode ? 3 : 1) : 3
+    let enemies
+    if (mode === 'online') enemies = teamMode ? ownerTeam : [opponent]
+    else if (mode === 'same') enemies = pickSameTypeTeam(team, seed, difficulty, cap)
+    else enemies = pickRandomTeam(team, seed, difficulty, cap)
+    if (!enemies.length) return
+
+    // 对手几只、我方就上几只（整仓没扫满 3 个时不会出现以多打少）
+    const line = team.slice(0, Math.max(1, Math.min(cap, enemies.length)))
+    const foes = enemies.slice(0, Math.max(1, line.length))
+
     const built = createBattle({
-      playerTeam: team,
-      enemyTeam: enemies,
+      playerTeam: line,
+      enemyTeam: foes,
       seed,
-      difficulty,
+      // 在线对手不吃难度系数，AI 用标准水平
+      difficulty: mode === 'online' ? 'normal' : difficulty,
       playerName: '你',
       enemyName: '对手',
     })
@@ -294,7 +639,8 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
     await wait(Math.max(560, at + 200))
 
     if (next.winner) {
-      const xp = Math.round(XP_BASE[difficulty] * (next.winner === 'player' ? 1.4 : 0.6))
+      const base = mode === 'online' ? ONLINE_XP[onlineSize] : XP_BASE[difficulty]
+      const xp = Math.round(base * (next.winner === 'player' ? 1.4 : 0.6))
       setReward(xp)
       if (!rewardedRef.current) {
         rewardedRef.current = true
@@ -314,17 +660,40 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
     ? state.sides.player.team.map((u, i) => ({ u, i })).filter(({ u, i }) => i !== state.sides.player.active && !u.fainted)
     : []
 
+  if (phase === 'mode') {
+    return (
+      <main className="battle-wrap">
+        <ModePicker pets={candidates} onPick={pickMode} onExit={onExit} />
+      </main>
+    )
+  }
+
   if (phase === 'select') {
     return (
       <main className="battle-wrap">
-        <TeamPicker
+        <Setup
+          mode={mode}
           pets={candidates}
           team={team}
           setTeam={setTeam}
           difficulty={difficulty}
           setDifficulty={setDifficulty}
           onStart={start}
+          onBack={() => setPhase('mode')}
           onExit={onExit}
+          online={{
+            size: onlineSize,
+            setSize: changeOnlineSize,
+            repoInput,
+            setRepoInput,
+            onScan: scanOpponent,
+            scanning,
+            scanError,
+            opponent,
+            ownerTeam,
+            opponentNote,
+            onClear: clearOpponent,
+          }}
         />
       </main>
     )
@@ -338,7 +707,7 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
   return (
     <main className="battle-wrap">
       <div className="battle-topbar">
-        <span>第 {state.turn + 1} 回合 · {rivalTeamLabel(difficulty)}</span>
+        <span>第 {state.turn + 1} 回合 · {rivalTeamLabel(difficulty, mode, onlineSize)}</span>
         <span className="battle-count">我方 {myTeamAlive} · 对手 {foeTeamAlive}</span>
         <button className="ghost-btn tiny" onClick={onExit}>离开</button>
       </div>
@@ -384,8 +753,9 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
           <p>{state.winner === 'player' ? '对手的仓库被你压了一头。' : '属性与节奏都被对手抓到了。'}</p>
           <p className="reward">全队获得 <b>+{reward} EXP</b></p>
           <div className="actions">
-            <button className="primary-btn" onClick={start}>再战一场</button>
+            <button className="primary-btn" onClick={start}>{mode === 'random' ? '再抽一只' : '再战一场'}</button>
             <button className="ghost-btn" onClick={() => setPhase('select')}>换阵容</button>
+            <button className="ghost-btn" onClick={() => setPhase('mode')}>换模式</button>
             <button className="ghost-btn" onClick={onExit}>返回图鉴</button>
           </div>
         </div>
@@ -414,6 +784,7 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
           </button>
           <span className="battle-tip">
             {[enemyUnit.element.name, enemyUnit.elementSecondary?.name].filter(Boolean).join('/')}系 · 我方速度 {Math.round(playerUnit.stats.spe * (playerUnit.passive === 'static' ? 1.15 : 1))}
+            {mode !== 'online' && ` · ${modeLabel(mode)}`}
           </span>
         </div>
 

@@ -13,12 +13,13 @@ from .snapshot import RepoSnapshot
 __all__ = ["RepoSnapshot", "scan", "GitHubScanner", "GiteeScanner", "HttpClient"]
 
 
-def scan(ref: RepoRef, *, use_scc: bool | None = None, since: str | None = None) -> RepoSnapshot:
+def scan(ref: RepoRef, *, use_scc: bool | None = None, since: str | None = None,
+         token: str | None = None) -> RepoSnapshot:
     with HttpClient(timeout=settings.http_timeout, retries=settings.http_retries) as http:
         if ref.platform == "gitee":
-            scanner = GiteeScanner(http, timeout=settings.http_timeout, max_tree_entries=settings.max_tree_entries)
+            scanner = GiteeScanner(http, timeout=settings.http_timeout, max_tree_entries=settings.max_tree_entries, token=token)
         else:
-            scanner = GitHubScanner(http, timeout=settings.http_timeout, max_tree_entries=settings.max_tree_entries)
+            scanner = GitHubScanner(http, timeout=settings.http_timeout, max_tree_entries=settings.max_tree_entries, token=token)
         snapshot = scanner.scan(ref)
         if since:
             snapshot.commits_since = scanner.count_commits_since(ref, since)

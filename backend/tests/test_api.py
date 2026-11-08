@@ -29,8 +29,9 @@ def client(tmp_dir, monkeypatch, scan_calls):
     monkeypatch.setattr(settings, "cache_ttl", 21600)
     settings.ensure_dirs()
 
-    def fake_scan(ref, since=None):
+    def fake_scan(ref, since=None, token=None):
         scan_calls["count"] += 1
+        scan_calls["token"] = token or ""
         return make_snapshot(f"{ref.platform}.com/{ref.full_name}")
 
     monkeypatch.setattr(services, "_scan", fake_scan)
@@ -121,7 +122,7 @@ def test_sync_awards_xp(client: TestClient, monkeypatch) -> None:
 
     monkeypatch.setattr(
         services, "_scan",
-        lambda ref, since=None: make_snapshot(
+        lambda ref, since=None, token=None: make_snapshot(
             f"{ref.platform}.com/{ref.full_name}",
             commits_total=9000, stars=8000, releases_total=30, issues_closed=900, prs_merged=800,
             releases_last_year=8,

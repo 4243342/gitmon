@@ -36,3 +36,15 @@ class PetNotFound(ScanError):
 
     def __init__(self, message: str = "精灵不存在") -> None:
         super().__init__(message)
+
+
+class AuthError(ScanError):
+    """登录授权失败：令牌无效、state 过期等。"""
+
+    status_code = 401
+
+
+class OAuthNotConfigured(ScanError):
+    """没配 GITHUB_CLIENT_ID / SECRET，只能走个人访问令牌。"""
+
+    status_code = 400

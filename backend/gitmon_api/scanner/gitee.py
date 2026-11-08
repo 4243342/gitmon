@@ -24,10 +24,12 @@ API = "https://gitee.com/api/v5"
 class GiteeScanner:
     platform = "gitee"
 
-    def __init__(self, http: HttpClient, *, timeout: float, max_tree_entries: int = 20000) -> None:
+    def __init__(self, http: HttpClient, *, timeout: float, max_tree_entries: int = 20000,
+                 token: str | None = None) -> None:
         self.http = http
         self.timeout = timeout
         self.max_tree_entries = max_tree_entries
+        self.token = token or ""
         self._limit_hits = 0
 
     def scan(self, ref: RepoRef) -> RepoSnapshot:
@@ -112,7 +114,8 @@ class GiteeScanner:
         return len(data) if isinstance(data, list) else -1
 
     def _params(self) -> dict[str, str]:
-        return {"access_token": settings.gitee_token} if settings.gitee_token else {}
+        token = self.token or settings.gitee_token
+        return {"access_token": token} if token else {}
 
     def _json(self, url: str, params: dict[str, Any] | None = None) -> Any:
         merged = {**self._params(), **(params or {})}
