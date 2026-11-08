@@ -19,14 +19,24 @@ export default function PackOpening({ pet, onReveal, muted }) {
   const openerRef = useRef(null)
   const mutedRef = useRef(muted ?? sfx.muted)
   const optionsRef = useRef(null)
+  const doneRef = useRef(false)
   const [ready, setReady] = useState(false)
   const [failed, setFailed] = useState(false)
   const [burst, setBurst] = useState(false)
+
+  // 揭晓只走一次：库的 revealed 事件是唯一权威入口
+  const finish = () => {
+    if (doneRef.current) return
+    doneRef.current = true
+    onReveal?.()
+  }
 
   useEffect(() => {
     let cancelled = false
     const el = stageRef.current
     if (!el) return
+    doneRef.current = false
+    setBurst(false)
 
     ;(async () => {
       try {
@@ -65,8 +75,9 @@ export default function PackOpening({ pet, onReveal, muted }) {
                   sfx.back()
                   break
                 case 'revealed':
+                  // 卡牌翻面露出的那一刻：粒子进发，稍等翻面收尾再切揭晓页
                   setBurst(true)
-                  setTimeout(() => onReveal?.(), 780)
+                  setTimeout(finish, 780)
                   break
                 case 'error':
                   setFailed(true)
@@ -119,11 +130,12 @@ export default function PackOpening({ pet, onReveal, muted }) {
     try {
       unlockAudio()
       openerRef.current?.autoSlice?.()
-      setBurst(true)
-      setTimeout(() => onReveal?.(), 2600)
+      // 不设固定跳转：整段撕膜→掀盖→抽卡→落地演完由 revealed 事件接管。
+      // 只留一个兜底，防止演出意外卡死（正常情况下 finish 先触发，这里不会走到）
+      setTimeout(() => { if (!doneRef.current) { sfx.rip(); finish() } }, 12000)
     } catch {
       sfx.rip()
-      onReveal?.()
+      finish()
     }
   }
 
