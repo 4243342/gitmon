@@ -44,7 +44,7 @@ const DIALOGS_OWNER = [
   '读取账号的项目清单...',
   '逐个检查语言构成与项目结构...',
   '统计每个项目的工程量...',
-  '逐个评估代码质量，装包...',
+  '逐个评估代码质量，抽成卡...',
   '整箱卡包已就绪！',
 ]
 
@@ -417,8 +417,8 @@ export default function App() {
     }
   }
 
-  // 从排行榜把 GitHub 趋势仓库直接孵成精灵
-  const hatchRepo = (fullName) => {
+  // 从排行榜把 GitHub 趋势仓库直接抽成精灵
+  const drawRepo = (fullName) => {
     const u = `https://github.com/${fullName}`
     setUrl(u)
     setError('')
@@ -489,6 +489,28 @@ export default function App() {
     setProgress(null)
   }
 
+  // 顶栏左上角全局返回：按当前页智能回退到上一页
+  const SUBVIEWS = ['scan', 'box', 'pack', 'reveal', 'detail', 'battle', 'training', 'leaderboard']
+  const backTarget = (() => {
+    switch (view) {
+      case 'reveal': return box ? 'box' : 'home'
+      case 'detail': return box ? 'box' : 'home'
+      case 'battle': return battleInitial ? 'detail' : 'home'
+      case 'box': return auth.profile?.authenticated ? 'home' : 'home'
+      default: return 'home'
+    }
+  })()
+  const goBack = () => { sfx.back(); setView(backTarget) }
+  const gotoCollection = () => {
+    sfx.swoosh()
+    setView('home')
+    setTimeout(() => {
+      const el = document.getElementById('collection')
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 80)
+  }
+  const showBack = SUBVIEWS.includes(view)
+
   // 登录用户从卡箱退回账号主页：保留这箱，方便再点开
   const backToAccount = () => {
     sfx.back()
@@ -499,79 +521,88 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand" onClick={reset}>
-          <span className="logo">GitMon</span>
-          <span className="tagline">你的仓库，是一只活着的精灵</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div className="adv-wrap">
-            <button
-              className={`adv-btn ${advanced ? 'on' : ''}`}
-              onClick={() => {
-                const turnOn = !advanced
-                setAdvanced(turnOn)
-                setAdvOpen(turnOn)
-              }}
-              title="高级模式（BYOK）：用自己的模型评测仓库，只需填一枚密钥"
-            >
-              <span className={`adv-dot ${bindState === 'bound' ? 'ok' : ''}`} />
-              BYOK
-            </button>
-            {advOpen && (
-              <>
-                <div className="adv-backdrop" onClick={() => setAdvOpen(false)} />
-                <div className="adv-pop">
-                  <AdvancedPanel
-                    config={llmConfig}
-                    onConfigChange={(next) => {
-                      setLLMConfig(next)
-                      if (!next.binding && bindState !== 'binding') { setBindState('idle'); setBindError('') }
-                    }}
-                    hint={llmHint}
-                    onHintChange={setLLMHint}
-                    onClearKey={() => {
-                      clearLLMKey()
-                      const next = { ...llmConfig, apiKey: '', binding: null }
-                      setLLMConfig(next)
-                      saveLLMConfig(next)
-                      setBindState('idle')
-                      setBindError('')
-                    }}
-                    busy={aiBusy}
-                    bindState={bindState}
-                    bindError={bindError}
-                    onBind={handleBind}
-                    onClose={() => setAdvOpen(false)}
-                  />
-                </div>
-              </>
-            )}
-          </div>
-          <button className="mute-btn" onClick={() => setMuted(sfx.toggleMute())}>
-            {muted ? '♪ OFF' : '♪ ON'}
-          </button>
-          {auth.profile?.authenticated ? (
-            <div
-              className="user-chip"
-              title={`${PROVIDER_LABEL[auth.profile.provider] || 'GitHub'} @${auth.profile.login} · 配额 ${quotaText(auth.profile)}`}
-            >
-              {auth.profile.avatar
-                ? <img src={auth.profile.avatar} alt="" />
-                : <span className="user-dot" />}
-              <span className={`user-src${auth.profile.provider === 'gitee' ? ' is-gitee' : ''}`}>
-                {PROVIDER_LABEL[auth.profile.provider] || 'GitHub'}
-              </span>
-              <span className="user-name">@{auth.profile.login}</span>
-              <span className="user-quota">{quotaText(auth.profile)}</span>
-              <button className="user-out" onClick={onLogout}>退出</button>
-            </div>
-          ) : view !== 'auth' && view !== 'boot' ? (
-            <button className="mute-btn login-btn" onClick={() => setView('auth')}>登录</button>
-          ) : null}
-          {view !== 'boot' && view !== 'auth' && (
-            <button className="mute-btn" onClick={() => { sfx.swoosh(); setView('leaderboard') }}>排行榜</button>
+        <div className="topbar-inner">
+          {showBack && (
+            <button className="topbar-back" onClick={goBack} title="返回">← 返回</button>
           )}
-          <a className="gh-link" href="https://github.com/4243342/gitmon" target="_blank" rel="noreferrer">GitHub</a>
+          <div className="brand" onClick={reset}>
+            <span className="logo">GitMon</span>
+            <span className="tagline">你的仓库，是一只活着的精灵</span>
+          </div>
+          <nav className="nav">
+            <button className={`nav-tab ${view === 'home' ? 'active' : ''}`} onClick={() => { sfx.swoosh(); setView('home') }}>大厅</button>
+            <button className={`nav-tab ${view === 'battle' ? 'active' : ''}`} onClick={() => { sfx.swoosh(); setView('battle') }}>竞技场</button>
+            <button className={`nav-tab ${view === 'training' ? 'active' : ''}`} onClick={() => { sfx.swoosh(); setView('training') }}>训练场</button>
+            <button className={`nav-tab ${view === 'leaderboard' ? 'active' : ''}`} onClick={() => { sfx.swoosh(); setView('leaderboard') }}>排行榜</button>
+            <button className="nav-tab" onClick={gotoCollection}>图鉴</button>
+          </nav>
+          <div className="topbar-right">
+            <div className="adv-wrap">
+              <button
+                className={`adv-btn ${advanced ? 'on' : ''}`}
+                onClick={() => {
+                  const turnOn = !advanced
+                  setAdvanced(turnOn)
+                  setAdvOpen(turnOn)
+                }}
+                title="AI 高级版：用自己的模型评测仓库，只需填一枚密钥"
+              >
+                <span className={`adv-dot ${bindState === 'bound' ? 'ok' : ''}`} />
+                AI高级版入口
+              </button>
+              {advOpen && (
+                <>
+                  <div className="adv-backdrop" onClick={() => setAdvOpen(false)} />
+                  <div className="adv-pop">
+                    <AdvancedPanel
+                      config={llmConfig}
+                      onConfigChange={(next) => {
+                        setLLMConfig(next)
+                        if (!next.binding && bindState !== 'binding') { setBindState('idle'); setBindError('') }
+                      }}
+                      hint={llmHint}
+                      onHintChange={setLLMHint}
+                      onClearKey={() => {
+                        clearLLMKey()
+                        const next = { ...llmConfig, apiKey: '', binding: null }
+                        setLLMConfig(next)
+                        saveLLMConfig(next)
+                        setBindState('idle')
+                        setBindError('')
+                      }}
+                      busy={aiBusy}
+                      bindState={bindState}
+                      bindError={bindError}
+                      onBind={handleBind}
+                      onClose={() => setAdvOpen(false)}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+            <button className="mute-btn" onClick={() => setMuted(sfx.toggleMute())}>
+              {muted ? '♪ OFF' : '♪ ON'}
+            </button>
+            {auth.profile?.authenticated ? (
+              <div
+                className="user-chip"
+                title={`${PROVIDER_LABEL[auth.profile.provider] || 'GitHub'} @${auth.profile.login} · 配额 ${quotaText(auth.profile)}`}
+              >
+                {auth.profile.avatar
+                  ? <img src={auth.profile.avatar} alt="" />
+                  : <span className="user-dot" />}
+                <span className={`user-src${auth.profile.provider === 'gitee' ? ' is-gitee' : ''}`}>
+                  {PROVIDER_LABEL[auth.profile.provider] || 'GitHub'}
+                </span>
+                <span className="user-name">@{auth.profile.login}</span>
+                <span className="user-quota">{quotaText(auth.profile)}</span>
+                <button className="user-out" onClick={onLogout}>退出</button>
+              </div>
+            ) : view !== 'auth' && view !== 'boot' ? (
+              <button className="mute-btn login-btn" onClick={() => setView('auth')}>登录</button>
+            ) : null}
+            <a className="gh-link" href="https://github.com/4243342/gitmon" target="_blank" rel="noreferrer">GitHub</a>
+          </div>
         </div>
       </header>
 
@@ -607,7 +638,7 @@ export default function App() {
                   <p>
                     @{auth.profile.login} ·{' '}
                     {box
-                      ? <>名下 <b>{box.pets.length}</b> 个项目已生成卡包</>
+                      ? <>名下 <b>{box.pets.length}</b> 个项目已抽成卡包</>
                       : '正在读取你名下的项目…'}
                   </p>
                 </div>
@@ -636,7 +667,7 @@ export default function App() {
             <DecoSprite seed="deco-thunder-01" colors={['#f5c542', '#ffdf7e']} body="biped" size={96} className="d1" />
             <DecoSprite seed="deco-water-02" colors={['#4a9eff', '#a8d8ff']} body="winged" size={72} className="d2" />
             <DecoSprite seed="deco-fire-03" colors={['#ff6b4a', '#ffb199']} body="slime" size={80} className="d3" />
-            <h2>孵化你的仓库精灵</h2>
+            <h2>仓库抽卡，召唤你的精灵</h2>
             <p>
               贴一个仓库地址，得到一个卡包；贴一个账号主页，得到<b>一整箱</b>——
               <b>品种由技术栈决定</b>，<b>品质由代码质量决定</b>，<b>等级由工程量决定</b>。
@@ -656,7 +687,7 @@ export default function App() {
                 spellCheck={false}
               />
               <button onClick={run} disabled={aiBusy}>
-                {aiBusy ? '模型评测中…' : advanced ? '让模型评测并孵化' : '孵化'}
+                {aiBusy ? '模型评测中…' : advanced ? '让模型评测并抽卡' : '抽卡'}
               </button>
             </div>
             {error && <p className="error">! {error}</p>}
@@ -673,7 +704,7 @@ export default function App() {
               </p>
             )}
             <p className="quota-note">
-              游客模式：匿名每小时 60 次，整箱孵化容易打满
+              游客模式：匿名每小时 60 次，整箱抽卡容易打满
               <button onClick={() => setView('auth')}>登录后自动读我的仓库 →</button>
             </p>
             <div className="examples">
@@ -695,8 +726,11 @@ export default function App() {
           </section>
           )}
 
-          <Collection list={collection} onPick={(p) => { setPet(p); setView('detail') }} />
+          <div id="collection">
+            <Collection list={collection} onPick={(p) => { setPet(p); setView('detail') }} />
+          </div>
 
+          <div className="home-features">
           <section className="arena-entry">
             <div className="arena-copy">
               <h3>竞技场</h3>
@@ -710,7 +744,7 @@ export default function App() {
               onClick={() => { setBattleInitial(null); setView('battle') }}
               disabled={collection.length === 0}
             >
-              {collection.length === 0 ? '先孵化一只' : '进入竞技场'}
+              {collection.length === 0 ? '先抽一只' : '进入竞技场'}
             </button>
           </section>
 
@@ -732,13 +766,14 @@ export default function App() {
               <h3>GitHub 排行榜</h3>
               <p>
                 GitHub 趋势榜实时拉取：<b>今日 / 本周 / 本月</b>最火仓库，按 Star 增长排序。
-                点「孵化」能直接把榜单上的仓库变成一只精灵，看看它是什么品种、什么品质。
+                点「抽卡」能直接把榜单上的仓库变成一只精灵，看看它是什么品种、什么品质。
               </p>
             </div>
             <button className="ghost-btn" onClick={() => { sfx.swoosh(); setView('leaderboard') }}>
               去看排行榜
             </button>
           </section>
+          </div>
 
           <Manual />
         </main>
@@ -809,7 +844,7 @@ export default function App() {
             ) : (
               <button className="primary-btn" onClick={goDetail}>收入图鉴</button>
             )}
-            <button className="ghost-btn" onClick={reset}>再孵一只</button>
+            <button className="ghost-btn" onClick={reset}>再抽一只</button>
           </div>
         </main>
       )}
@@ -822,7 +857,7 @@ export default function App() {
             <button className="primary-btn" onClick={() => exportShareCard(pet)}>导出分享卡</button>
             <button className="primary-btn" onClick={() => { setBattleInitial(pet); setView('battle') }}>带它去对战</button>
             {box && <button className="ghost-btn" onClick={() => setView('box')}>返回卡箱</button>}
-            <button className="ghost-btn" onClick={reset}>再孵一只</button>
+            <button className="ghost-btn" onClick={reset}>再抽一只</button>
           </div>
           <GrowPanel
             pet={pet}
@@ -844,11 +879,11 @@ export default function App() {
       )}
 
       {view === 'training' && (
-        <Training onExit={() => setView('home')} />
+        <Training />
       )}
 
       {view === 'leaderboard' && (
-        <Leaderboard onHatch={hatchRepo} />
+        <Leaderboard onDraw={drawRepo} />
       )}
 
       <footer className="footer">

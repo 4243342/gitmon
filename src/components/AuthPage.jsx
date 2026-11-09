@@ -15,7 +15,7 @@ const META = {
     placeholder: 'ghp_xxxxxxxxxxxxxxxx',
     steps: [
       <>打开 <a href="https://github.com/settings/tokens/new?scopes=repo,read:user&description=GitMon" target="_blank" rel="noreferrer">GitHub → New personal access token</a></>,
-      <>勾选 <code>read:user</code>；要孵化私有仓库再加 <code>repo</code></>,
+      <>勾选 <code>read:user</code>；要抽私有仓库的卡，还需勾选 <code>repo</code></>,
       <>生成后复制 <code>ghp_</code> 开头那串，粘到上面</>,
     ],
   },
@@ -131,8 +131,8 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
 
         <h2>{meta.title}</h2>
         <p className="auth-lead">
-          登录后不用再填仓库地址 —— 你名下<b>每个项目自动生成一个卡包</b>，装成一整箱。
-          匿名接口只有 <b>{quota.quotaPerHour} 次/小时</b>，登录后额度高得多，私有仓库也能孵。
+          登录后不用再填仓库地址 —— 你名下<b>每个项目自动抽成一包</b>，装成一整箱。
+          匿名接口只有 <b>{quota.quotaPerHour} 次/小时</b>，登录后额度高得多，私有仓库也能抽。
         </p>
 
         <div className="auth-tabs" role="tablist" aria-label="登录平台">
@@ -244,7 +244,7 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
         </div>
         <div>
           <b>私有仓库</b>
-          <span>授权后连私有项目也能孵出来</span>
+          <span>授权后连私有项目也能抽出来</span>
         </div>
         <div>
           <b>只读</b>

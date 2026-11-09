@@ -14,7 +14,7 @@ function readVisited() {
 }
 
 // 训练场：六种 AI 编程搭子，点卡片在新标签页打开对应软件，并记一次打卡
-export default function Training({ onExit }) {
+export default function Training() {
   const [visited, setVisited] = useState(readVisited)
 
   const markVisited = (id) => {
@@ -30,7 +30,6 @@ export default function Training({ onExit }) {
   return (
     <main className="training-stage">
       <header className="training-head">
-        <button className="ghost-btn training-back" onClick={onExit}>← 返回首页</button>
         <div className="training-title">
           <span className="training-eyebrow">TRAINING GROUND · 06 COACHES</span>
           <h2>训练场</h2>

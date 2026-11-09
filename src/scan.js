@@ -296,7 +296,7 @@ async function scanGitee(info, prefetched) {
 export async function scanRepo(input, opts = {}) {
   const info = typeof input === 'string' ? parseRepoInput(input) : input
   if (!info) throw new Error('无法识别的地址，请输入 GitHub 或 Gitee 仓库链接')
-  if (info.kind === 'owner') throw new Error('这是账号地址，请走「整箱孵化」')
+  if (info.kind === 'owner') throw new Error('这是账号地址，请走「整箱抽卡」')
 
   if (!opts.fresh) {
     const cached = readCache(cacheKey(info))
@@ -368,7 +368,7 @@ async function listGitHubOwner(owner, { self = false } = {}) {
   if (userRes.status === 403) throw new Error('GitHub 配额用尽，稍后重试或重新登录')
   if (!userRes.ok) throw new Error(`GitHub API 错误 ${userRes.status}`)
   const user = await userRes.json()
-  // 列表接口失败不能当成"没有仓库"——403/限流会被误报成「你名下没有可孵化的项目」
+  // 列表接口失败不能当成"没有仓库"——403/限流会被误报成「你名下没有可抽卡的项目」
   if (!reposRes.ok) {
     if (reposRes.status === 403) throw new Error('GitHub 配额用尽（仓库列表接口），稍后重试或重新登录')
     throw new Error(`GitHub 仓库列表拉取失败 ${reposRes.status}`)
@@ -430,7 +430,7 @@ export async function loadOwner(input, { self = false } = {}) {
   return { ...owner, cached: false }
 }
 
-// 整箱孵化：项目清单 → 逐个项目判定 → 每项目一个卡包
+// 整箱抽卡：项目清单 → 逐个项目判定 → 每项目一个卡包
 export async function scanOwnerBox(input, { limit, onProgress, self = false } = {}) {
   const owner = await loadOwner(input, { self })
   const platform = owner.platform

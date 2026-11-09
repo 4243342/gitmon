@@ -31,7 +31,7 @@ function fmt(n) {
   return String(n)
 }
 
-export default function Leaderboard({ onHatch }) {
+export default function Leaderboard({ onDraw }) {
   const [since, setSince] = useState('weekly')
   const [language, setLanguage] = useState('')
   const [items, setItems] = useState([])
@@ -142,13 +142,13 @@ export default function Leaderboard({ onHatch }) {
               </div>
               <button
                 className="lb-hatch"
-                title="把这只仓库孵成精灵"
+                title="把这只仓库抽成精灵"
                 onClick={() => {
                   sfx.blip()
-                  onHatch(it.full_name)
+                  onDraw(it.full_name)
                 }}
               >
-                孵化
+                抽卡
               </button>
             </li>
           ))}

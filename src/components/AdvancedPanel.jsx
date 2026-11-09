@@ -28,7 +28,7 @@ export default function AdvancedPanel({
   return (
     <section className="llm-panel" aria-label="高级模式：模型评测配置">
       <header className="llm-head">
-        <span className="llm-badge">BYOK</span>
+        <span className="llm-badge">AI高级版</span>
         {onClose && (
           <button type="button" className="llm-close" onClick={onClose} aria-label="关闭">✕</button>
         )}

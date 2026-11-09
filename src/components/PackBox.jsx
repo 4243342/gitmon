@@ -61,7 +61,7 @@ export default function PackBox({
       </header>
 
       <p className="box-hint">
-        每个卡包对应一个项目，品质由那个项目自己的代码质量决定 —— 点开任意一包，看它孵出什么。
+        每个卡包对应一个项目，品质由那个项目自己的代码质量决定 —— 点开任意一包，看抽中什么。
       </p>
 
       {(truncated || rateLimited || failed?.length > 0 || partial > 0) && (
@@ -122,7 +122,7 @@ export default function PackBox({
       </div>
 
       <p className="box-foot">
-        同一账号再次孵化只会更新数值，不会换精灵 —— 种子永远是 <code>platform/owner/repo</code>。
+        同一账号再次抽卡只会更新数值，不会换精灵 —— 种子永远是 <code>platform/owner/repo</code>。
       </p>
     </main>
   )

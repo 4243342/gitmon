@@ -134,7 +134,7 @@ function EmptyState({ onExit }) {
   return (
     <div className="picker-empty">
       <p>图鉴里还没有精灵。</p>
-      <button className="primary-btn" onClick={onExit}>先去孵化一只</button>
+      <button className="primary-btn" onClick={onExit}>先去抽一只</button>
     </div>
   )
 }
