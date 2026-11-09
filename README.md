@@ -215,6 +215,45 @@ curl -X POST localhost:8000/api/hatch/sync -H 'content-type: application/json' \
 
 三种挑战：**在线对手**（单项目 1v1：填对方仓库按真实强度打；整仓：填对方账号让它的项目排队上，最多 3v3；命中内置快照可离线打）、**同类型对战**（只从和先发同属性的仓库里挑，克制关系清楚）、**随机宠物**（36 只内置对手随机抽）。后两种可调三档难度（对手六维 ×0.65 / ×1 / ×1.35）。9 元素克制表、Pokémon Showdown 同款伤害公式与能力等级、灼烧/中毒/麻痹/沉睡、先制技与换人、PP 用尽自动"挣扎"。机制细节与借鉴边界见 [`docs/BATTLE.md`](docs/BATTLE.md)。
 
+### 架构与流程
+
+竞技场刻意做成**三层分离**：React 只管表现与阶段切换，所有战斗规则都在一个不依赖 DOM 的纯函数引擎里，因此能被单测完整覆盖、且能与 Showdown 对拍。
+
+```mermaid
+flowchart TB
+  subgraph UI["表现层 · Battle.jsx（React 四阶段状态机）"]
+    direction LR
+    M["mode 选模式"] --> S["select 选阵容"]
+    S --> F["fight 自动对战"]
+    F --> R["result 结算发 EXP"]
+  end
+  subgraph ENG["规则引擎 · battle.js（纯函数 + 显式种子，可复现）"]
+    direction LR
+    CB["createBattle 建场"] --> BT["battleTurn 回合"]
+    BT --> CD["calcDamage 伤害"]
+    BT --> CA["chooseAction / chooseAutoAction AI"]
+  end
+  subgraph DATA["数据源 · rivals.js + engine.js"]
+    direction LR
+    RV["内置 40+ 仓库快照"] --> SC["在线扫描 / 同类型 / 随机"]
+    EJ["judge 判定 · ELEMENTS · TYPE_CHART"]
+  end
+  UI -->|阶段推进与事件回放| ENG
+  ENG -->|toCombatant 映射 + 对手生成| DATA
+```
+
+单场战斗是一个「状态进、状态出」的纯函数回合机；UI 从 `battleTurn` 拿回 `events` 数组，再按事件顺序排演出手、伤害飘字、倒地特效。
+
+```mermaid
+flowchart TB
+  A["createBattle 建场（seed 初始化 rng）"] --> B["battleTurn(state, action)"]
+  B --> C["换人先结算 → 先制/速度/种子排序 → 依次 runMove"]
+  C --> D["endOfTurn 状态伤害/自愈 → checkFaints"]
+  D --> E{"分出胜负?"}
+  E -- "否，同一 state 继续" --> B
+  E -- "是" --> F["结算 + 发 EXP（onReward）"]
+```
+
 引擎自检（不依赖浏览器）：
 
 ```bash
@@ -306,6 +345,8 @@ AI 味 ≥50 → 词条「根基不稳」，≥75 → 「生成体」；根基�
 | 《赛尔号》(Seer) | 「克制 / 微弱 / 无效」三档克制呈现、以属性技能为核心的直球节奏 | 商业作品，零素材零代码 | — |
 | [pokemon-cards-css](https://github.com/simeydotme/pokemon-cards-css) ⚠️ | **全息闪卡的视觉语言**：多层渐变 + `blend-mode` + 滤镜，高光随指针位置移动 | GPL-3.0 有传染性 → 仅作视觉参考，CSS 全自研（`PetCard.jsx` 的 `--mx` / `--my` / `--rx` / `--ry` + `.holo-layer` / `.glare`） | GPL-3.0 |
 | [hover-tilt](https://github.com/simeydotme/hover-tilt) | 指针归一化到 −0.5..0.5 再映射倾斜角的换算方式与阻尼手感 | 自研 `useState` 实现，**未装依赖** | MIT |
+| [tcg-portfolio](https://github.com/dim4k/tcg-portfolio) | **稀有度材质分级的视觉范本**：foil（金箔）/ glitter（闪粉）/ glare（高光）三层叠加，鼠标或陀螺仪倾斜触发；rare ★ / gold ★★ / secret ★★★ 各自一套 finish，开包逐张翻飞 | 仅作材质与稀有度映射参考（N/R/SR/SSR → 哑光/微光/镭射/金卡），CSS 全自研 | MIT |
+| [Holographic Card 3D (effect-labs)](https://effect-labs.com/en/effects/cards/holographic-card-3d.html) | **零 JS 全息方案**：`::after` 用 `repeating-linear-gradient` 做镭射颗粒 + `conic-gradient` 走彩虹虹彩，配 `mix-blend-mode: overlay/color-dodge`；纯 CSS 倾斜，`will-change` 上 GPU | 顶层层叠思路（scanline 颗粒 + conic 虹彩 + color-dodge）借来强化 SR/SSR | 站点示例（自有许可） |
 | [pixel-sprite-monster-generator](https://github.com/sempitern0/pixel-sprite-monster-generator) | **种子确定性立绘**：体型族 × 调色板 × 变体（心情 / 史诗）的三层生成结构 | v0.5 前的立绘方案（32×32 程序化绘制）；观感不佳，已被 monstrjs 部件拼装替代（见上表），保留致谢 | MIT |
 | [gen_me_a_pixamon](https://github.com/pixmusix/gen_me_a_pixamon) | 单 u64 种子 → 确定性 PNG 的极简路线（服务端预生成的取舍依据） | 未移植代码，只定架构方向 | MIT |
 | [github-readme-stats](https://github.com/anuraghazra/github-readme-stats) | 无状态 SVG 卡片端点架构：纯函数渲染 + 缓存头 + 主题参数 | SVG 渲染自研 | MIT |
@@ -335,6 +376,38 @@ AI 味 ≥50 → 词条「根基不稳」，≥75 → 「生成体」；根基�
 - **素材许可原文随仓库**：[`src/assets/kenney/LICENSE.txt`](src/assets/kenney/LICENSE.txt)（CC0）、[`src/assets/fonts/LICENSE-fusion-pixel.txt`](src/assets/fonts/LICENSE-fusion-pixel.txt)（OFL-1.1）。
 - **复制的第三方代码**单独声明在 [`THIRD-PARTY.md`](THIRD-PARTY.md)（当前为 pixelfx 与 monstrjs，含打包范围说明）。
 - 更细的选型评估见 [`docs/DESIGN.md` §10 开源资源调研](docs/DESIGN.md)，竞品分析见 §11，对战借鉴边界见 [`docs/BATTLE.md` §0](docs/BATTLE.md)。
+
+## 卡面材质（镭射 / 金卡 / 闪卡）
+
+卡面不是一张扁平图，而是按**品质分四档材质**的实体卡——越高稀有的仓库，卡面越"有东西"。这是 GitMon 把"品质"做成可感知质感的核心手段。
+
+### 调研过的参考仓库（视觉语言来源）
+
+| 仓库 | 给到我们的东西 | 协议 / 边界 |
+|---|---|---|
+| [simeydotme/pokemon-cards-css](https://github.com/simeydotme/pokemon-cards-css) | 全息闪卡"教科书"：多层渐变 + `blend-mode` + 滤镜，高光随指针移动；剑盾时代宝可梦卡面的镭射观感 | **GPL-3.0 有传染性 → 零代码复用**，仅视觉参考 |
+| [hover-tilt](https://github.com/simeydotme/hover-tilt) | 指针→倾斜角的归一化换算与阻尼手感 | MIT，自研实现 |
+| [dim4k/tcg-portfolio](https://github.com/dim4k/tcg-portfolio) | **稀有度材质范本**：foil/glitter/glare 三层叠加，rare ★ / gold ★★ / secret ★★★ 各一套 finish | MIT，仅参考映射 |
+| [Holographic Card 3D (effect-labs)](https://effect-labs.com/en/effects/cards/holographic-card-3d.html) | 零 JS 全息：`repeating-linear-gradient` 颗粒 + `conic-gradient` 虹彩 + `color-dodge` | 站点示例，借层叠思路 |
+
+> 全部 CSS 自研、零外部依赖；GPL 项目不进任何代码片段（与"协议与合规"一节约定一致）。
+
+### 材质分级（品质 → 卡面材质）
+
+| 品质 | 材质名 | 实现要点 |
+|---|---|---|
+| **N** | 哑光卡纸 | 无镭射，仅极淡纸纹；最朴素 |
+| **R** | 微光闪卡（轻量） | 银白流光缓慢扫过（`screen` 混合），hover 浮现柔光 |
+| **SR** | 全息镭射 | 整卡彩虹全息流光（scanline 颗粒 + 彩虹带，`color-dodge`，自动 `holo-sweep`）；顶层 `holo-sheen` 随鼠标走彩虹虹彩 |
+| **SSR** | 金卡闪卡 | 金色底（`radial` 金晕 + 金调彩虹带）叠全息镭射，流光最快最亮；顶层虹彩最强、hover 高光最盛 |
+
+### 实现位置
+
+- `src/components/PetCard.jsx`：三层 `<div>` —— `.holo-layer`（底层材质基）、`.holo-sheen`（顶层指针彩虹镭射）、`.glare`（顶层指针高光）；指针位置通过 `--mx` / `--my` 注入。
+- `src/styles.css`：`.holo-layer` / `.holo-sheen` / `.glare` 及 `.quality-N/R/SR/SSR` 分级规则、`holo-sweep` / `foil-sweep` 关键帧。
+- 分享卡（`src/share.js`，Canvas 1:1 复刻）同步带品质色描边与流光，但材质镭射仅在网页卡面做动态呈现。
+
+---
 
 ## 设计文档
 
