@@ -69,6 +69,7 @@
 - 💥 **攻击特效**：pixelfx 代码绘制的像素特效——9 属性 × 4 档威力各有一套，会心有整屏冲击帧
 - 😴 **沉睡**：30 天不维护，精灵会睡过去 —— 别让它睡
 - 🖼️ **自定义形象**：不喜欢默认立绘？在卡片上直接上传 / 拖一张图（GIF 动图也行）换成你想要的形象，卡面、图鉴、对战、分享卡全场景生效，IndexedDB 本地保存，一键还原
+- 🏆 **排行榜**：拉取 GitHub Trending 热门仓库榜（今日 / 本周 / 本月 + 语言筛选），看谁在崛起；点「孵化」能直接把榜单上的仓库变成一只精灵
 - 📇 **图鉴**：收集你所有仓库的精灵
 
 ## 进化系统
@@ -206,6 +207,7 @@ curl -X POST localhost:8000/api/hatch/sync -H 'content-type: application/json' \
 - 判定：语言占比定属性、依赖/结构定生态类型、五维加权定品质、对数归一化定等级
 - 养成：commit/issue/PR/release/star → XP，Lv.999 上限，30 天不动会沉睡
 - 立绘：种子确定性 PNG（零依赖自写编码器）+ README 徽章 SVG + 分享卡片
+- 排行榜：`GET /api/trending` 抓取 GitHub Trending 热门仓库榜（daily / weekly / monthly + 语言筛选，进程内缓存 30 分钟），前端排行榜页可一键把仓库孵化为精灵
 
 端点清单、判定口径、部署与前端接入见 [`backend/README.md`](backend/README.md)。
 
@@ -272,7 +274,8 @@ AI 味 ≥50 → 词条「根基不稳」，≥75 → 「生成体」；根基�
 - [x] Gitee OAuth 应用已配置：授权码换 token + refresh_token 静默续期（1 天有效期）
 - [ ] 精灵成长与每日同步的前端展示
 - [ ] AI 率按最近 90 天提交加权，让"补课"真能把词条洗掉
-- [ ] 全服排行榜页面
+- [ ] 全服玩家排行榜页面（玩家宠物强弱排名；区别于已上线的 GitHub Trending 仓库榜）
+- [x] GitHub 排行榜：拉取 GitHub Trending 热门仓库榜（今日 / 本周 / 本月 + 语言筛选），点「孵化」直接把榜单仓库孵成精灵（后端 /api/trending + 前端排行榜页）
 
 ## 参考与借鉴（来源总表）
 
@@ -310,6 +313,7 @@ AI 味 ≥50 → 词条「根基不稳」，≥75 → 「生成体」；根基�
 | Repup / cli-pet / pixel-tamagotchi | 极简养成循环的可行性、"状态 ↔ 工程信号"的四维映射、git hook 即时同步 | 工程信号口径与数值全自定 | 参考 |
 | PokeToken | 性格 / 个体值 / 闪光率的数值设计与孵蛋加权 | 替换为「根基 + 词条」双轨，弱化随机 | 参考 |
 | [Platane/snk](https://github.com/Platane/snk) / [GitHub Skyline](https://skyline.github.com/) / [github-profile-trophy](https://github.com/ryo-ma/github-profile-trophy) | README 游戏化的表达方式：Action 定时生成 + 稳定 URL、年度仪式感、成就墙 | 徽章与卡片端点自研 | 参考 |
+| [GitHub Trending](https://github.com/trending) | **排行榜数据源**：直接抓取 trending 页面，正则解析名次 / 语言 / 总 Star / 本期新增 Star / Fork，不引入任何第三方库 | 后端 `trending.py` 自研 `parse_trending`（纯函数，便于单测）+ 30 分钟进程内缓存；前端 `Leaderboard.jsx` 展示，每行带「孵化」按钮 | 数据来自 GitHub 公开页面 |
 
 ### 三、调研过、最终没有采用
 
