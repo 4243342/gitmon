@@ -11,7 +11,7 @@
   box-shadow: 0 0 32px rgba(245, 197, 66, .08), inset 0 1px 0 rgba(255, 255, 255, .05);
 }
 
-.llm-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.llm-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .llm-badge {
   flex: none;
   padding: 5px 9px;
@@ -23,13 +23,9 @@
   letter-spacing: 1px;
   background: rgba(245, 197, 66, .09);
 }
-.llm-head-text { display: flex; flex-direction: column; gap: 4px; }
-.llm-head-text strong { font-size: 14px; color: #eef2fa; }
-.llm-head-text span { font-size: 11.5px; line-height: 1.5; color: #93a1bd; }
 
 /* ---------- 只输密钥 + 自动绑定 ---------- */
-.llm-bind-row { display: flex; align-items: flex-end; gap: 10px; }
-.llm-bind-row .llm-key-field { flex: 1; min-width: 0; }
+.llm-key-field { margin: 0 0 4px; }
 .llm-panel label { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .llm-panel label > span { font-size: 11px; color: #a9b7d0; }
 .llm-panel input,
@@ -137,12 +133,10 @@
 .llm-hint-field textarea { min-height: 62px; }
 
 .llm-foot {
-  display: flex; align-items: center; gap: 10px;
-  margin-top: 12px; padding-top: 10px;
+  display: flex; align-items: center; justify-content: flex-end;
+  margin-top: 10px; padding-top: 8px;
   border-top: 1px solid rgba(255, 255, 255, .07);
-  font-size: 11px; line-height: 1.5; color: #7f8daa;
 }
-.llm-foot > span { flex: 1; }
 .llm-clear {
   flex: none;
   padding: 4px 9px;
