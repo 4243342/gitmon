@@ -137,6 +137,57 @@ def test_evaluate_repo_uses_model_only_and_never_leaks_key(monkeypatch):
     assert seen["model"] == "demo-model"
 
 
+def test_prompt_contains_evidence_priority_rule():
+    """证据优先规则是深度审计的定稿要求：真实抓取 > 模型记忆，别让提示词被改回去。"""
+    assert "优先于你的记忆与推测" in llm.SYSTEM_PROMPT
+    assert "没有附带证据时" in llm.SYSTEM_PROMPT
+    assert "{evidence_block}" in llm.USER_TEMPLATE
+
+
+def test_evaluate_repo_injects_evidence_and_keeps_pure_guess_mode(monkeypatch):
+    seen = {}
+
+    async def fake_chat(**kwargs):
+        seen.update(kwargs)
+        return json.dumps(GOOD_EVAL, ensure_ascii=False)
+
+    monkeypatch.setattr(llm, "chat_completion", fake_chat)
+    asyncio.run(llm.evaluate_repo(
+        repo="facebook/react", base_url="https://api.openai.com/v1",
+        api_key="sk-x", model="demo-model",
+        evidence={"languages": {"TypeScript": 68.2}, "scale": {"commits": 180000}},
+    ))
+    assert "真实审计证据" in seen["user"] and "180000" in seen["user"]
+    # 不带证据 → 回到纯推测模式，提示词里不出现证据块（向后兼容）
+    asyncio.run(llm.evaluate_repo(
+        repo="facebook/react", base_url="https://api.openai.com/v1",
+        api_key="sk-x", model="demo-model",
+    ))
+    assert "真实审计证据" not in seen["user"]
+
+
+def test_api_evaluate_accepts_evidence_and_rejects_oversized(client, monkeypatch):
+    seen = {}
+
+    async def fake_chat(**kwargs):
+        seen.update(kwargs)
+        return json.dumps(GOOD_EVAL, ensure_ascii=False)
+
+    monkeypatch.setattr(llm, "chat_completion", fake_chat)
+    resp = client.post("/api/llm/evaluate", json={
+        "repo": "facebook/react", "model": "m",
+        "evidence": {"languages": {"TypeScript": 68.2}},
+    })
+    assert resp.status_code == 200, resp.text
+    assert "真实审计证据" in seen["user"]
+    # 超 8KB 的证据直接 422 打回，防提示词膨胀
+    resp = client.post("/api/llm/evaluate", json={
+        "repo": "facebook/react", "model": "m",
+        "evidence": {"readmeHead": "x" * 9000},
+    })
+    assert resp.status_code == 422
+
+
 @pytest.fixture()
 def client(tmp_dir, monkeypatch):
     settings = config.settings
@@ -177,3 +228,24 @@ def test_api_evaluate_translates_model_errors(client, monkeypatch):
     resp = client.post("/api/llm/evaluate", json={"repo": "acme/widget", "model": "m"})
     assert resp.status_code == 502
     assert resp.json()["detail"]["error"] == "API Key 无效或没有权限"
+
+
+def test_api_ping_success_returns_latency(client, monkeypatch):
+    async def fake_ping(**kwargs):
+        return {"ok": True, "model": kwargs["model"], "latencyMs": 123}
+
+    monkeypatch.setattr(llm, "ping", fake_ping)
+    resp = client.post("/api/llm/ping", json={"model": "demo-model", "apiKey": "sk-test-secret"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"ok": True, "model": "demo-model", "latencyMs": 123}
+    assert "sk-test-secret" not in resp.text
+
+
+def test_api_ping_translates_connection_errors(client, monkeypatch):
+    async def fake_ping(**kwargs):
+        raise llm.LLMError("连不上模型接口", "检查 Base URL、网络代理；本地模型请确认服务已启动")
+
+    monkeypatch.setattr(llm, "ping", fake_ping)
+    resp = client.post("/api/llm/ping", json={"model": "m"})
+    assert resp.status_code == 502
+    assert resp.json()["detail"]["error"] == "连不上模型接口"

@@ -9,15 +9,24 @@ from __future__ import annotations
 import html
 import re
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
 
-_TRENDING = "https://github.com/trending"
+_GITHUB = "https://github.com"
+_SEARCH_API = "https://api.github.com/search/repositories"
 _UA = "GitMon/0.2 (+https://github.com/4243342/gitmon)"
 _CACHE_TTL = 1800  # 30 分钟
 
-_cache: dict[tuple[str, str], tuple[float, list[dict[str, Any]]]] = {}
+_cache: dict[tuple[str, str], tuple[float, list[dict[str, Any]], str]] = {}
+
+# 数据来源：trending = 抓 github.com/trending；search = 网页不可达时退回搜索接口近似榜单
+_source = "trending"
+
+
+def last_source() -> str:
+    return _source
 
 _ARTICLE_RE = re.compile(r'<article class="Box-row">(.*?)</article>', re.S)
 _H2_RE = re.compile(r'<h2[^>]*>\s*<a[^>]*href="/([^"/?#]+)/([^"/?#]+)"', re.S)
@@ -29,6 +38,7 @@ _FORKS_RE = re.compile(r'/forks"[^>]*>.*?</svg>\s*([\d,\.kKmM]+)', re.S)
 _PERIOD_RE = re.compile(r'([\d,\.kKmM]+)(?:\s*</span>)?\s*stars\s+(today|this week|this month)', re.S)
 
 _PERIOD_LABEL = {"today": "今日新增", "this week": "本周新增", "this month": "本月新增"}
+_FALLBACK_LABEL = {"daily": "今日新增", "weekly": "本周新增", "monthly": "本月新增"}
 
 
 def _to_int(token: str) -> int:
@@ -83,23 +93,82 @@ def parse_trending(html_text: str) -> list[dict[str, Any]]:
     return out
 
 
+def _fetch_search_fallback(since: str, language: str = "") -> list[dict[str, Any]]:
+    """抓取失败时的兜底：GitHub Search API 找该时段内新建、Star 最多的仓库。
+
+    github.com/trending 没有 API、偶发 504；Search API 独立且稳定。
+    榜上的仓库都在所选时段内创建，其 Star 增量约等于总 Star，可以按新增展示。
+    """
+    days = {"daily": 1, "weekly": 7, "monthly": 30}.get(since, 7)
+    since_date = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+    query = f"created:>{since_date}"
+    if language:
+        query += f" language:{language}"
+    resp = httpx.get(
+        "https://api.github.com/search/repositories",
+        params={"q": query, "sort": "stars", "order": "desc", "per_page": 30},
+        headers={"User-Agent": _UA, "Accept": "application/vnd.github+json"},
+        timeout=18.0,
+    )
+    resp.raise_for_status()
+    items: list[dict[str, Any]] = []
+    for i, r in enumerate(resp.json().get("items", []), start=1):
+        owner = r.get("owner") or {}
+        stars = int(r.get("stargazers_count") or 0)
+        items.append({
+            "rank": i,
+            "author": owner.get("login", ""),
+            "name": r.get("name", ""),
+            "full_name": r.get("full_name", ""),
+            "url": r.get("html_url", ""),
+            "avatar": owner.get("avatar_url", ""),
+            "description": (r.get("description") or "").strip(),
+            "language": r.get("language") or "",
+            "language_color": "",
+            "stars": stars,
+            "forks": int(r.get("forks_count") or 0),
+            "period_stars": stars,
+            "period_label": _FALLBACK_LABEL.get(since, "本周新增"),
+            "source": "search",
+        })
+    return items
+
+
 def fetch_trending(since: str = "weekly", language: str = "") -> list[dict[str, Any]]:
-    """抓 GitHub 趋势榜；since ∈ daily/weekly/monthly；language 为空则全部语言。"""
+    """抓 GitHub 趋势榜；since ∈ daily/weekly/monthly；language 为空则全部语言。
+
+    来源会写进 last_source()：trending = 抓页面，search = 网页不可达时的近似榜单。
+    """
+    global _source
     if since not in {"daily", "weekly", "monthly"}:
         since = "weekly"
     key = (since, language.lower())
     cached = _cache.get(key)
     if cached and time.time() - cached[0] < _CACHE_TTL:
+        _source = cached[2]
         return cached[1]
     path = f"/trending/{language}" if language else "/trending"
-    resp = httpx.get(
-        f"{_TRENDING}{path}",
-        params={"since": since},
-        headers={"User-Agent": _UA, "Accept": "text/html"},
-        follow_redirects=True,
-        timeout=18.0,
-    )
-    resp.raise_for_status()
-    items = parse_trending(resp.text)
-    _cache[key] = (time.time(), items)
+    try:
+        resp = httpx.get(
+            f"{_GITHUB}{path}",
+            params={"since": since},
+            headers={"User-Agent": _UA, "Accept": "text/html"},
+            follow_redirects=True,
+            timeout=18.0,
+        )
+        resp.raise_for_status()
+        items = parse_trending(resp.text)
+        if not items:  # 页面结构变了，正则一条都没解析到，按失败处理
+            raise ValueError("trending 页面解析为空")
+        _source = "trending"
+    except Exception:
+        if cached:  # 抖动 / 限流时先给上一次的榜单，比整页报错强
+            _source = cached[2]
+            return cached[1]
+        items = _fetch_search_fallback(since, language)
+        _source = "search"
+        if not items:
+            raise
+    if items:
+        _cache[key] = (time.time(), items, _source)
     return items

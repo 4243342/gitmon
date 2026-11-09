@@ -10,6 +10,8 @@
 // 令牌落在 localStorage 是因为 scan.js 是浏览器直连平台 API 的（省一次中转）。
 // 后端不在（纯静态部署）时自动降级为"本地令牌"模式。
 
+import { ownerHeader } from './sync.js'
+
 const GH_TOKEN_KEY = 'gitmon:gh_token'
 const GT_TOKEN_KEY = 'gitmon:gitee_token'
 const PROFILE_KEY = 'gitmon:me'
@@ -68,8 +70,9 @@ export function clearGuest() {
 async function api(path, init) {
   const res = await fetch(path, {
     credentials: 'same-origin',
-    headers: { 'content-type': 'application/json' },
     ...init,
+    // 所有 /api/* 请求都带身份头（SSOT §2），调用方自带的 headers 照常合并
+    headers: { 'content-type': 'application/json', ...ownerHeader(), ...(init?.headers || {}) },
   })
   let payload = null
   try { payload = await res.json() } catch { payload = null }

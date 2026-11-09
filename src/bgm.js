@@ -28,7 +28,13 @@ let playing = false
 let wanted = false
 let nextTime = 0
 let step = 0
-let muted = localStorage.getItem('gitmon:muted') === '1'
+// 音乐有独立开关：老用户只有总静音键时回退沿用，之后各记各的
+const bgmMutedRaw = localStorage.getItem('gitmon:bgm-muted')
+let muted = bgmMutedRaw !== null ? bgmMutedRaw === '1' : localStorage.getItem('gitmon:muted') === '1'
+const rawVolume = localStorage.getItem('gitmon:volume')
+let volume = rawVolume === null ? 1 : Number(rawVolume)
+if (!Number.isFinite(volume) || volume < 0) volume = 1
+const lvl = () => LEVEL * volume
 
 function ensure() {
   if (!ctx) {
@@ -119,7 +125,7 @@ function startLoop() {
   step = 0
   master.gain.cancelScheduledValues(c.currentTime)
   master.gain.setValueAtTime(0.0001, c.currentTime)
-  master.gain.linearRampToValueAtTime(LEVEL, c.currentTime + 0.25)
+  master.gain.linearRampToValueAtTime(lvl(), c.currentTime + 0.25)
   nextTime = c.currentTime + 0.06
   tick()
   timer = setInterval(tick, 40)
@@ -141,7 +147,7 @@ function stopLoop() {
 function reviveGain() {
   if (!ctx) return
   master.gain.cancelScheduledValues(ctx.currentTime)
-  master.gain.setValueAtTime(LEVEL, ctx.currentTime)
+  master.gain.setValueAtTime(lvl(), ctx.currentTime)
 }
 
 function arpeggio(notes, { type = 'square', gap = 0.1, dur = 0.18, vol = 0.1, tail = [] } = {}) {
@@ -154,6 +160,7 @@ export const bgm = {
   get playing() {
     return playing
   },
+  get muted() { return muted },
   // 进入战斗：循环起，静音状态下只记意愿不发声
   startBattle() {
     wanted = true
@@ -164,11 +171,21 @@ export const bgm = {
     wanted = false
     stopLoop()
   },
-  // 与全局静音按钮联动
+  // 与设置页联动：音乐独立开关
   setMuted(value) {
     muted = !!value
+    localStorage.setItem('gitmon:bgm-muted', muted ? '1' : '0')
     if (muted) stopLoop()
     else if (wanted) startLoop()
+  },
+  // 设置页音量滑条（与音效共享 gitmon:volume），播放中即时生效
+  setVolume(v) {
+    volume = Math.max(0, Math.min(1, Number(v) || 0))
+    localStorage.setItem('gitmon:volume', String(volume))
+    if (ctx && playing) {
+      master.gain.cancelScheduledValues(ctx.currentTime)
+      master.gain.linearRampToValueAtTime(Math.max(0.0001, lvl()), ctx.currentTime + 0.08)
+    }
   },
   // 胜利：上行大调琶音 + 长尾和弦
   victory() {

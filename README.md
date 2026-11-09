@@ -315,6 +315,7 @@ AI 味 ≥50 → 词条「根基不稳」，≥75 → 「生成体」；根基�
 - [ ] AI 率按最近 90 天提交加权，让"补课"真能把词条洗掉
 - [ ] 全服玩家排行榜页面（玩家宠物强弱排名；区别于已上线的 GitHub Trending 仓库榜）
 - [x] GitHub 排行榜：拉取 GitHub Trending 热门仓库榜（今日 / 本周 / 本月 + 语言筛选），点「孵化」直接把榜单仓库孵成精灵（后端 /api/trending + 前端排行榜页）
+- [ ] AI 深度审计：真实审计 2–5 分钟（里程碑弹幕 + 属性/进化弹窗 + 等级 Lv.1 滚到终值 + 进化演出），设计已定稿见 [`docs/AI-AUDIT.md`](docs/AI-AUDIT.md)
 
 ## 参考与借鉴（来源总表）
 
@@ -337,13 +338,13 @@ AI 味 ≥50 → 词条「根基不稳」，≥75 → 「生成体」；根基�
 | [scc](https://github.com/boyter/scc) | 后端浅克隆后统计 LOC / 注释行 / **圈复杂度** / COCOMO → 喂给工程量与「特防（可维护性）」维度 | `backend/`（`GITMON_USE_SCC=1`） | MIT |
 | [@pkmn/sim](https://www.npmjs.com/package/@pkmn/sim) | **只在测试里用**：把我们的属性表与自定义种族灌进官方 Dex 当"标准答案"，对拍 81 组克制 + 178 次伤害样本 | [`scripts/showdown-parity.mjs`](scripts/showdown-parity.mjs)（devDependency） | MIT |
 
-### 二、只借思路，代码全部自研
+### 二、只借思路，代码自研（唯一例外：GPL 的 pokemon-cards-css 源码内置）
 
 | 来源 | 借了什么 | 边界 | 协议 |
 |---|---|---|---|
 | [Pokémon Showdown](https://github.com/smogon/pokemon-showdown) | **战斗系统骨架**：Gen5 伤害公式、能力等级 −6..+6 分数表、先制 → 速度的行动顺序、灼烧 / 麻痹 / 睡眠的处理方式、PP 与「挣扎」、STAB 与会心框架 | 图鉴数据与招式全自研；机制按其实现重写，未引入代码（原因见 [`docs/BATTLE.md` §0](docs/BATTLE.md)） | MIT |
 | 《赛尔号》(Seer) | 「克制 / 微弱 / 无效」三档克制呈现、以属性技能为核心的直球节奏 | 商业作品，零素材零代码 | — |
-| [pokemon-cards-css](https://github.com/simeydotme/pokemon-cards-css) ⚠️ | **全息闪卡的视觉语言**：多层渐变 + `blend-mode` + 滤镜，高光随指针位置移动 | GPL-3.0 有传染性 → 仅作视觉参考，CSS 全自研（`PetCard.jsx` 的 `--mx` / `--my` / `--rx` / `--ry` + `.holo-layer` / `.glare`） | GPL-3.0 |
+| [pokemon-cards-css](https://github.com/simeydotme/pokemon-cards-css) ✅ 已采用 | **全息闪卡的视觉语言**：多层渐变 + `blend-mode` + 滤镜，高光随指针位置移动 | **GPL-3.0 → 源码内置**：拼接为 [`src/vendor/pokemon-cards.css`](src/vendor/pokemon-cards.css)（同目录附 LICENSE），卡面材质由其接管，分发时须同开源（见"协议与合规"） | GPL-3.0 |
 | [hover-tilt](https://github.com/simeydotme/hover-tilt) | 指针归一化到 −0.5..0.5 再映射倾斜角的换算方式与阻尼手感 | 自研 `useState` 实现，**未装依赖** | MIT |
 | [tcg-portfolio](https://github.com/dim4k/tcg-portfolio) | **稀有度材质分级的视觉范本**：foil（金箔）/ glitter（闪粉）/ glare（高光）三层叠加，鼠标或陀螺仪倾斜触发；rare ★ / gold ★★ / secret ★★★ 各自一套 finish，开包逐张翻飞 | 仅作材质与稀有度映射参考（N/R/SR/SSR → 哑光/微光/镭射/金卡），CSS 全自研 | MIT |
 | [Holographic Card 3D (effect-labs)](https://effect-labs.com/en/effects/cards/holographic-card-3d.html) | **零 JS 全息方案**：`::after` 用 `repeating-linear-gradient` 做镭射颗粒 + `conic-gradient` 走彩虹虹彩，配 `mix-blend-mode: overlay/color-dodge`；纯 CSS 倾斜，`will-change` 上 GPU | 顶层层叠思路（scanline 颗粒 + conic 虹彩 + color-dodge）借来强化 SR/SSR | 站点示例（自有许可） |
@@ -369,13 +370,44 @@ AI 味 ≥50 → 词条「根基不稳」，≥75 → 「生成体」；根基�
 | [procedural-pixel-creatures](https://github.com/idlerunner00/procedural-pixel-creatures) | Godot / C# 耦合重，立绘质量虽高但移植成本不划算 | 待核实 |
 | [github-readme-streak-stats](https://github.com/DenverCoder1/github-readme-streak-stats) | 连续贡献卡片的展示形式参考，暂未实现 | MIT |
 
+### 四、AI 深度审计演出（已落地，效果复刻对标）
+
+AI 模式「真实审计 2–5 分钟」演出（中央光团 → 属性确定显形宠物、等级随勘测实时滚动、跨阶进化动画、里程碑弹幕，设计见 [`docs/AI-AUDIT.md`](docs/AI-AUDIT.md)）的效果对标以下高星开源仓库复刻——**只借思路 / 算法，零运行时依赖，CSS / WAAPI 自研**：
+
+| 效果 | 参考仓库 | 复刻什么 | 落点 | 协议 |
+|---|---|---|---|---|
+| 里程碑弹幕 | [jabbany/CommentCoreLibrary](https://github.com/jabbany/CommentCoreLibrary) ⭐约1.9k · [zerosoul/rc-bullets](https://github.com/zerosoul/rc-bullets) | 弹幕轨道分配与防重叠调度（经典 CCL 算法）、CSS3 Animation 弹幕的组件化封装方式 | `src/components/AuditStage.jsx` 弹幕层 | MIT |
+| 等级数字滚动 | [inorganik/countUp.js](https://github.com/inorganik/countUp.js) ⭐约8k | rAF 计数 + easeOutExpo 缓动：里程碑加级 320–700ms 小滚、M5 台内 `finalRollDuration` 大滚到终值，撕卡时等级已落定 | `AuditStage.jsx` 等级大字（随勘测实时滚动） | MIT |
+| 进化白闪登场 | [daneden/animate.css](https://github.com/daneden/animate.css) ⭐约82.9k | `flash` / `zoomIn` / `bounceIn` 关键帧思路 → 跨进化阶时的白光爆闪 + 立绘 brightness/blur 登场 + 阶段名大字弹入 | `.audit-evolve-flash` / `.audit-evolve-tag` / `.audit-pet` | MIT |
+| 进化序列时间轴 | [greensock/GSAP](https://github.com/greensock/GSAP) ⭐约26.4k | timeline 分段编排思路 → 进化演出拆成「白闪 → 形态切换 → 阶段名定格 → 自收」四拍串行 | 跨阶检测 + 演出自收两段 effect | 附带标准（免费使用，仅转售受限） |
+| 演出节拍编排 | [juliangarnier/anime](https://github.com/juliangarnier/anime) ⭐约70k | timeline + stagger 的多阶段动画编排思路 → 里程碑节拍控制器 | `AuditStage.jsx` 节拍调度 | MIT |
+| 弹窗进出场 | [motiondivision/motion](https://github.com/motiondivision/motion) ⭐约32k（原 framer-motion） | 发现属性 / 种族判定弹窗的 spring 进出场节奏 | 弹窗组件 | MIT |
+
+> 进化与里程碑的礼花闪光不新增来源，复用表一已在用的 tsParticles；弹窗皮肤复用 Kenney Pixel UI。
+
 ### 协议与合规
 
 - 本项目自身以 **MIT** 发布（见 [`LICENSE`](LICENSE)）。
-- **GPL 项目零代码复用**：`pokemon-cards-css` 只提供视觉参考，仓库内没有任何其代码片段；如未来需要可原地替换掉自研全息层。
+- **GPL-3.0 源码内置（唯一例外）**：`pokemon-cards-css` 已拼接 vendored 至 [`src/vendor/pokemon-cards.css`](src/vendor/pokemon-cards.css)，许可证原文见 [`src/vendor/LICENSE-pokemon-cards-css`](src/vendor/LICENSE-pokemon-cards-css)，贴图在 `public/pkcss/img/`（声明见 [`THIRD-PARTY.md`](THIRD-PARTY.md)）。本项目自身以 MIT 发布，但**分发该衍生 CSS 时须遵循 GPL-3.0 同开源**；不接受时可删除该 vendor 文件与 `PetCard.jsx` 中的 `.card` 结构回退。
 - **素材许可原文随仓库**：[`src/assets/kenney/LICENSE.txt`](src/assets/kenney/LICENSE.txt)（CC0）、[`src/assets/fonts/LICENSE-fusion-pixel.txt`](src/assets/fonts/LICENSE-fusion-pixel.txt)（OFL-1.1）。
-- **复制的第三方代码**单独声明在 [`THIRD-PARTY.md`](THIRD-PARTY.md)（当前为 pixelfx 与 monstrjs，含打包范围说明）。
+- **复制的第三方代码**单独声明在 [`THIRD-PARTY.md`](THIRD-PARTY.md)（当前为 pixelfx、monstrjs 与 pokemon-cards-css，含打包范围说明）。
 - 更细的选型评估见 [`docs/DESIGN.md` §10 开源资源调研](docs/DESIGN.md)，竞品分析见 §11，对战借鉴边界见 [`docs/BATTLE.md` §0](docs/BATTLE.md)。
+
+## 对战页视觉（掌机像素风）
+
+竞技场战斗页与结算页走**掌机像素风**（2026-11 设计决策，设计文档见 [`docs/superpowers/specs/2026-11-09-handheld-pixel-battle-design.md`](docs/superpowers/specs/2026-11-09-handheld-pixel-battle-design.md)）：CRT 扫描线 + 暗角的"掌机屏幕"隐喻、米白双线硬边框、GBA 式常驻 HP 角框与**分段像素血条**、底部像素对话框战报（最新行 ▼ 打字机）、回合招式横幅、方块像素粒子打击；结算页为像素徽章 + **S/A/B 评级**（按存活与回合数计算）+ 分段经验条 + MVP 展示 + 像素按键（按下下沉）+ 胜利五彩纸屑。
+
+### 调研过的参考仓库（视觉语言来源）
+
+| 仓库 | 给到我们的东西 |
+|---|---|
+| [shattered-pixel-dungeon](https://github.com/00-Evan/shattered-pixel-dungeon)（~7k★） | 像素面板与硬边描边质感：框体不用圆角渐变，而是描边 + 阴影双线的"卡带 UI" |
+| [smogon/pokemon-showdown](https://github.com/smogon/pokemon-showdown)（~9k★） | 对战信息分层原则：HP 常驻可视、日志独立成层、演出动效不遮挡关键信息 |
+| GBA 世代 HP 框设计语言 | 角落常驻 HP 框、分段血条逐格增减、像素对话框 + ▼ 翻页指示的播报交互 |
+
+实现位置：`src/battle-arena.css` 尾部「掌机像素风覆盖层」段 + `src/components/Battle.jsx`（分段 `HPBar`、招式横幅 `.move-banner`、结算 `battleGrade`/徽章/经验条）。字体复用仓库内置的 FusionPixel（OFL，`src/assets/fonts/`）。纯表现层覆盖，仅作用于 `.battle-stage`，不动 `styles.css` / 顶栏。
+
+---
 
 ## 卡面材质（镭射 / 金卡 / 闪卡）
 
@@ -385,26 +417,26 @@ AI 味 ≥50 → 词条「根基不稳」，≥75 → 「生成体」；根基�
 
 | 仓库 | 给到我们的东西 | 协议 / 边界 |
 |---|---|---|
-| [simeydotme/pokemon-cards-css](https://github.com/simeydotme/pokemon-cards-css) | 全息闪卡"教科书"：多层渐变 + `blend-mode` + 滤镜，高光随指针移动；剑盾时代宝可梦卡面的镭射观感 | **GPL-3.0 有传染性 → 零代码复用**，仅视觉参考 |
+| [simeydotme/pokemon-cards-css](https://github.com/simeydotme/pokemon-cards-css) | 全息闪卡"教科书"：多层渐变 + `blend-mode` + 滤镜，高光随指针移动；剑盾时代宝可梦卡面的镭射观感 | **GPL-3.0 → 已源码内置**（`src/vendor/pokemon-cards.css` + `public/pkcss/img/`，随附 LICENSE），N/R/SR/SSR 分四档材质 |
 | [hover-tilt](https://github.com/simeydotme/hover-tilt) | 指针→倾斜角的归一化换算与阻尼手感 | MIT，自研实现 |
 | [dim4k/tcg-portfolio](https://github.com/dim4k/tcg-portfolio) | **稀有度材质范本**：foil/glitter/glare 三层叠加，rare ★ / gold ★★ / secret ★★★ 各一套 finish | MIT，仅参考映射 |
 | [Holographic Card 3D (effect-labs)](https://effect-labs.com/en/effects/cards/holographic-card-3d.html) | 零 JS 全息：`repeating-linear-gradient` 颗粒 + `conic-gradient` 虹彩 + `color-dodge` | 站点示例，借层叠思路 |
 
-> 全部 CSS 自研、零外部依赖；GPL 项目不进任何代码片段（与"协议与合规"一节约定一致）。
+> 卡面材质直接采用 pokemon-cards-css（GPL-3.0，源码内置见 `src/vendor/`，声明见"协议与合规"）；品质映射与指针跟随换算自研。
 
 ### 材质分级（品质 → 卡面材质）
 
-| 品质 | 材质名 | 实现要点 |
+| 品质 | 材质（`data-rarity`） | 观感 |
 |---|---|---|
-| **N** | 哑光卡纸 | 无镭射，仅极淡纸纹；最朴素 |
-| **R** | 微光闪卡（轻量） | 银白流光缓慢扫过（`screen` 混合），hover 浮现柔光 |
-| **SR** | 全息镭射 | 整卡彩虹全息流光（scanline 颗粒 + 彩虹带，`color-dodge`，自动 `holo-sweep`）；顶层 `holo-sheen` 随鼠标走彩虹虹彩 |
-| **SSR** | 金卡闪卡 | 金色底（`radial` 金晕 + 金调彩虹带）叠全息镭射，流光最快最亮；顶层虹彩最强、hover 高光最盛 |
+| **N** | `basic` | 哑光卡纸，无镭射，最朴素 |
+| **R** | `rare holo` | 经典横纹镭射，卡窗内流光随指针移动 |
+| **SR** | `rare holo cosmos` | 星空闪：星点 + 闪片贴图层（每张卡固定随机偏移） |
+| **SSR** | `rare rainbow` | 彩虹流光铺满整卡，最亮最强 |
 
 ### 实现位置
 
-- `src/components/PetCard.jsx`：三层 `<div>` —— `.holo-layer`（底层材质基）、`.holo-sheen`（顶层指针彩虹镭射）、`.glare`（顶层指针高光）；指针位置通过 `--mx` / `--my` 注入。
-- `src/styles.css`：`.holo-layer` / `.holo-sheen` / `.glare` 及 `.quality-N/R/SR/SSR` 分级规则、`holo-sweep` / `foil-sweep` 关键帧。
+- `src/components/PetCard.jsx`：`.card > .card__translater > .card__rotator > .card__front`（内容层 + `.card__shine` + `.card__glare`），`data-rarity` 由品质 N/R/SR/SSR 映射；内容层原生监听 `pointermove` / `pointerleave`，换算出 `--pointer-x` / `--rotate-x/y` / `--background-x/y` 等变量注入。
+- `src/vendor/pokemon-cards.css`：材质本体（拼接自 pokemon-cards-css，GPL-3.0，同目录附 LICENSE），`src/styles.css` 的 `.gm-holo` 段控制卡尺寸与覆盖；贴图在 `public/pkcss/img/`。
 - 分享卡（`src/share.js`，Canvas 1:1 复刻）同步带品质色描边与流光，但材质镭射仅在网页卡面做动态呈现。
 
 ---

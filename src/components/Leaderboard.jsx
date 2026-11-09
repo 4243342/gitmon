@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { sfx } from '../sfx.js'
+import { ownerHeader } from '../sync.js'
 
 const SINCE_OPTIONS = [
   { key: 'daily', label: '今日' },
@@ -31,20 +32,21 @@ function fmt(n) {
   return String(n)
 }
 
-export default function Leaderboard({ onDraw }) {
+export default function Leaderboard({ onChallenge, onPreview, canChallenge = false }) {
   const [since, setSince] = useState('weekly')
   const [language, setLanguage] = useState('')
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [cached, setCached] = useState(false)
+  const [source, setSource] = useState('trending')
 
   useEffect(() => {
     let alive = true
     setLoading(true)
     setError('')
     const q = new URLSearchParams({ since, language })
-    fetch(`/api/trending?${q.toString()}`)
+    fetch(`/api/trending?${q.toString()}`, { headers: ownerHeader() })
       .then((r) => r.json())
       .then((d) => {
         if (!alive) return
@@ -54,6 +56,7 @@ export default function Leaderboard({ onDraw }) {
         } else {
           setItems(d.items || [])
           setCached(!!d.cached)
+          setSource(d.source || 'trending')
         }
         setLoading(false)
       })
@@ -101,6 +104,9 @@ export default function Leaderboard({ onDraw }) {
       </div>
 
       {cached && <p className="lb-cached">趋势榜缓存 30 分钟，数据来自 GitHub</p>}
+      {source === 'search' && (
+        <p className="lb-cached">GitHub 网页版当前不可达，榜单改用 GitHub 搜索接口（近期新建的高星仓库）近似排序</p>
+      )}
       {error && <p className="error">! {error}</p>}
       {loading && <div className="lb-loading">正在拉取 GitHub 趋势榜…</div>}
 
@@ -140,16 +146,28 @@ export default function Leaderboard({ onDraw }) {
                   <span className="lb-stat" title="Fork">⑂ {fmt(it.forks)}</span>
                 </div>
               </div>
-              <button
-                className="lb-hatch"
-                title="把这只仓库抽成精灵"
-                onClick={() => {
-                  sfx.blip()
-                  onDraw(it.full_name)
-                }}
-              >
-                抽卡
-              </button>
+              <div className="lb-acts">
+                <button
+                  className="lb-view"
+                  title="先看看对方的项目卡面"
+                  onClick={() => {
+                    sfx.blip()
+                    onPreview?.(it.full_name)
+                  }}
+                >
+                  观摩
+                </button>
+                <button
+                  className="lb-hatch"
+                  title={canChallenge ? '进竞技场挑战这只仓库的精灵' : '还没有出战精灵，先抽这只仓库'}
+                  onClick={() => {
+                    sfx.blip()
+                    onChallenge(it.full_name)
+                  }}
+                >
+                  {canChallenge ? '挑战' : '抽卡'}
+                </button>
+              </div>
             </li>
           ))}
         </ol>

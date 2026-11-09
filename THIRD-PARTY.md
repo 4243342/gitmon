@@ -2,6 +2,17 @@
 
 本项目引入的第三方代码及其许可证。除下表所列，其余代码均为本项目自研（MIT，见 `LICENSE`）。
 
+## pokemon-cards-css（卡面全息材质库）
+
+- 来源：<https://github.com/simeydotme/pokemon-cards-css>（npm 包已下架，2022 年后不再发布，故从 GitHub 直接 vendor）
+- 许可证：**GPL-3.0**，Copyright (c) Simeon Gooch
+- 引入方式：**源码内置（vendor）**。拼接 `public/css/cards/` 下的 `base.css`、`cards.css`、`basic.css`、`regular-holo.css`、`cosmos-holo.css`、`rainbow-holo.css` 为单文件 [`src/vendor/pokemon-cards.css`](src/vendor/pokemon-cards.css)，许可证原文见 [`src/vendor/LICENSE-pokemon-cards-css`](src/vendor/LICENSE-pokemon-cards-css)；材质贴图（grain / glitter / cosmos / illusion）在 `public/pkcss/img/`。
+- 仅两处改动：① 贴图 URL 前缀改为 `/pkcss/img/`；② 原库 `.card__rotator *` 通配选择器收窄为 `.card__rotator > *, .card__front > *`，避免强制改写本项目富内容卡片子元素的布局。其余为原样拼接。
+- 使用范围：`src/App.jsx` 引入该文件（先于项目样式），`src/components/PetCard.jsx` 以 `.card` 结构 + `data-rarity`（N/R/SR/SSR → basic / rare holo / rare holo cosmos / rare rainbow）挂载材质，`src/styles.css` 的 `.gm-holo` 段做尺寸与覆盖；原库的 Svelte 指针驱动由组件内原生 `pointermove` / `pointerleave` 等价换算 CSS 变量实现。
+- **GPL-3.0 影响**：该文件为原库衍生作品，**对外分发本项目时须以 GPL-3.0 提供其对应源码**（本仓库已随附）。
+
+完整许可证文本见 <https://github.com/simeydotme/pokemon-cards-css/blob/main/LICENSE>。
+
 ## monstrjs（精灵立绘部件库）
 
 - 来源：<https://github.com/vcgtz/monstrjs>（通过 `npm i monstrjs` 引入，v1.0.0）

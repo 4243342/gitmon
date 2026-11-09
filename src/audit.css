@@ -1,0 +1,222 @@
+/* 深度审计演出（docs/AI-AUDIT.md）：中央舞台（光团→宠物）/ 等级随勘测实时滚动 /
+   跨阶进化 / 里程碑 / 弹幕 / 弹窗
+   纯 CSS 动画自研；弹幕与缓动对标 CommentCoreLibrary / countUp.js，
+   进化白闪与登场对标 animate.css，序列编排思路对标 GSAP timeline（见 README 来源总表四） */
+
+/* ---------- 审计台 ---------- */
+.audit-stage { position: relative; }
+
+.audit-topline {
+  display: flex; align-items: center; justify-content: space-between;
+  width: min(560px, 94%); margin: 0 auto 14px;
+}
+.audit-badge {
+  font-size: 12px; letter-spacing: .08em; color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-radius: 999px; padding: 4px 12px;
+}
+/* ============================================================
+   中央舞台：光团 → 属性确定后显形宠物，等级大字随勘测实时滚动，
+   跨阶时白闪 + 阶段名登场（对标 animate.css flash/zoomIn + GSAP timeline 分段）
+   ============================================================ */
+.audit-core {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 262px;
+  margin: 2px auto 4px;
+  width: min(560px, 94%);
+}
+
+/* 光团：呼吸的白金色能量球 + 双扫描环，属性未定前一直转 */
+.audit-orb {
+  position: absolute;
+  top: 34px;
+  width: 150px;
+  height: 150px;
+  transition: opacity .55s ease, transform .55s ease, filter .55s ease;
+}
+.audit-orb-core {
+  position: absolute;
+  inset: 26px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 38% 34%, rgba(255, 255, 255, .98), rgba(245, 197, 66, .65) 46%, rgba(245, 197, 66, 0) 72%),
+    radial-gradient(circle, rgba(255, 246, 214, .9), rgba(255, 246, 214, 0) 70%);
+  filter: blur(1px);
+  animation: orb-breathe 1.7s ease-in-out infinite;
+}
+.audit-orb-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(245, 197, 66, .55);
+  border-top-color: rgba(255, 255, 255, .95);
+  animation: spin 2.6s linear infinite;
+}
+.audit-orb-ring--2 {
+  inset: 14px;
+  border-color: rgba(255, 255, 255, .3);
+  border-bottom-color: rgba(245, 197, 66, .85);
+  animation-duration: 1.7s;
+  animation-direction: reverse;
+}
+@keyframes orb-breathe {
+  0%, 100% { transform: scale(.92); opacity: .78; }
+  50% { transform: scale(1.06); opacity: 1; }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+/* 显形：光团让位给宠物 */
+.audit-core.is-revealed .audit-orb {
+  opacity: 0;
+  transform: scale(1.7);
+  filter: blur(8px);
+}
+
+/* 宠物像素立绘：属性确定即在舞台中央显形，叠在光团原位 */
+.audit-pet {
+  position: absolute;
+  top: 26px;
+  animation: pet-reveal .6s cubic-bezier(.2, 1.4, .4, 1) both;
+}
+@keyframes pet-reveal {
+  0% { opacity: 0; transform: scale(.35); filter: brightness(3) blur(4px); }
+  55% { opacity: 1; transform: scale(1.12); filter: brightness(2.2); }
+  100% { opacity: 1; transform: scale(1); filter: brightness(1); }
+}
+
+/* 等级大字：随勘测 countUp 滚动（对标 countUp.js），滚动中微微发热 */
+.audit-lv {
+  position: relative;
+  z-index: 2;
+  margin-top: 176px;
+  font-weight: 900;
+  font-size: clamp(30px, 6.4vw, 46px);
+  line-height: 1;
+  color: var(--accent);
+  letter-spacing: 2px;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 18px color-mix(in srgb, var(--accent) 60%, transparent), 0 2px 0 rgba(0, 0, 0, .5);
+}
+.audit-lv em {
+  font-style: normal;
+  font-size: .5em;
+  color: var(--dim);
+  margin-right: 6px;
+  vertical-align: 7px;
+}
+.audit-lv.rolling { color: #fff2c2; text-shadow: 0 0 26px rgba(255, 232, 150, .9); }
+.audit-stage-name {
+  position: relative;
+  z-index: 2;
+  margin-top: 6px;
+  font-size: 11.5px;
+  letter-spacing: .3em;
+  color: var(--dim);
+}
+
+/* 进化演出：白闪覆盖 + 阶段名大字登场（对标 animate.css zoomIn/flash） */
+.audit-evolve-flash {
+  position: absolute;
+  inset: -6px 0 0;
+  z-index: 4;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 40%, rgba(255, 255, 255, .95), rgba(255, 246, 214, .45) 42%, transparent 72%);
+  animation: evolve-flash 1.1s ease-out both;
+}
+@keyframes evolve-flash {
+  0% { opacity: 0; }
+  12% { opacity: 1; }
+  38% { opacity: .55; }
+  100% { opacity: 0; }
+}
+.audit-evolve-tag {
+  position: absolute;
+  top: 64px;
+  z-index: 5;
+  padding: 8px 22px;
+  border: 2px solid #ffd66b;
+  border-radius: 9px;
+  background: rgba(8, 14, 26, .92);
+  color: #ffe9a8;
+  font-weight: 900;
+  font-size: clamp(17px, 3.4vw, 25px);
+  letter-spacing: .18em;
+  box-shadow: 0 0 34px rgba(255, 214, 107, .5);
+  animation: evolve-tag 2s cubic-bezier(.16, 1, .3, 1) both;
+  white-space: nowrap;
+}
+@keyframes evolve-tag {
+  0% { opacity: 0; transform: scale(.3); filter: blur(6px); }
+  16% { opacity: 1; transform: scale(1.14); filter: blur(0); }
+  26% { transform: scale(1); }
+  78% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.05); }
+}
+
+.audit-steps { margin-bottom: 10px; }
+
+/* 弹幕层：短句从左下依次滑入，压在步骤表下方 */
+.audit-barrage {
+  width: min(560px, 94%); margin: 6px auto 0;
+  min-height: 132px; display: flex; flex-direction: column;
+  justify-content: flex-end; gap: 6px; overflow: hidden;
+}
+.audit-bline {
+  align-self: flex-start;
+  font-size: 13px; color: var(--dim);
+  background: rgba(16, 26, 44, .78);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px; padding: 5px 12px;
+  animation: audit-slide-in .45s cubic-bezier(.2, .9, .3, 1) both;
+}
+.audit-bline:nth-child(even) { align-self: flex-end; border-left-width: 1px; border-right: 3px solid var(--accent); }
+@keyframes audit-slide-in {
+  from { opacity: 0; transform: translateX(-22px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 属性 / 种族发现弹窗：低频重磅，居中弹入 */
+.audit-popup {
+  position: absolute; left: 50%; top: 44%;
+  transform: translate(-50%, -50%);
+  min-width: 240px; padding: 20px 30px;
+  text-align: center; border-radius: 16px;
+  background: linear-gradient(160deg, rgba(24, 36, 60, .97), rgba(12, 20, 34, .97));
+  border: 1px solid var(--accent);
+  box-shadow: 0 0 42px color-mix(in srgb, var(--accent) 40%, transparent);
+  animation: audit-pop .5s cubic-bezier(.2, 1.4, .4, 1) both;
+  z-index: 6;
+}
+.audit-popup-tag {
+  display: block; font-size: 12px; letter-spacing: .3em;
+  color: var(--accent); margin-bottom: 8px;
+}
+.audit-popup-name { display: block; font-size: 30px; letter-spacing: .1em; }
+.audit-popup-sub { display: block; margin-top: 6px; font-size: 13px; color: var(--dim); }
+@keyframes audit-pop {
+  from { opacity: 0; transform: translate(-50%, -42%) scale(.7); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+.audit-warn {
+  width: min(560px, 94%); margin: 10px auto 0;
+  font-size: 13px; color: #ffb454;
+  border: 1px dashed color-mix(in srgb, #ffb454 55%, transparent);
+  background: rgba(255, 180, 84, .08);
+  border-radius: 9px; padding: 8px 12px;
+}
+
+.audit-skip { margin-top: 16px; }
+
+/* 移动端 */
+@media (max-width: 900px) {
+  .audit-barrage { min-height: 110px; }
+  .audit-popup-name { font-size: 24px; }
+  .audit-core { min-height: 236px; }
+  .audit-lv { margin-top: 158px; }
+  .audit-evolve-tag { top: 56px; letter-spacing: .1em; }
+}

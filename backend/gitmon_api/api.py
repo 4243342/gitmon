@@ -22,8 +22,11 @@ router = APIRouter()
 _USER_RE = re.compile(r"[^A-Za-z0-9_-]")
 
 
-def owner_key(x_gitmon_user: str | None = Header(default=None, alias="X-Gitmon-User")) -> str:
-    """匿名用户标识：前端 localStorage 生成的设备 ID，没有就落到公共图鉴。"""
+def owner_key(request: Request, x_gitmon_user: str | None = Header(default=None, alias="X-Gitmon-User")) -> str:
+    """归属标识：登录会话优先（跨设备一致），其次设备 ID 头，最后公共图鉴。"""
+    user = auth.resolve_session(request.cookies.get(auth.SESSION_COOKIE, ""))
+    if user and user.get("login"):
+        return f"user:{user.get('provider') or 'github'}:{user['login']}"
     if not x_gitmon_user:
         return "public"
     cleaned = _USER_RE.sub("", x_gitmon_user)[:64]
@@ -54,6 +57,10 @@ class JobResponse(BaseModel):
     pet: dict[str, Any] | None = None
     error: str = ""
     hint: str = ""
+
+
+class SyncRequest(BaseModel):
+    items: list[Any] = Field(default_factory=list, max_length=60, description="完整前端 pet 对象列表")
 
 
 def _svg(content: str, max_age: int = 21600) -> Response:
@@ -134,6 +141,13 @@ def list_collection(
     return services.collection(user, limit, offset)
 
 
+@router.put("/api/pets", tags=["pets"])
+def upsert_collection(payload: SyncRequest, user: str = Depends(owner_key)) -> dict[str, Any]:
+    """批量 upsert 本地图鉴（SSOT 契约 §4）：推送即覆盖，缺必填的条目跳过。"""
+    items, saved = services.upsert_many(user, payload.items)
+    return {"items": items, "saved": saved}
+
+
 @router.get("/api/pets/{pet_id}", tags=["pets"])
 def pet_detail(pet_id: str) -> dict[str, Any]:
     return services.detail(pet_id)
@@ -182,6 +196,7 @@ def github_trending(
         "language": language,
         "count": min(len(items), limit),
         "total": len(items),
+        "source": trending.last_source(),
         "fetched_at": int(time.time()),
     }
 

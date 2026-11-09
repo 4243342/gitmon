@@ -96,4 +96,6 @@
   .training-head { grid-template-columns: 1fr; gap: 12px; }
   .training-back { justify-self: start; }
   .training-counter { grid-column: auto; }
+  /* 外链点按热区放大到 28px+，负边距抵消不撑高底栏 */
+  .tool-foot a { padding: 7px 0; margin: -7px 0; }
 }

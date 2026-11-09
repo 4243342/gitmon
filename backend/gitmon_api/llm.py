@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from typing import Any
 from urllib.parse import urlparse
 
@@ -31,6 +32,10 @@ SYSTEM_PROMPT = """你是 GitMon 的「仓库精灵评测官」。用户给你�
 你需要**凭自己的知识推测这个项目的画像，并独立完成全部评测**，输出一份严格的 JSON。
 
 硬性要求：
+0. 若用户消息里附带「真实审计证据」，其中的数字与事实**优先于你的记忆与推测**：
+   属性看 languages 占比、种族看根目录线索与 README、等级基数看 commits / 贡献者 / 代码体量，
+   stars、品质维度证据一律以证据为准，禁止另猜一套；JSON 的 evidence 字段要写清用到了哪条证据。
+   没有附带证据时，才按你的知识推测。
 1. 只输出一个 JSON 对象，不要 markdown 代码块、不要解释文字、不要注释。
 2. 所有数值都由你评测给出，不要写「未知 / 无法判断 / null」；不确定就按你对同类项目的了解给一个合理估值。
 3. 这是给游戏用的趣味推演，不必精确，但要自洽：star 高的项目品质分、社区认可应更高；
@@ -83,6 +88,7 @@ JSON 字段（全部必填）：
 
 USER_TEMPLATE = """请评测这个仓库：{repo}
 平台：{platform}
+{evidence_block}
 {hint_line}
 只输出 JSON。"""
 
@@ -249,7 +255,10 @@ def validate_base_url(base_url: str) -> str:
     return url
 
 
-async def chat_completion(*, base_url: str, api_key: str, model: str, system: str, user: str) -> str:
+async def chat_completion(
+    *, base_url: str, api_key: str, model: str, system: str, user: str,
+    timeout: float = 60.0, max_tokens: int = 2200,
+) -> str:
     """调一次 OpenAI 兼容 chat/completions；错误统一翻译成可直接展示的中文。"""
     headers = {"Content-Type": "application/json"}
     if api_key:
@@ -261,30 +270,19 @@ async def chat_completion(*, base_url: str, api_key: str, model: str, system: st
             {"role": "user", "content": user},
         ],
         "temperature": 0.7,
-        "max_tokens": 2200,
+        "max_tokens": max_tokens,
     }
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=10.0)) as client:
             resp = await client.post(f"{base_url}/chat/completions", headers=headers, json=payload)
     except httpx.TimeoutException:
-        raise LLMError("模型响应超时（60 秒）", "换更快的模型，或检查网络代理") from None
+        raise LLMError(f"模型响应超时（{int(timeout)} 秒）", "换更快的模型，或检查网络代理") from None
     except httpx.ConnectError:
         raise LLMError("连不上模型接口", "检查 Base URL、网络代理；本地模型请确认服务已启动") from None
     except httpx.HTTPError:
         raise LLMError("模型接口请求失败", "检查 Base URL 与网络连通性") from None
 
-    if resp.status_code == 401 or resp.status_code == 403:
-        raise LLMError("API Key 无效或没有权限", "检查密钥，或换个模型服务商")
-    if resp.status_code == 404:
-        raise LLMError("接口地址或模型名不对", "Base URL 一般要带 /v1；模型名要和服务商一致")
-    if resp.status_code == 429:
-        raise LLMError("模型侧限流了", "稍后再试，或换一个模型")
-    if resp.status_code >= 500:
-        raise LLMError(f"模型服务暂时不可用（HTTP {resp.status_code}）", "稍后重试或换服务商")
-    if resp.status_code >= 400:
-        # 只截取响应体，绝不回显请求头里的密钥
-        detail = resp.text.strip()[:200].replace("\n", " ")
-        raise LLMError(f"模型接口返回 HTTP {resp.status_code}", detail)
+    _raise_for_status(resp)
 
     try:
         body = resp.json()
@@ -296,11 +294,85 @@ async def chat_completion(*, base_url: str, api_key: str, model: str, system: st
     return str(content or "")
 
 
-async def evaluate_repo(*, repo: str, base_url: str, api_key: str, model: str, hint: str = "", platform: str = "github") -> dict[str, Any]:
-    """高级模式主入口：模型给出全部评测，返回 {evaluation, meta}。"""
+def _raise_for_status(resp: httpx.Response) -> None:
+    """HTTP 状态码 → 人话错误（绝不回显请求头里的密钥）。"""
+    if resp.status_code == 401 or resp.status_code == 403:
+        raise LLMError("API Key 无效或没有权限", "检查密钥，或换个模型服务商")
+    if resp.status_code == 404:
+        raise LLMError("接口地址或模型名不对", "Base URL 一般要带 /v1；模型名要和服务商一致")
+    if resp.status_code == 429:
+        raise LLMError("模型侧限流了", "稍后再试，或换一个模型")
+    if resp.status_code >= 500:
+        raise LLMError(f"模型服务暂时不可用（HTTP {resp.status_code}）", "稍后重试或换服务商")
+    if resp.status_code >= 400:
+        detail = resp.text.strip()[:200].replace("\n", " ")
+        raise LLMError(f"模型接口返回 HTTP {resp.status_code}", detail)
+
+
+async def ping(*, base_url: str, api_key: str, model: str) -> dict[str, Any]:
+    """连接测试：发一次极小的对话请求，验证 Base URL / 密钥 / 模型真的能连通、能出字。
+
+    绑定（/models 探测）只能证明密钥能列出模型；高级模式开启前的门槛是
+    chat/completions 这条真正评测要走的链路本身能通。
+    """
+    url = validate_base_url(base_url)
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": "ping"}],
+        "temperature": 0,
+        "max_tokens": 8,
+    }
+    started = time.perf_counter()
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=8.0)) as client:
+            resp = await client.post(f"{url}/chat/completions", headers=headers, json=payload)
+    except httpx.TimeoutException:
+        raise LLMError("连接测试超时（20 秒）", "检查网络代理，或换一个更快的模型") from None
+    except httpx.ConnectError:
+        raise LLMError("连不上模型接口", "检查 Base URL、网络代理；本地模型请确认服务已启动") from None
+    except httpx.HTTPError:
+        raise LLMError("模型接口请求失败", "检查 Base URL 与网络连通性") from None
+    _raise_for_status(resp)
+    # 能拿到 2xx 就算通：有的端点 200 但结构异常，这里不深究，评测时再由 parse 兜底
+    return {
+        "ok": True,
+        "model": model,
+        "latencyMs": int((time.perf_counter() - started) * 1000),
+    }
+
+
+async def evaluate_repo(
+    *,
+    repo: str,
+    base_url: str,
+    api_key: str,
+    model: str,
+    hint: str = "",
+    platform: str = "github",
+    evidence: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """高级模式主入口：模型给出全部评测，返回 {evaluation, meta}。
+
+    evidence 是前端深度审计流水线真实抓取的事实（languages / commits / CI 等），
+    有就注入提示词并声明「优先于模型记忆」；没有则退回纯推测模式。
+    """
     url = validate_base_url(base_url)
     hint_line = f"补充说明（用户主动提供的线索，优先采信）：{hint.strip()[:1000]}" if hint.strip() else ""
-    user = USER_TEMPLATE.format(repo=repo.strip()[:200], platform=platform, hint_line=hint_line)
+    evidence_block = ""
+    if evidence:
+        blob = json.dumps(evidence, ensure_ascii=False)
+        if len(blob) > 8000:
+            blob = blob[:8000] + "…（证据过长已截断）"
+        evidence_block = f"真实审计证据（前端真实抓取的事实，按硬性要求 0 优先采信）：\n{blob}"
+    user = USER_TEMPLATE.format(
+        repo=repo.strip()[:200],
+        platform=platform,
+        evidence_block=evidence_block,
+        hint_line=hint_line,
+    )
     content = await chat_completion(base_url=url, api_key=api_key, model=model, system=SYSTEM_PROMPT, user=user)
     evaluation, warnings = normalize_evaluation(parse_model_json(content))
     return {
@@ -311,4 +383,163 @@ async def evaluate_repo(*, repo: str, base_url: str, api_key: str, model: str, h
             "warnings": warnings,
             "engine": "none",  # 明确告诉前端：本地规则引擎没有参与
         },
+    }
+
+
+BATTLE_SYSTEM_PROMPT = """你是 GitMon「高级竞技场」的裁判兼解说。用户给你两个项目的画像（项目A=我方，项目B=对手），
+你要**凭两个项目的水平对比推演一场 1v1 回合制对战**，并最后出具一份审计报告。输出严格 JSON。
+
+硬性要求：
+1. 只输出一个 JSON 对象，不要 markdown 代码块、不要解释文字。
+2. 对战是「水平对比」的具象化：回合招式要贴着项目的真实差异编，
+   如「工程量碾压」「测试覆盖突刺」「文档护盾」「停更失速」「Star 洪流」——
+   招式名 2–6 字，正文 text ≤40 字，游戏图鉴式口吻，克制有画面感。
+3. 回合数 4–8 条；actor 交替先按速度（项目更新更活跃、体量更大的一方先手），
+   后续可被暴击/克制打断节奏。每回合给出双方剩余血量 hpPlayer / hpEnemy（0–100 整数，项目A视角）。
+   血量必须单调不增，最后一回合 winner 一方的对手血量必须为 0。
+4. 难度系数（若用户消息里给了）只影响措辞倾向与逆风表现，不伪造事实。
+5. report.dims 给 4–6 个维度（工程质量、工程量、文档与上手、维护健康、社区认可、技术栈含金量等），
+   player/enemy 是 0–100 整数分，winner 按分数高者（相等填 "tie"），note ≤30 字说清为什么。
+6. report.evidence 给 2–4 条引用（用画像里的真实字段：stars、等级、品质、六维、summary 等，不编造）。
+   report.risks / report.suggestions 各 1–3 条，针对我方项目的短板，可执行、不空泛。
+7. verdict ≤50 字，一句话点出胜负关键。
+8. 用简体中文写文案。
+
+JSON 字段（全部必填）：
+{
+  "rounds": [
+    {"turn": 1, "actor": "player", "move": "招式名", "text": "解说一句",
+     "hpPlayer": 100, "hpEnemy": 84}
+  ],
+  "winner": "player 或 enemy",
+  "report": {
+    "verdict": "一句话结论",
+    "dims": [{"name": "维度名", "player": 0-100, "enemy": 0-100, "winner": "player/enemy/tie", "note": "≤30字"}],
+    "evidence": ["证据一条"], "risks": ["风险一条"], "suggestions": ["建议一条"]
+  }
+}"""
+
+BATTLE_USER_TEMPLATE = """对战推演开始。
+难度：{difficulty}
+项目A（我方）：{player}
+项目B（对手）：{opponent}
+只输出 JSON。"""
+
+
+def _profile_blob(profile: dict[str, Any], limit: int = 3500) -> str:
+    blob = json.dumps(profile, ensure_ascii=False)
+    return blob if len(blob) <= limit else blob[:limit] + "…（画像过长已截断）"
+
+
+def normalize_battle(raw: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """把模型的对局 JSON 收敛成前端可回放的结构；不重算伤害，只做范围/一致性兜底。"""
+    warnings: list[str] = []
+    if not isinstance(raw, dict):
+        raise LLMError("模型没有返回 JSON 对象", "换个模型试试，或在补充说明里要求「只输出 JSON」")
+
+    rounds_raw = raw.get("rounds")
+    if not isinstance(rounds_raw, list) or not rounds_raw:
+        raise LLMError("模型没有给出回合数据（rounds）", "换个模型，或重试一次")
+    rounds: list[dict[str, Any]] = []
+    prev_p, prev_e = 100, 100
+    for item in rounds_raw[:8]:
+        if not isinstance(item, dict):
+            continue
+        actor = item.get("actor")
+        if actor not in {"player", "enemy"}:
+            actor = "player" if len(rounds) % 2 == 0 else "enemy"
+        hp_p = int(round(_clamp(item.get("hpPlayer"), 0, 100, max(0, prev_p - 15))))
+        hp_e = int(round(_clamp(item.get("hpEnemy"), 0, 100, max(0, prev_e - 15))))
+        # 血量必须单调不增，倒挂就按上一回血量兜底
+        if hp_p > prev_p or hp_e > prev_e:
+            warnings.append("模型给出的血量出现回升，已按上一回合钳制")
+            hp_p, hp_e = min(hp_p, prev_p), min(hp_e, prev_e)
+        rounds.append({
+            "turn": len(rounds) + 1,
+            "actor": actor,
+            "move": _text(item.get("move"), 12, "水平压制"),
+            "text": _text(item.get("text"), 80, "双方继续交锋"),
+            "hpPlayer": hp_p,
+            "hpEnemy": hp_e,
+        })
+        prev_p, prev_e = hp_p, hp_e
+    if not rounds:
+        raise LLMError("模型给出的回合数据不可用", "换个模型或重试一次")
+
+    # winner 与末回血量对齐：有一方血量归零就以归零方的对手为准
+    last = rounds[-1]
+    if last["hpEnemy"] == 0 and last["hpPlayer"] > 0:
+        winner = "player"
+    elif last["hpPlayer"] == 0 and last["hpEnemy"] > 0:
+        winner = "enemy"
+    else:
+        winner = raw.get("winner") if raw.get("winner") in {"player", "enemy"} else None
+        if winner is None:
+            warnings.append("终局血量未分出胜负，已按模型给的 winner 兜底")
+            winner = "player" if last["hpPlayer"] >= last["hpEnemy"] else "enemy"
+        # 兜底时把末回血量补到归零，前端结算依赖这个约定
+        if winner == "player":
+            last["hpEnemy"] = 0
+        else:
+            last["hpPlayer"] = 0
+
+    rep = raw.get("report") if isinstance(raw.get("report"), dict) else {}
+    dims_raw = rep.get("dims") if isinstance(rep.get("dims"), list) else []
+    dims = []
+    for d in dims_raw[:6]:
+        if not isinstance(d, dict):
+            continue
+        p = int(round(_clamp(d.get("player"), 0, 100, 50)))
+        e = int(round(_clamp(d.get("enemy"), 0, 100, 50)))
+        dw = d.get("winner")
+        if dw not in {"player", "enemy", "tie"}:
+            dw = "tie" if p == e else ("player" if p > e else "enemy")
+        dims.append({
+            "name": _text(d.get("name"), 16, "维度"),
+            "player": p, "enemy": e, "winner": dw,
+            "note": _text(d.get("note"), 60, ""),
+        })
+    def str_list(value: Any, item_limit: int) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return [s for s in (_text(v, item_limit) for v in value[:4]) if s]
+
+    report = {
+        "verdict": _text(rep.get("verdict"), 120, "对局已分出胜负"),
+        "dims": dims,
+        "evidence": str_list(rep.get("evidence"), 120),
+        "risks": str_list(rep.get("risks"), 120),
+        "suggestions": str_list(rep.get("suggestions"), 120),
+    }
+    if not dims:
+        warnings.append("模型未给出维度对比，报告该节将为空")
+    return {"rounds": rounds, "winner": winner, "report": report}, warnings
+
+
+async def battle_simulation(
+    *,
+    player: dict[str, Any],
+    opponent: dict[str, Any],
+    difficulty: str = "normal",
+    base_url: str,
+    api_key: str,
+    model: str,
+) -> dict[str, Any]:
+    """高级竞技场：模型对比两个项目水平，推演回合制对战 + 出审计报告。"""
+    url = validate_base_url(base_url)
+    diff = difficulty if difficulty in {"easy", "normal", "hard"} else "normal"
+    diff_label = {"easy": "新手（我方占优）", "normal": "相当", "hard": "强敌（对手占优）"}[diff]
+    user = BATTLE_USER_TEMPLATE.format(
+        difficulty=diff_label,
+        player=_profile_blob(player),
+        opponent=_profile_blob(opponent),
+    )
+    content = await chat_completion(
+        base_url=url, api_key=api_key, model=model,
+        system=BATTLE_SYSTEM_PROMPT, user=user, timeout=90.0, max_tokens=4000,
+    )
+    battle, warnings = normalize_battle(parse_model_json(content))
+    return {
+        "battle": battle,
+        "meta": {"model": model, "source": "llm", "warnings": warnings, "engine": "none"},
     }

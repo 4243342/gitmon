@@ -49,6 +49,9 @@ CREATE TABLE IF NOT EXISTS pets (
     notes             TEXT NOT NULL DEFAULT '[]',
     degraded          INTEGER NOT NULL DEFAULT 0,
     description       TEXT NOT NULL DEFAULT '',
+    battles           INTEGER NOT NULL DEFAULT 0,
+    wins              INTEGER NOT NULL DEFAULT 0,
+    client_state      TEXT NOT NULL DEFAULT '{}',
     sprite_path       TEXT NOT NULL DEFAULT '',
     created_at        TEXT NOT NULL,
     synced_at         TEXT NOT NULL
@@ -116,6 +119,9 @@ _ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("foundation_dims", "TEXT NOT NULL DEFAULT '{}'"),
         ("traits", "TEXT NOT NULL DEFAULT '[]'"),
         ("ai_rate", "REAL"),
+        ("battles", "INTEGER NOT NULL DEFAULT 0"),
+        ("wins", "INTEGER NOT NULL DEFAULT 0"),
+        ("client_state", "TEXT NOT NULL DEFAULT '{}'"),
     ),
     # Gitee OAuth 的 access_token 只有 1 天，refresh_token 必须一起存下来
     "users": (("refresh_cipher", "TEXT NOT NULL DEFAULT ''"),),
@@ -193,22 +199,29 @@ def row_to_pet(row: sqlite3.Row | None) -> dict[str, Any] | None:
     pet["skills"] = _loads(pet.get("skills"), [])
     pet["metrics"] = _loads(pet.get("metrics"), {})
     pet["notes"] = _loads(pet.get("notes"), [])
+    pet["client_state"] = _loads(pet.get("client_state"), {})
+    pet["battles"] = int(pet.get("battles") or 0)
+    pet["wins"] = int(pet.get("wins") or 0)
     pet["degraded"] = bool(pet.get("degraded"))
     return pet
 
 
 def save_pet(conn: sqlite3.Connection, pet: dict[str, Any]) -> None:
     payload = dict(pet)
-    for key in ("quality_dims", "foundation_dims", "stats", "skills", "traits", "metrics", "notes"):
-        default = {} if key in ("quality_dims", "foundation_dims", "metrics") else []
+    json_keys = ("quality_dims", "foundation_dims", "stats", "skills", "traits", "metrics", "notes", "client_state")
+    for key in json_keys:
+        default = {} if key in ("quality_dims", "foundation_dims", "metrics", "client_state") else []
         payload[key] = json.dumps(payload.get(key, default), ensure_ascii=False, separators=(",", ":"))
     payload["degraded"] = 1 if payload.get("degraded") else 0
+    payload["battles"] = int(payload.get("battles") or 0)
+    payload["wins"] = int(payload.get("wins") or 0)
     columns = [
         "id", "platform", "owner", "repo", "full_name", "owner_key", "seed", "sprite_seed",
         "element_key", "element_secondary", "species_key", "quality", "quality_score",
         "quality_dims", "engineering_score", "level", "exp", "evolution_stage", "stats",
         "skills", "hp", "foundation", "foundation_dims", "traits", "ai_rate", "bond",
         "status", "metrics", "notes", "degraded", "description",
+        "battles", "wins", "client_state",
         "sprite_path", "created_at", "synced_at",
     ]
     placeholders = ",".join("?" for _ in columns)

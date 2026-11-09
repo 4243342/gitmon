@@ -6,12 +6,14 @@ import '../advanced.css'
 export default function ModelSeal({ pet }) {
   if (!pet?.aiEvaluated) return null
   const { family, variant, provider, modelId } = sealData(pet)
-  const tip = `全部评测由模型 ${modelId}（${provider}）给出 · 非真实扫描`
+  const tip = pet.audited
+    ? `模型 ${modelId}（${provider}）基于真实审计证据总评`
+    : `全部评测由模型 ${modelId}（${provider}）给出 · 非真实扫描`
   return (
     <div className="model-seal" title={tip} aria-label={tip}>
       <div className="model-seal__foil" />
       <div className="model-seal__inner">
-        <span className="model-seal__top">✦ AI 推测 ✦</span>
+        <span className="model-seal__top">{pet.audited ? '✦ 深度审计 ✦' : '✦ AI 推测 ✦'}</span>
         <strong className="model-seal__name">{family}</strong>
         <span className="model-seal__variant">{variant}</span>
         <span className="model-seal__provider">{provider}</span>

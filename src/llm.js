@@ -4,6 +4,8 @@
 // BYOK 自动绑定：用户只粘贴一枚密钥，后端去各厂商 /models 探测归属，
 // 自动带回 baseUrl / model / 厂商名。密钥只存 sessionStorage（关标签页即失效），
 // 绑定结果（不含密钥）存 localStorage，下次打开自动恢复。
+import { ownerHeader } from './sync.js'
+
 const CFG_KEY = 'gitmon:llm:config'
 const KEY_KEY = 'gitmon:llm:key'
 const TIMEOUT = 90000
@@ -15,6 +17,7 @@ export const DEFAULT_LLM_CONFIG = {
   apiKey: '',
   binding: null,
   custom: null, // 自托管端点兜底：{ baseUrl, label, model }
+  deepAudit: true, // 深度审计（2–5 分钟真实审计演出）默认开，已拍板
 }
 
 function readJSON(store, key) {
@@ -35,13 +38,14 @@ export function loadLLMConfig() {
     model: typeof saved.model === 'string' && saved.model ? saved.model : DEFAULT_LLM_CONFIG.model,
     binding: saved.binding && typeof saved.binding === 'object' ? saved.binding : null,
     custom: saved.custom && typeof saved.custom === 'object' ? saved.custom : null,
+    deepAudit: saved.deepAudit !== false,
     apiKey: key,
   }
 }
 
 export function saveLLMConfig(config) {
   try {
-    // 明确只落非敏感字段：密钥、绑定结果里的 models 列表都不含密钥，但也不写 baseUrl 里的 query
+    // 明确只落非敏感字段：密钥不落，models 只是模型 id 列表（无密钥），存下来下次打开还能直接换选
     const binding = config.binding ? {
       provider: config.binding.provider,
       label: config.binding.label,
@@ -49,12 +53,14 @@ export function saveLLMConfig(config) {
       model: config.binding.model,
       verified: config.binding.verified,
       detectedBy: config.binding.detectedBy,
+      models: Array.isArray(config.binding.models) ? config.binding.models : [],
     } : null
     localStorage.setItem(CFG_KEY, JSON.stringify({
       baseUrl: config.baseUrl,
       model: config.model,
       binding,
       custom: config.custom || null,
+      deepAudit: config.deepAudit !== false,
     }))
   } catch { /* 存储不可用就只在本次会话生效 */ }
   try {
@@ -95,12 +101,14 @@ async function postJSON(route, body, timeout, fallback) {
   try {
     res = await fetch(route, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      // 走自己后端的请求都带身份头（SSOT §2）
+      headers: { 'Content-Type': 'application/json', ...ownerHeader() },
       body: JSON.stringify(body),
       signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(timeout) : undefined,
     })
   } catch (err) {
     if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
+      if (route.endsWith('/ping')) throw new Error('连接测试超时（30 秒），检查网络代理，或换一个更快的模型')
       throw new Error(route.endsWith('/bind')
         ? '自动识别超时（45 秒），检查网络代理，或展开「自定义端点」手动指定'
         : '模型评测超时（90 秒），换个更快的模型或检查网络代理')
@@ -133,17 +141,46 @@ export async function bindWithLLM({ apiKey, custom = null } = {}) {
   return data
 }
 
-/** 所有评测项都由模型给出；这里只负责转发与错误翻译 */
-export async function evaluateWithLLM({ repo, config, hint = '', platform = 'github' }) {
+/** 连接测试：一次极小的对话请求，通了才允许开启高级模式（绑定只验证过 /models） */
+export async function pingWithLLM({ config } = {}) {
   const eff = boundConfig(config)
-  const data = await postJSON('/api/llm/evaluate', {
+  const data = await postJSON('/api/llm/ping', {
+    baseUrl: eff.baseUrl?.trim() || DEFAULT_LLM_CONFIG.baseUrl,
+    model: eff.model?.trim() || DEFAULT_LLM_CONFIG.model,
+    apiKey: config?.apiKey || '',
+  }, 30000, '连不上后端 /api/llm/ping —— 请先启动 FastAPI 服务（默认 127.0.0.1:8000）')
+  if (!data?.ok) throw new Error('连接测试返回结构不对')
+  return data
+}
+
+/** 所有评测项都由模型给出；这里只负责转发与错误翻译。evidence = 深度审计的真实抓取证据 */
+export async function evaluateWithLLM({ repo, config, hint = '', platform = 'github', evidence = null }) {
+  const eff = boundConfig(config)
+  const body = {
     repo,
     baseUrl: eff.baseUrl?.trim() || DEFAULT_LLM_CONFIG.baseUrl,
     model: eff.model?.trim() || DEFAULT_LLM_CONFIG.model,
     apiKey: config.apiKey || '',
     hint,
     platform,
-  }, TIMEOUT, '连不上后端 /api/llm/evaluate —— 请先启动 FastAPI 服务（默认 127.0.0.1:8000）')
+  }
+  if (evidence && typeof evidence === 'object') body.evidence = evidence
+  const data = await postJSON('/api/llm/evaluate', body, TIMEOUT, '连不上后端 /api/llm/evaluate —— 请先启动 FastAPI 服务（默认 127.0.0.1:8000）')
   if (!data?.evaluation) throw new Error('后端返回结构不对：缺少 evaluation')
+  return data
+}
+
+/** 高级竞技场：模型对比两个项目水平，推演回合对战 + 审计报告 */
+export async function battleWithLLM({ player, opponent, difficulty = 'normal', config }) {
+  const eff = boundConfig(config)
+  const data = await postJSON('/api/llm/battle', {
+    player,
+    opponent,
+    difficulty,
+    baseUrl: eff.baseUrl?.trim() || DEFAULT_LLM_CONFIG.baseUrl,
+    model: eff.model?.trim() || DEFAULT_LLM_CONFIG.model,
+    apiKey: config?.apiKey || '',
+  }, TIMEOUT, '连不上后端 /api/llm/battle —— 请先启动 FastAPI 服务（默认 127.0.0.1:8000）')
+  if (!data?.battle?.rounds?.length) throw new Error('后端返回结构不对：缺少 battle.rounds')
   return data
 }

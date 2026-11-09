@@ -539,7 +539,7 @@ export async function exportShareCard(pet) {
   const hpW = RIGHT - hpX - 62 * S
   const hpGrad = ctx.createLinearGradient(hpX, 0, hpX + hpW, 0)
   hpGrad.addColorStop(0, '#35c07d'); hpGrad.addColorStop(1, '#8cf0bf')
-  segBar(ctx, hpX, rowY + 1 * S, hpW, 8 * S, pet.level / 999, hpGrad)
+  segBar(ctx, hpX, rowY + 1 * S, hpW, 8 * S, (pet.maxHp || 0) / (pet.statCap || 100), hpGrad)
   ctx.fillStyle = '#8e9ab1'
   ctx.font = `${7.5 * S}px ${AR}`
   ctx.textAlign = 'right'
@@ -576,7 +576,8 @@ export async function exportShareCard(pet) {
   // ---------- 六维：雷达 + 分段条 ----------
   const bodyTop = 246 * S
   const radarSize = 120 * S
-  drawRadar(ctx, pet, PXD + 2 * S, bodyTop, radarSize)
+  const cap = pet.statCap || 100 // 与 DOM 一致：按本等级上限归一化，写死 /100 会把雷达撑爆
+  drawRadar(ctx, pet, PXD + 2 * S, bodyTop, radarSize, cap)
   const listX = PXD + radarSize + 8 * S
   const listW = RIGHT - listX
   const rowH = 120 * S / 6
@@ -587,7 +588,7 @@ export async function exportShareCard(pet) {
     ctx.fillText(s.name, listX, y)
     const bx = listX + 20 * S + 4 * S
     const bw = listW - 20 * S - 4 * S - 18 * S - 4 * S - 11 * S - 4 * S
-    segBar(ctx, bx, y - 2 * S, bw, 4 * S, s.value / 100, pet.element.color)
+    segBar(ctx, bx, y - 2 * S, bw, 4 * S, s.value / cap, pet.element.color)
     ctx.font = `${8 * S}px ${AR}`; ctx.textAlign = 'right'
     ctx.fillStyle = '#b9c5da'
     ctx.fillText(String(s.value), listX + listW - 11 * S - 8 * S, y)
@@ -734,27 +735,27 @@ export async function exportShareCard(pet) {
   link.click()
 }
 
-// ---------- 雷达图（与 RadarChart.jsx compact 同款） ----------
-function drawRadar(ctx, pet, x, y, size) {
+// ---------- 雷达图（与 RadarChart.jsx compact 同款，max 用等级上限） ----------
+function drawRadar(ctx, pet, x, y, size, cap = 100) {
   const stats = pet.stats
   const pad = 14 * S
   const cx = x + size / 2, cy = y + size / 2, R = size / 2 - pad
   const N = stats.length
   const ang = (i) => (Math.PI * 2 * i) / N - Math.PI / 2
   const pt = (i, v) => {
-    const r = (v / 100) * R
+    const r = (v / cap) * R
     return [cx + r * Math.cos(ang(i)), cy + r * Math.sin(ang(i))]
   }
   ctx.save()
   ctx.strokeStyle = 'rgba(74,88,120,.25)'; ctx.lineWidth = 2
   ;[0.33, 0.66, 1].forEach((f) => {
     ctx.beginPath()
-    stats.forEach((_, i) => { const [px, py] = pt(i, f * 100); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py) })
+    stats.forEach((_, i) => { const [px, py] = pt(i, f * cap); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py) })
     ctx.closePath(); ctx.stroke()
   })
   ctx.strokeStyle = 'rgba(74,88,120,.2)'
   stats.forEach((_, i) => {
-    const [px, py] = pt(i, 100)
+    const [px, py] = pt(i, cap)
     ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(px, py); ctx.stroke()
   })
   ctx.beginPath()
@@ -765,7 +766,7 @@ function drawRadar(ctx, pet, x, y, size) {
   const labelR = R + 2 * S
   ctx.font = `${7 * S}px ${PX}`; ctx.textBaseline = 'middle'
   stats.forEach((s, i) => {
-    const [px, py] = pt(i, (labelR / R) * 100)
+    const [px, py] = pt(i, (labelR / R) * cap)
     const cos = Math.cos(ang(i))
     ctx.fillStyle = '#8e9ab1'
     ctx.textAlign = cos > 0.3 ? 'left' : cos < -0.3 ? 'right' : 'center'

@@ -603,7 +603,7 @@ User     { id, github_login, gitee_login, created_at }   // P1 才需要
 
 | 方案 | 仓库 | 协议 | 评估 |
 |---|---|---|---|
-| **pokemon-cards-css** ⚠️ 标杆参考 | github.com/simeydotme/pokemon-cards-css（8.3k⭐） | **GPL-3.0** | 纯 CSS（Transform + Gradient + Blend-mode + Filter）还原宝可梦剑盾时期全息闪卡效果，demo 见 poke-holo.simey.me，视觉效果天花板。**但 GPL-3.0 有传染性，不能直接搬代码进商业项目**——作为视觉参考自研实现 |
+| **pokemon-cards-css** ✅ 已采用 | github.com/simeydotme/pokemon-cards-css（8.3k⭐） | **GPL-3.0** | 纯 CSS（Transform + Gradient + Blend-mode + Filter）还原宝可梦剑盾时期全息闪卡效果，demo 见 poke-holo.simey.me，视觉效果天花板。**v1.x 更新：效果评估后直接采用**——拼接 vendor 至 `src/vendor/pokemon-cards.css`（随附 LICENSE），贴图 `public/pkcss/img/`，N/R/SR/SSR → basic / rare holo / rare holo cosmos / rare rainbow；**GPL-3.0 传染性，分发时须同开源** |
 | **hover-tilt** ✅ | github.com/simeydotme/hover-tilt | MIT | 同一作者把卡片悬停倾斜+辉光效果抽成了独立 MIT 组件，效果接近、可直接用。N/R 卡用它，SR/SSR 再叠自研全息层 |
 
 ### 10.3 精灵立绘生成（品种视觉核心）
@@ -649,7 +649,7 @@ User     { id, github_login, gitee_login, created_at }   // P1 才需要
 |---|---|---|
 | 开包动画 | pack-opener-js | ✅ MIT |
 | 卡片悬停/辉光 | hover-tilt | ✅ MIT |
-| 全息闪卡（SR/SSR） | 参考 pokemon-cards-css **自研** | ⚠️ 原库 GPL-3.0，仅作视觉参考 |
+| 全息闪卡（N/R/SR/SSR） | pokemon-cards-css **源码内置**（`src/vendor/pokemon-cards.css`） | ⚠️ GPL-3.0，分发时须同开源（LICENSE 随附） |
 | 精灵立绘 | pixel-sprite-monster-generator（算法移植/预生成） | ✅ MIT |
 | 粒子特效 | tsParticles | ✅ MIT |
 | 工程量统计 | scc | ✅ MIT |

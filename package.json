@@ -16,6 +16,7 @@
     "@fontsource/press-start-2p": "^5.3.0",
     "@tsparticles/react": "^4.5.3",
     "@tsparticles/slim": "^4.5.3",
+    "gsap": "^3.15.1",
     "monstrjs": "^1.0.0",
     "pack-opener-js": "^0.5.15",
     "pixelfx": "github:patch-gg/pixelfx",

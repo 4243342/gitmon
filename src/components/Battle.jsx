@@ -20,7 +20,9 @@ import {
   sameTypePool,
 } from '../rivals.js'
 import { parseRepoInput, scanOwnerBox, scanRepo } from '../scan.js'
+import { battleWithLLM } from '../llm.js'
 import { bgm } from '../bgm.js'
+import { sfx } from '../sfx.js'
 
 // 三种挑战：在线对手（输入仓库/账号，真实强度）／同类型（找同属性仓库）／随机宠物
 const MODES = [
@@ -82,25 +84,82 @@ function typeChips(unit) {
   return chips
 }
 
+const HP_SEGMENTS = 20
+
 function HPBar({ unit, side }) {
   const pct = hpPercent(unit)
+  const lit = Math.max(pct > 0 ? 1 : 0, Math.ceil((pct / 100) * HP_SEGMENTS))
   const low = pct <= 25
+  const tone = pct <= 20 ? 'red' : pct <= 50 ? 'yellow' : 'green'
   return (
-    <div className={`hpbar ${low ? 'hpbar-low' : ''}`}>
+    <div className={`hpbar ${low ? 'hpbar-low' : ''} hp-tone-${tone}`}>
       <span className="hp-label">HP</span>
       <div className="hpbar-track">
-        <div
-          className={`hpbar-fill ${pct <= 20 ? 'hp-red' : pct <= 50 ? 'hp-yellow' : 'hp-green'}`}
-          style={{ width: `${pct}%` }}
-        />
+        {Array.from({ length: HP_SEGMENTS }, (_, i) => (
+          <i key={i} className={i < lit ? 'on' : ''} />
+        ))}
       </div>
       <span className="hpbar-num">{unit.hp} / {unit.maxHp}</span>
     </div>
   )
 }
 
-function UnitPanel({ unit, side, fx, shaking }) {
+// 结算评级：胜局起步 A（存活多/回合短冲 S），惜败保底 B
+function battleGrade(winner, turn, alive, total) {
+  if (winner !== 'player') return 'B'
+  const score = 50 + (total > 0 ? (alive / total) * 30 : 0) + Math.max(0, 30 - turn * 2)
+  return score >= 85 ? 'S' : score >= 55 ? 'A' : 'B'
+}
+
+// AI 对比用的项目画像：只取事实字段交给模型做水平对比（后端截断到 4KB）
+function aiProfile(pet) {
+  if (!pet) return {}
+  const stats = Array.isArray(pet.stats)
+    ? Object.fromEntries(pet.stats.map((s) => [s.name, s.value]))
+    : { ...(pet.stats || {}) }
+  return {
+    name: pet.repo || pet.name || '',
+    fullName: pet.fullName || '',
+    platform: pet.platform || 'github',
+    level: pet.level || 1,
+    quality: pet.qualityKey || pet.quality?.key || 'N',
+    qualityScore: pet.qualityScore ?? null,
+    element: pet.element?.name || '',
+    elementSecondary: pet.elementSecondary?.name || null,
+    species: pet.species?.name || '',
+    combatPower: pet.combatPower || 0,
+    stars: pet.stars ?? null,
+    summary: String(pet.summary || pet.description || '').slice(0, 120),
+    stats,
+    foundation: pet.foundation ?? null,
+    engineeringScore: pet.engineeringScore ?? null,
+    traits: (pet.traits || []).map((t) => t.name).slice(0, 4),
+    skills: (pet.skills || []).map((s) => s.name).filter(Boolean).slice(0, 4),
+  }
+}
+
+// 审计报告 → Markdown（结算页导出用）
+function reportMarkdown(report, me, foe, win) {
+  const side = (w) => (w === 'player' ? '我方' : w === 'enemy' ? '对手' : '持平')
+  return [
+    '# GitMon 高级竞技场 · 审计报告', '',
+    `- **对局**：${me} vs ${foe}`,
+    `- **结果**：${win ? '胜利' : '惜败'}`,
+    `- **结论**：${report.verdict}`, '',
+    '## 维度对比', '',
+    '| 维度 | 我方 | 对手 | 优势 | 说明 |',
+    '| --- | ---: | ---: | --- | --- |',
+    ...report.dims.map((d) => `| ${d.name} | ${d.player} | ${d.enemy} | ${side(d.winner)} | ${d.note} |`),
+    '', '## 证据引用', ...report.evidence.map((x) => `- ${x}`),
+    '', '## 风险', ...report.risks.map((x) => `- ${x}`),
+    '', '## 建议', ...report.suggestions.map((x) => `- ${x}`),
+    '', `> 生成：${new Date().toLocaleString('zh-CN')} · GitMon 高级竞技场`,
+  ].join('\n')
+}
+
+function UnitPanel({ unit, side, fx, shaking, juiceRef }) {
   const status = unit.status ? STATUS_INFO[unit.status] : null
+  const juice = juiceRef?.current
   return (
     <div
       className={`unit-panel ${side} ${shaking ? 'is-hit' : ''}`}
@@ -122,7 +181,18 @@ function UnitPanel({ unit, side, fx, shaking }) {
       </div>
       <HPBar unit={unit} side={side} />
       {fx && (
-        <span key={fx.id} className={`damage-float ${fx.mult > 1 ? 'super' : fx.mult < 1 ? 'weak' : ''} ${fx.crit ? 'crit' : ''}`}>
+        <span
+          key={fx.id}
+          ref={(el) => {
+            // GSAP 接管时禁用 CSS 上浮，改由 popDamage 做「砸出来→回弹」缩放；
+            // dataset.popped 保证每个数字只在挂载时弹一次，不随父组件重渲染重复触发。
+            if (el && juice && !el.dataset.popped) {
+              el.dataset.popped = '1'
+              juice.popDamage(el, { crit: fx.crit })
+            }
+          }}
+          className={`damage-float ${fx.mult > 1 ? 'super' : fx.mult < 1 ? 'weak' : ''} ${fx.crit ? 'crit' : ''} ${juice ? 'gsap-pop' : ''}`}
+        >
           -{fx.value}
         </span>
       )}
@@ -139,13 +209,18 @@ function EmptyState({ onExit }) {
   )
 }
 
-// 第一步：选挑战方式
-function ModePicker({ pets, onPick, onExit }) {
+// 第一步：选挑战方式（channel='ai' 时为高级竞技场：选择页一样，战斗改 AI 对比）
+function ModePicker({ pets, onPick, onExit, channel }) {
+  const ai = channel === 'ai'
   return (
     <div className="battle-picker">
       <div className="picker-head">
-        <h2>竞技场</h2>
-        <p>挑一种挑战方式。在线对手打的是对方仓库的真实实力；同类型和随机宠物可以自己定难度。开战后双方自动出招，无需点技能。</p>
+        <h2>竞技场{ai && <span className="picker-ai-badge">AI 高级</span>}</h2>
+        {ai ? (
+          <p>选法和常规竞技场一样。开战后<b>由模型逐回合对比两个项目的真实水平</b>出招解说（不用点技能），结算会附一份<b>审计报告</b>：维度对比、证据引用、风险与建议，可导出 Markdown。消耗模型额度。</p>
+        ) : (
+          <p>挑一种挑战方式。在线对手打的是对方仓库的真实实力；同类型和随机宠物可以自己定难度。开战后双方自动出招，无需点技能。</p>
+        )}
       </div>
 
       {pets.length === 0 ? (
@@ -168,33 +243,31 @@ function ModePicker({ pets, onPick, onExit }) {
           ))}
         </div>
       )}
-
-      <div className="picker-actions">
-        <button className="ghost-btn" onClick={onExit}>返回</button>
-      </div>
     </div>
   )
 }
 
-// 在线对手：单项目（一个仓库 1v1）／整仓（一个账号的全部项目 3v3）
-function OnlineSetup({ size, setSize, repoInput, setRepoInput, onScan, scanning, scanError, opponent, ownerTeam, opponentNote, onClear }) {
-  const isTeam = size === 'team'
+// 在线对手：单项目（一个仓库 1v1）／整仓（一个账号的全部项目 3v3）；AI 通道只有单项目
+function OnlineSetup({ size, setSize, repoInput, setRepoInput, onScan, scanning, scanError, opponent, ownerTeam, opponentNote, onClear, channel }) {
+  const isTeam = size === 'team' && channel !== 'ai'
   const hasOpponent = isTeam ? ownerTeam.length > 0 : !!opponent
   return (
     <div className="online-setup">
-      <div className="size-toggle">
-        {ONLINE_SIZES.map((s) => (
-          <button
-            key={s.key}
-            className={`size-btn ${size === s.key ? 'on' : ''}`}
-            onClick={() => setSize(s.key)}
-            disabled={scanning}
-          >
-            <b>{s.name}</b>
-            <small>{s.hint}</small>
-          </button>
-        ))}
-      </div>
+      {channel !== 'ai' && (
+        <div className="size-toggle">
+          {ONLINE_SIZES.map((s) => (
+            <button
+              key={s.key}
+              className={`size-btn ${size === s.key ? 'on' : ''}`}
+              onClick={() => setSize(s.key)}
+              disabled={scanning}
+            >
+              <b>{s.name}</b>
+              <small>{s.hint}</small>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="repo-row">
         <input
@@ -264,9 +337,10 @@ function OnlineSetup({ size, setSize, repoInput, setRepoInput, onScan, scanning,
   )
 }
 
-function Setup({ mode, pets, team, setTeam, difficulty, setDifficulty, onStart, onBack, onExit, online }) {
+function Setup({ mode, pets, team, setTeam, difficulty, setDifficulty, onStart, onBack, onExit, online, channel = 'classic' }) {
   const onlineCap = online.size === 'team' ? Math.max(1, online.ownerTeam.length) : 1
-  const cap = mode === 'online' ? onlineCap : 3
+  // AI 高级竞技场恒为 1v1：只比两个项目
+  const cap = channel === 'ai' ? 1 : mode === 'online' ? onlineCap : 3
   const toggle = (pet) => {
     const exists = team.some((p) => p.fullName === pet.fullName && p.platform === pet.platform)
     if (exists) setTeam(team.filter((p) => !(p.fullName === pet.fullName && p.platform === pet.platform)))
@@ -292,7 +366,7 @@ function Setup({ mode, pets, team, setTeam, difficulty, setDifficulty, onStart, 
         <p>{modeInfo.desc}</p>
       </div>
 
-      {mode === 'online' && <OnlineSetup {...online} />}
+      {mode === 'online' && <OnlineSetup {...online} channel={channel} />}
 
       {mode === 'same' && (
         <div className="same-type-bar">
@@ -386,13 +460,12 @@ function Setup({ mode, pets, team, setTeam, difficulty, setDifficulty, onStart, 
               : online.opponent ? `挑战 ${online.opponent.repo}` : '先扫描对手仓库'
             : `出战（${team.length}/${cap}）`}
         </button>
-        <button className="ghost-btn" onClick={onExit}>返回</button>
       </div>
     </div>
   )
 }
 
-export default function Battle({ pets = [], initial = null, onExit, onReward }) {
+export default function Battle({ pets = [], initial = null, challenge = null, channel = 'classic', llmConfig = null, onExit, onReward }) {
   const candidates = useMemo(() => {
     const list = [...pets]
     if (initial && !list.some((p) => p.fullName === initial.fullName)) list.unshift(initial)
@@ -400,6 +473,25 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
   }, [pets, initial])
 
   const [phase, setPhase] = useState('mode') // mode | select | fight | result
+  // 战斗场景池：每次进场随机换一张地图
+  const [arena, setArena] = useState('volcano') // volcano | space | island | sakura
+  // AI 高级竞技场（channel='ai'）：模型推演状态 + 审计报告
+  const [aiStatus, setAiStatus] = useState('idle') // idle | thinking | playing | error
+  const [aiReport, setAiReport] = useState(null)
+  const [aiError, setAiError] = useState('')
+  const [reportTip, setReportTip] = useState('')
+  const aiMatchRef = useRef(null) // { baseState, playerPet, enemyPet }，供失败重试复用
+
+  // 进入战斗/结算时滚到舞台：窄屏下 sticky 顶栏会盖住 TURN 行，scroll-margin 让出高度
+  useEffect(() => {
+    if (phase === 'fight' || phase === 'result') {
+      document.querySelector('.battle-stage')?.scrollIntoView({ block: 'start' })
+    }
+    if (phase === 'fight') {
+      const pools = ['volcano', 'space', 'island', 'sakura']
+      setArena(pools[Math.floor(Math.random() * pools.length)])
+    }
+  }, [phase])
   const [mode, setMode] = useState('random')
   const [team, setTeam] = useState(() => (initial ? [initial] : candidates.slice(0, 3)))
   const [difficulty, setDifficulty] = useState('normal')
@@ -419,8 +511,18 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
   const toggleFast = () => setFast((prev) => {
     const next = !prev
     try { localStorage.setItem('gitmon:battle:fast', next ? '1' : '0') } catch { /* 隐私模式忽略 */ }
+    window.dispatchEvent(new Event('gitmon:fast-change'))
     return next
   })
+
+  // 与顶栏"设置"面板的战斗快进开关联动（读值同步，避免反向翻转）
+  useEffect(() => {
+    const onFastChange = () => setFast(() => {
+      try { return localStorage.getItem('gitmon:battle:fast') === '1' } catch { return false }
+    })
+    window.addEventListener('gitmon:fast-change', onFastChange)
+    return () => window.removeEventListener('gitmon:fast-change', onFastChange)
+  }, [])
 
   // 在线对手：单项目（一个仓库）／整仓（一个账号的项目）
   const [onlineSize, setOnlineSize] = useState('single')
@@ -438,17 +540,24 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
   const enemySlotRef = useRef(null)
   const timersRef = useRef([])
   const vfxRef = useRef(null)
+  const juiceRef = useRef(null)
+  const fieldRef = useRef(null)
 
-  // 特效层单独拆包：不进首屏，进竞技场时才加载（pixelfx 的 30+ 个特效模块约 240KB）
+  // 特效层单独拆包：不进首屏，进竞技场时才加载（pixelfx 的 30+ 个特效模块约 240KB；
+  // GSAP 手感层另拆一个 chunk，只在这里用到）
   useEffect(() => {
     let alive = true
     import('../vfx.js').then((mod) => {
       if (alive) vfxRef.current = mod
     })
+    import('../battle-juice.js').then((mod) => {
+      if (alive) juiceRef.current = mod
+    })
     return () => {
       alive = false
       timersRef.current.forEach(clearTimeout)
       vfxRef.current?.clearFx(fxLayerRef.current)
+      juiceRef.current?.stopShake()
       // 离开战场一定要收掉循环，否则 BGM 会跟到别的页面
       bgm.stop()
     }
@@ -495,8 +604,8 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
     if (size === 'single' && team.length > 1) setTeam(team.slice(0, 1))
   }
 
-  const scanOpponent = async () => {
-    const raw = repoInput.trim()
+  const scanOpponent = async (rawInput) => {
+    const raw = (rawInput ?? repoInput).trim()
     if (!raw) { setScanError(onlineSize === 'team' ? '先填一个账号或仓库地址' : '先填一个仓库地址'); return }
     const info = parseRepoInput(raw)
     if (!info) { setScanError('无法识别的地址，请输入 GitHub / Gitee 仓库或账号链接'); return }
@@ -549,15 +658,30 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
     }
   }
 
+  // 排行榜"挑战"进来：直接进在线单项目模式，自动填好并扫描对手仓库
+  useEffect(() => {
+    if (!challenge) return
+    setMode('online')
+    setOnlineSize('single')
+    setPhase('select')
+    setRepoInput(challenge)
+    setScanError('')
+    setTeam((prev) => (prev.length > 1 ? prev.slice(0, 1) : prev))
+    scanOpponent(challenge)
+    // scanOpponent 是渲染内函数，只在 challenge 变化时触发一次即可
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [challenge])
+
   const start = () => {
     if (!team.length) return
-    const teamMode = mode === 'online' && onlineSize === 'team'
+    const teamMode = mode === 'online' && onlineSize === 'team' && channel !== 'ai'
     if (mode === 'online') {
       if (teamMode ? !ownerTeam.length : !opponent) return
     }
 
     const seed = (Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0
-    const cap = mode === 'online' ? (teamMode ? Math.max(1, ownerTeam.length) : 1) : 3
+    // AI 高级竞技场只比两个项目（1v1），其余按原规则
+    const cap = channel === 'ai' ? 1 : mode === 'online' ? (teamMode ? Math.max(1, ownerTeam.length) : 1) : 3
     let enemies
     if (mode === 'online') enemies = teamMode ? ownerTeam : [opponent]
     else if (mode === 'same') enemies = pickSameTypeTeam(team, seed, difficulty, cap)
@@ -581,9 +705,98 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
     setReward(0)
     setState(built.state)
     setLog(built.events.map((e) => e.text))
+    setAiStatus('idle')
+    setAiReport(null)
+    setAiError('')
     setPhase('fight')
     // 开战按钮是用户手势，在这里起 BGM 才能解锁 AudioContext
     bgm.startBattle()
+    if (channel === 'ai') runAiBattle(built.state, line[0], foes[0])
+  }
+
+  // —— AI 高级竞技场：模型对比两个项目水平，逐回合推演 + 攒审计报告 ——
+  const runAiBattle = async (baseState, playerPet, enemyPet) => {
+    const match = { baseState, playerPet, enemyPet }
+    aiMatchRef.current = match
+    setAiStatus('thinking')
+    setAiError('')
+    setBusy(true)
+    try {
+      const data = await battleWithLLM({
+        player: aiProfile(playerPet),
+        opponent: aiProfile(enemyPet),
+        difficulty: mode === 'online' ? 'normal' : difficulty,
+        config: llmConfig,
+      })
+      const { rounds, winner, report } = data.battle
+      setAiReport(report)
+      setAiStatus('playing')
+      // 逐回合回放：血量按模型给的百分比写回双方单位，不做本地伤害计算
+      const applyRound = (i) => {
+        const r = rounds[i]
+        const pctToHp = (unit, pct) => Math.max(0, Math.round((unit.maxHp * pct) / 100))
+        setState((prev) => {
+          if (!prev) return prev
+          const pTeam = prev.sides.player.team.map((u, k) => (k === prev.sides.player.active ? { ...u, hp: pctToHp(u, r.hpPlayer) } : u))
+          const eTeam = prev.sides.enemy.team.map((u, k) => (k === prev.sides.enemy.active ? { ...u, hp: pctToHp(u, r.hpEnemy) } : u))
+          return {
+            ...prev,
+            turn: i,
+            sides: { player: { ...prev.sides.player, team: pTeam }, enemy: { ...prev.sides.enemy, team: eTeam } },
+          }
+        })
+        const actor = r.actor === 'player' ? playerPet : enemyPet
+        const target = r.actor === 'player' ? 'enemy' : 'player'
+        setLog((prev) => [...prev, `${actor.repo || actor.name} 使出「${r.move}」—— ${r.text}`].slice(-40))
+        setLunging(r.actor)
+        sfx.attack({ physical: true, element: 'normal', power: 65 })
+        setTimeout(() => setLunging(null), 300)
+        // 掉血量：按 hp 差 × maxHp 换算，做受击演出
+        const prevPct = i === 0 ? 100 : rounds[i - 1][target === 'player' ? 'hpPlayer' : 'hpEnemy']
+        const nowPct = target === 'player' ? r.hpPlayer : r.hpEnemy
+        const lost = Math.max(0, prevPct - nowPct)
+        if (lost > 0) {
+          const unitMax = target === 'player'
+            ? baseState.sides.player.team[0].maxHp
+            : baseState.sides.enemy.team[0].maxHp
+          const value = Math.max(1, Math.round((unitMax * lost) / 100))
+          setTimeout(() => {
+            sfx.hit({ crit: lost >= 40, value })
+            flash(target, { value, mult: lost >= 40 ? 1.5 : 1, crit: lost >= 40 })
+            setHurt((prev) => ({ ...prev, [target]: true }))
+            setTimeout(() => setHurt((prev) => ({ ...prev, [target]: false })), 320)
+            juiceRef.current?.shakeField(fieldRef.current, { intensity: Math.min(0.7, 0.22 + lost / 100) })
+          }, 340)
+        }
+      }
+
+      for (let i = 0; i < rounds.length; i++) {
+        applyRound(i)
+        const isLast = i === rounds.length - 1
+        await wait(fast ? (isLast ? 400 : 120) : isLast ? 1500 : 1400)
+      }
+
+      const finalWinner = winner
+      setState((prev) => (prev ? { ...prev, winner: finalWinner } : prev))
+      const xp = finalWinner === 'player' ? 300 : 180
+      setReward(xp)
+      if (!rewardedRef.current) {
+        rewardedRef.current = true
+        onReward?.(team, xp, finalWinner === 'player')
+      }
+      setAiStatus('idle')
+      setPhase('result')
+      bgm.stop()
+      if (finalWinner === 'player') bgm.victory()
+      else bgm.defeat()
+      juiceRef.current?.shakeField(fieldRef.current, { intensity: finalWinner === 'player' ? 0.8 : 0.5 })
+    } catch (e) {
+      setAiStatus('error')
+      setAiError(e.message || '模型推演失败，请重试')
+      setLog((prev) => [...prev, `AI 推演失败：${e.message || '请重试'}`].slice(-40))
+    } finally {
+      setBusy(false)
+    }
   }
 
   const flash = (side, ev) => {
@@ -615,25 +828,52 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
         const target = ev.side === 'player' ? 'enemy' : 'player'
         schedule(() => {
           setLunging(ev.side)
+          const physical = ev.move?.category === 'physical'
+          // 出招音效 + 特效：物理走近战挥砍系，敌方（右侧）出手时特效镜像
+          sfx.attack({ physical, element: ev.move?.type, power: ev.move?.power ?? 65 })
           vfxRef.current?.playAttack(fxLayerRef.current, slotOf(target).current, {
             element: ev.move?.type,
             power: ev.move?.power ?? 65,
+            physical,
+            flip: ev.side === 'enemy',
             seed: (Date.now() ^ Math.floor(Math.random() * 1e6)) >>> 0,
           })
           setTimeout(() => setLunging(null), 300)
         }, at)
         at += 360
       } else if (ev.t === 'damage') {
+        const juice = juiceRef.current
+        const field = fieldRef.current
+        const holder = slotOf(ev.side).current?.querySelector('.sprite-holder')
+        const isCrit = !!ev.crit
         schedule(() => {
+          sfx.hit({ crit: isCrit, value: ev.value })
           flash(ev.side, ev)
           setHurt((prev) => ({ ...prev, [ev.side]: true }))
           setTimeout(() => setHurt((prev) => ({ ...prev, [ev.side]: false })), 320)
           if (ev.crit) vfxRef.current?.playCrit(fxLayerRef.current, slotOf(ev.side).current)
+          // —— GSAP 手感层：震荡 / 击退 / 闪白 / 暴击推近 ——
+          if (juice && field) {
+            const intensity = isCrit ? 0.95 : Math.min(0.7, 0.22 + ev.value / 90)
+            juice.shakeField(field, { intensity })
+            if (holder) juice.knockback(holder, { power: isCrit ? 1.25 : Math.min(1, ev.value / 60) })
+            if (isCrit) {
+              juice.impactPunch(field, { scale: 1.05 })
+              juice.impactFlash(fxLayerRef.current, { strength: 0.7 })
+            } else if (ev.value >= 38) {
+              juice.impactFlash(fxLayerRef.current, { strength: 0.32 })
+            }
+          }
+        }, at)
+        // 暴击附带「顿帧」：把后续演出整体延后，砸下去的瞬间画面像卡了一帧
+        at += isCrit ? 360 : 240
+      } else if (ev.t === 'faint') {
+        const juice = juiceRef.current
+        schedule(() => {
+          vfxRef.current?.playFaint(fxLayerRef.current, slotOf(ev.side).current)
+          juice?.shakeField(fieldRef.current, { intensity: 0.6 })
         }, at)
         at += 240
-      } else if (ev.t === 'faint') {
-        schedule(() => vfxRef.current?.playFaint(fxLayerRef.current, slotOf(ev.side).current), at)
-        at += 220
       } else if (ev.t === 'switch') {
         schedule(() => vfxRef.current?.playSwitchIn(fxLayerRef.current, slotOf(ev.side).current), at)
         at += 180
@@ -655,12 +895,20 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
       bgm.stop()
       if (next.winner === 'player') bgm.victory()
       else bgm.defeat()
+      // 结算收尾演出：赢家来一发更强、输家轻颤
+      juiceRef.current?.shakeField(fieldRef.current, { intensity: next.winner === 'player' ? 0.8 : 0.5 })
+      juiceRef.current?.impactFlash(fxLayerRef.current, {
+        strength: next.winner === 'player' ? 0.55 : 0.3,
+        color: next.winner === 'player' ? 'rgba(255, 226, 120, 1)' : 'rgba(255, 255, 255, 1)',
+      })
     }
     setBusy(false)
   }
 
   // 自动对战：进入战斗后按节奏自动出招 / 换人，直到分出胜负，全程无需点击
+  // AI 通道（高级竞技场）由 runAiBattle 推演回放，不走规则引擎
   useEffect(() => {
+    if (channel === 'ai') return undefined
     if (phase !== 'fight' || !state || state.winner || busy) return undefined
     const t = setTimeout(() => act({ type: 'auto' }), fast ? 160 : 780)
     return () => clearTimeout(t)
@@ -681,7 +929,7 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
   if (phase === 'mode') {
     return (
       <main className="battle-wrap">
-        <ModePicker pets={candidates} onPick={pickMode} onExit={onExit} />
+        <ModePicker pets={candidates} onPick={pickMode} onExit={onExit} channel={channel} />
       </main>
     )
   }
@@ -699,6 +947,7 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
           onStart={start}
           onBack={() => setPhase('mode')}
           onExit={onExit}
+          channel={channel}
           online={{
             size: onlineSize,
             setSize: changeOnlineSize,
@@ -722,6 +971,30 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
   const myTeamAlive = state.sides.player.team.filter((u) => !u.fainted).length
   const foeTeamAlive = state.sides.enemy.team.filter((u) => !u.fainted).length
 
+  // 审计报告导出：复制到剪贴板 / 下载 .md
+  const exportReport = async (kind) => {
+    if (!aiReport) return
+    const md = reportMarkdown(aiReport, playerUnit.name, enemyUnit.name, state.winner === 'player')
+    if (kind === 'copy') {
+      try {
+        await navigator.clipboard.writeText(md)
+        setReportTip('已复制 Markdown')
+        setTimeout(() => setReportTip(''), 1800)
+      } catch {
+        setReportTip('复制失败，请用下载')
+        setTimeout(() => setReportTip(''), 1800)
+      }
+      return
+    }
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `gitmon-audit-${playerUnit.name}-vs-${enemyUnit.name}.md`.replace(/[\\/:*?"<>|]/g, '_')
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <main className="battle-wrap">
       <div className="battle-topbar">
@@ -742,7 +1015,7 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
         </span>
       </div>
 
-      <div className="battle-field">
+      <div className={`battle-field arena-${arena}`} ref={fieldRef}>
         <div className="field-sky" />
         <div className="field-grid" />
         <div className="arena-sparks" aria-hidden="true"><i /><i /><i /><i /><i /></div>
@@ -752,7 +1025,9 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
             ref={enemySlotRef}
             className={`sprite-slot enemy-slot ${lunging === 'enemy' ? 'is-attacking' : ''} ${hurt.enemy ? 'is-hurt' : ''}`}
           >
-            <PixelSprite pet={unitPet(enemyUnit)} size={148} />
+            <div className="sprite-holder">
+              <PixelSprite pet={unitPet(enemyUnit)} size={148} />
+            </div>
           </div>
           <UnitPanel unit={enemyUnit} side="enemy" fx={fx.enemy} shaking={shake.enemy} />
         </div>
@@ -763,9 +1038,22 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
             ref={playerSlotRef}
             className={`sprite-slot player-slot ${lunging === 'player' ? 'is-attacking' : ''} ${hurt.player ? 'is-hurt' : ''}`}
           >
-            <PixelSprite pet={unitPet(playerUnit)} size={182} />
+            <div className="sprite-holder">
+              <PixelSprite pet={unitPet(playerUnit)} size={182} />
+            </div>
           </div>
         </div>
+
+        {/* 招式横幅：取最近一条出招播报，索引变化即重挂载重播动画（播完停在透明） */}
+        {(() => {
+          let idx = -1
+          for (let i = log.length - 1; i >= 0; i--) { if (/使出|使用/.test(log[i])) { idx = i; break } }
+          return (
+            <div className="move-banner" key={idx} aria-hidden={idx < 0}>
+              {idx >= 0 ? log[idx] : ''}
+            </div>
+          )
+        })()}
 
         <div className="vfx-layer" ref={fxLayerRef} />
       </div>
@@ -777,26 +1065,129 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
         ))}
       </div>
 
-      {phase === 'result' && (
-        <div className={`battle-result ${state.winner === 'player' ? 'win' : 'lose'}`}>
-          <div className="result-card">
-            <div className="result-mark" aria-hidden="true">{state.winner === 'player' ? '✦' : '◇'}</div>
-            <h2 className={state.winner === 'player' ? 'win' : 'lose'}>
-              {state.winner === 'player' ? '胜利' : '惜败'}
-            </h2>
-            <p>{state.winner === 'player' ? '对手的仓库被你压了一头。' : '属性与节奏都被对手抓到了。'}</p>
-            <div className="result-stats">
-              <span>回合<b>{state.turn}</b></span>
-              <span>存活<b>{myTeamAlive}</b></span>
-              <span>击倒<b>{state.sides.enemy.team.filter((u) => u.fainted).length}</b></span>
+      {phase === 'result' && (() => {
+        const win = state.winner === 'player'
+        const alive = myTeamAlive
+        const total = state.sides.player.team.length
+        const grade = battleGrade(state.winner, state.turn, alive, total)
+        const mvp = [...state.sides.player.team]
+          .filter((u) => !u.fainted)
+          .sort((a, b) => b.hp / b.maxHp - a.hp / a.maxHp)[0] || state.sides.player.team[0]
+        return (
+          <div className={`battle-result ${win ? 'win' : 'lose'}`}>
+            <div className="result-card px-box">
+              <div className="confetti" aria-hidden>
+                {win && Array.from({ length: 24 }, (_, i) => <i key={i} />)}
+              </div>
+              <div className={`result-grade g-${grade.toLowerCase()}`} key={grade}>
+                <b>{grade}</b>
+                <small>评级</small>
+              </div>
+              <h2 className={win ? 'win' : 'lose'}>{win ? '胜利' : '惜败'}</h2>
+              <p>{win ? '对手的仓库被你压了一头。' : '属性与节奏都被对手抓到了。'}</p>
+              <div className="result-stats">
+                <span>回合<b>{state.turn}</b></span>
+                <span>存活<b>{alive}/{total}</b></span>
+                <span>击倒<b>{state.sides.enemy.team.filter((u) => u.fainted).length}</b></span>
+              </div>
+              <div className="result-exp">
+                <p className="reward">全队获得 <b>+{reward} EXP</b></p>
+                <div className="exp-track" aria-hidden>
+                  {Array.from({ length: 20 }, (_, i) => (
+                    <i key={i} className={i < Math.min(20, Math.ceil(reward / 15)) ? 'on' : ''} />
+                  ))}
+                </div>
+              </div>
+              {mvp && (
+                <div className="result-mvp">
+                  <PixelSprite pet={unitPet(mvp)} size={72} animate={false} />
+                  <span><small>MVP</small><b>{mvp.name}</b><em>Lv.{mvp.level} · {mvp.qualityKey}</em></span>
+                </div>
+              )}
+              <div className="actions">
+                <button className="primary-btn" onClick={start}>{mode === 'random' ? '再抽一只' : '再战一场'}</button>
+                <button className="ghost-btn" onClick={() => setPhase('select')}>换阵容</button>
+                <button className="ghost-btn" onClick={() => setPhase('mode')}>换模式</button>
+                <button className="ghost-btn" onClick={onExit}>返回图鉴</button>
+              </div>
             </div>
-            <p className="reward">全队获得 <b>+{reward} EXP</b></p>
-            <div className="actions">
-              <button className="primary-btn" onClick={start}>{mode === 'random' ? '再抽一只' : '再战一场'}</button>
-              <button className="ghost-btn" onClick={() => setPhase('select')}>换阵容</button>
-              <button className="ghost-btn" onClick={() => setPhase('mode')}>换模式</button>
-              <button className="ghost-btn" onClick={onExit}>返回图鉴</button>
-            </div>
+
+            {/* AI 高级竞技场：结算审计报告（维度对比 / 证据 / 风险 / 建议，可导出 Markdown） */}
+            {channel === 'ai' && aiReport && (
+              <div className="audit-report px-box">
+                <div className="audit-head">
+                  <h3>审计报告</h3>
+                  <span className="audit-sub">AI 对比 · {playerUnit.name} vs {enemyUnit.name}</span>
+                </div>
+                <p className="audit-verdict">{aiReport.verdict}</p>
+
+                {aiReport.dims.length > 0 && (
+                  <div className="audit-dims">
+                    {aiReport.dims.map((d) => (
+                      <div className="audit-dim" key={d.name}>
+                        <span className="dim-name">{d.name}</span>
+                        <span className="dim-nums">
+                          <b className="me">{d.player}</b>
+                          <i className={d.winner === 'player' ? 'lead me' : d.winner === 'enemy' ? 'lead foe' : ''}>
+                            {d.winner === 'player' ? '◀ 我方领先' : d.winner === 'enemy' ? '对手领先 ▶' : '持平'}
+                          </i>
+                          <b className="foe">{d.enemy}</b>
+                        </span>
+                        <div className="dim-track">
+                          <i className="me" style={{ width: `${d.player}%` }} />
+                          <i className="foe" style={{ width: `${d.enemy}%` }} />
+                        </div>
+                        <small className="dim-note">{d.note}</small>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {aiReport.evidence.length > 0 && (
+                  <div className="audit-sec">
+                    <h4>证据引用</h4>
+                    <ul>{aiReport.evidence.map((x, i) => <li key={i}>{x}</li>)}</ul>
+                  </div>
+                )}
+                <div className="audit-cols">
+                  {aiReport.risks.length > 0 && (
+                    <div className="audit-sec">
+                      <h4>风险</h4>
+                      <ul>{aiReport.risks.map((x, i) => <li key={i}>{x}</li>)}</ul>
+                    </div>
+                  )}
+                  {aiReport.suggestions.length > 0 && (
+                    <div className="audit-sec">
+                      <h4>建议</h4>
+                      <ul>{aiReport.suggestions.map((x, i) => <li key={i}>{x}</li>)}</ul>
+                    </div>
+                  )}
+                </div>
+
+                <div className="audit-actions">
+                  <button className="ghost-btn" onClick={() => exportReport('copy')}>复制 Markdown</button>
+                  <button className="ghost-btn" onClick={() => exportReport('download')}>下载 .md</button>
+                  {reportTip && <span className="audit-tip">{reportTip}</span>}
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
+      {/* AI 高级竞技场：模型推演失败时给重试出口，不进结算 */}
+      {channel === 'ai' && aiStatus === 'error' && (
+        <div className="ai-error-bar px-box">
+          <p>! {aiError}</p>
+          <div className="ai-error-actions">
+            <button
+              className="primary-btn"
+              disabled={busy}
+              onClick={() => { const m = aiMatchRef.current; if (m) runAiBattle(m.baseState, m.playerPet, m.enemyPet) }}
+            >
+              重试
+            </button>
+            <button className="ghost-btn" onClick={() => setPhase('select')}>回上一步</button>
           </div>
         </div>
       )}
@@ -804,9 +1195,13 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
       <div className="battle-controls auto-controls">
         <div className="control-head">
           <span className="control-title">
-            {state.winner ? '战斗结束' : busy ? '自动结算中…' : '自动对战中'}
+            {channel === 'ai'
+              ? state.winner ? '推演结束' : aiStatus === 'thinking' ? 'AI 正在对比两个项目水平…' : 'AI 逐回合推演中'
+              : state.winner ? '战斗结束' : busy ? '自动结算中…' : '自动对战中'}
           </span>
-          <span className="control-hint">AI 自动挑招式 / 换人 · <kbd>F</kbd> 快进</span>
+          <span className="control-hint">
+            {channel === 'ai' ? '模型推演 · 结算附审计报告' : <>AI 自动挑招式 / 换人 · <kbd>F</kbd> 快进</>}
+          </span>
         </div>
         <div className="auto-status">
           <span className={`auto-pulse ${state.winner ? 'done' : ''}`} aria-hidden="true" />

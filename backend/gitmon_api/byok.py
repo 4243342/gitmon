@@ -100,6 +100,13 @@ def parse_key_input(text: str) -> tuple[str, str | None]:
     raise LLMError("没有解析到密钥", "直接粘贴 sk-… 或写成 deepseek=sk-… 都行")
 
 
+def _rank(m: str) -> tuple[int, int, int]:
+    low = m.lower()
+    hits = sum(1 for word in PREFER if word in low)
+    legacy = any(word in low for word in LEGACY)
+    return (1 if legacy else 0, -hits, len(m))
+
+
 def choose_model(models: list[str], preferred: str = "") -> str:
     """从 /models 返回里挑一个适合 JSON 评测的聊天模型。"""
     ids = [str(m).strip() for m in models if str(m).strip()]
@@ -109,14 +116,24 @@ def choose_model(models: list[str], preferred: str = "") -> str:
         return preferred
     chat = [m for m in ids if not any(word in m.lower() for word in NON_CHAT)]
     pool = chat or ids
+    return sorted(pool, key=_rank)[0]
 
-    def rank(m: str) -> tuple[int, int, int]:
-        low = m.lower()
-        hits = sum(1 for word in PREFER if word in low)
-        legacy = any(word in low for word in LEGACY)
-        return (1 if legacy else 0, -hits, len(m))
 
-    return sorted(pool, key=rank)[0]
+def list_models(models: list[str], current: str = "") -> list[str]:
+    """给前端下拉选择用的模型列表：端点返回的全量列出（不截断），仅去重；
+    聊天模型排前，非聊天（embedding/tts/whisper/legacy 等）沉底，当前模型保证在列。"""
+    ids = list(dict.fromkeys(str(m).strip() for m in models if str(m).strip()))
+    if not ids:
+        return [current] if current else []
+
+    def sort_key(m: str) -> tuple[int, int, int, int]:
+        nonchat = 1 if any(word in m.lower() for word in NON_CHAT) else 0
+        return (nonchat, *_rank(m))
+
+    ordered = sorted(ids, key=sort_key)
+    if current and current not in ordered:
+        ordered.insert(0, current)
+    return ordered
 
 
 def _priority(provider: dict[str, Any], key: str) -> int:
@@ -170,9 +187,10 @@ async def detect(api_key: str, *, provider: str | None = None, custom: dict[str,
             models = []
         if not models and not given_model:
             raise LLMError("自定义端点没有返回模型列表", "确认地址以 /v1 结尾、服务已启动，或直接填模型名跳过探测")
+        chosen = given_model or choose_model(models)
         return {
             "provider": "custom", "label": label, "baseUrl": base,
-            "model": given_model or choose_model(models), "models": models[:20],
+            "model": chosen, "models": list_models(models, chosen),
             "verified": bool(models), "detectedBy": "custom",
         }
 
@@ -192,12 +210,13 @@ async def detect(api_key: str, *, provider: str | None = None, custom: dict[str,
     for target, models in zip(candidates, results):
         if isinstance(models, Exception) or not models:
             continue
+        chosen = choose_model(models, target["model"])
         return {
             "provider": target["id"],
             "label": target["label"],
             "baseUrl": target["baseUrl"],
-            "model": choose_model(models, target["model"]),
-            "models": models[:20],
+            "model": chosen,
+            "models": list_models(models, chosen),
             "verified": True,
             "detectedBy": "models",
         }

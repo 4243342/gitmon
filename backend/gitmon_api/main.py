@@ -91,7 +91,7 @@ def create_app(settings: Settings | None = None, *, start_queue: bool = True) ->
             CORSMiddleware,
             allow_origins=["*"] if allow_all else cfg.cors_origins,
             allow_credentials=not allow_all,
-            allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+            allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             allow_headers=["*"],
             expose_headers=["Retry-After", "X-Gitmon-Version"],
         )

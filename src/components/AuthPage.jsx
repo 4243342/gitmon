@@ -10,7 +10,6 @@ const META = {
   github: {
     name: 'GitHub',
     title: '连上你的 GitHub',
-    env: 'GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET',
     tokenLabel: '个人访问令牌（PAT）',
     placeholder: 'ghp_xxxxxxxxxxxxxxxx',
     steps: [
@@ -22,7 +21,6 @@ const META = {
   gitee: {
     name: 'Gitee',
     title: '连上你的 Gitee',
-    env: 'GITEE_CLIENT_ID / GITEE_CLIENT_SECRET',
     tokenLabel: '私人令牌（Private Token）',
     placeholder: '32 位十六进制字符串',
     steps: [
@@ -52,7 +50,6 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
   const [busy, setBusy] = useState('')
   const [error, setError] = useState(notice || '')
   const [showHelp, setShowHelp] = useState(false)
-  const [copied, setCopied] = useState('')
 
   const meta = META[provider]
   const cfg = providers?.[provider] || {}
@@ -68,22 +65,10 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
     setShowHelp(false)
   }
 
-  // 回调地址必须与平台后台登记的一字不差（Gitee 报「无效的登录回调地址」就是这个对不上）。
-  // 后端按当前浏览器地址生成，所以这里显示的就是马上会用的那一个。
-  const copyCallback = async (text) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(text)
-      setTimeout(() => setCopied(''), 1600)
-    } catch {
-      setError('复制失败，请手动选中地址复制')
-    }
-  }
-
   const startOAuth = () => {
     setError('')
     if (!oauthReady) {
-      setError(`后端还没配置 ${meta.name} 的 OAuth 应用（${meta.env}），先用下面的${meta.tokenLabel}登录`)
+      setError(`后端还没开通 ${meta.name} 授权登录，先用下面的${meta.tokenLabel}登录`)
       document.getElementById('provider-token')?.focus()
       return
     }
@@ -180,21 +165,11 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
           </button>
         )}
 
-        {oauthReady && cfg.callback && (
-          <div className="auth-callback">
-            <span>{meta.name} 应用后台要填的回调地址</span>
-            <code>{cfg.callback}</code>
-            <button type="button" onClick={() => copyCallback(cfg.callback)}>
-              {copied === cfg.callback ? '已复制' : '复制'}
-            </button>
-          </div>
-        )}
-
         {/* 平台没配 OAuth 应用时的兜底：令牌直接登录（Gitee 现在走这里） */}
         {!oauthReady && (
           <>
             <p className="auth-hint">
-              后端还没配置 {meta.name} 的 OAuth 应用（{meta.env}），
+              后端还没开通 {meta.name} 授权登录，
               先用{meta.tokenLabel}登录 —— 额度和授权一样，不用等应用审核。
             </p>
             <div className="auth-or"><span>或</span></div>
