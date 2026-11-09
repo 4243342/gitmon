@@ -406,6 +406,12 @@ body {
 }
 /* 库只保留 rotator 的指针事件；内容层（.pet-card 及其子孙）恢复可点 */
 .gm-holo .card .pet-card { pointer-events: auto; }
+/* 原库把 shine/glare 裁进宝可梦卡的「插画窗」（--clip inset 9.85%/8%/52.85%）；
+   本项目是整卡富文本卡面，没有插画窗，效果会只盖住中上一块 → 整卡放行 */
+.gm-holo .card[data-rarity] .card__shine,
+.gm-holo .card[data-rarity] .card__glare:after {
+  clip-path: none;
+}
 /* 指针离开后的回弹过渡（库只配了 box-shadow/opacity，补上倾斜） */
 .gm-holo .card__rotator {
   transition: transform .12s ease-out, box-shadow .4s ease, opacity .33s ease-out;

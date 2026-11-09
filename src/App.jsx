@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useI18n } from './i18n.js'
 import { parseRepoInput, scanOwnerBox, scanRepo } from './scan.js'
 import { expForLevel, judge, recomputePetStats } from './engine.js'
 import {
@@ -35,67 +36,102 @@ import './training.css'
 const RANK = { SSR: 4, SR: 3, R: 2, N: 1 }
 
 // 单个项目：一个卡包
-const STEPS = ['连接仓库', '读取技术栈', '估算工程量', '评估代码质量']
-const DIALOGS = [
-  '连接仓库，读取档案...',
-  '分析语言构成，判定元素属性...',
-  '统计代码规模，估算工程量...',
-  '检查测试 / CI / 文档，评估品质...',
-  '卡包生成完毕！',
-]
+const STEPS = {
+  zh: ['连接仓库', '读取技术栈', '估算工程量', '评估代码质量'],
+  en: ['Connect repo', 'Read tech stack', 'Estimate size', 'Assess code quality'],
+}
+const DIALOGS = {
+  zh: [
+    '连接仓库，读取档案...',
+    '分析语言构成，判定元素属性...',
+    '统计代码规模，估算工程量...',
+    '检查测试 / CI / 文档，评估品质...',
+    '卡包生成完毕！',
+  ],
+  en: [
+    'Connecting repo, reading profile...',
+    'Analyzing languages, judging element type...',
+    'Counting code size, estimating project scale...',
+    'Checking tests / CI / docs, assessing quality...',
+    'Pack ready!',
+  ],
+}
 
 // 账号：每个项目一个卡包，装成整箱
-const STEPS_OWNER = ['读取项目清单', '逐项读取技术栈', '估算工程量', '评估代码质量']
-const DIALOGS_OWNER = [
-  '读取账号的项目清单...',
-  '逐个检查语言构成与项目结构...',
-  '统计每个项目的工程量...',
-  '逐个评估代码质量，抽成卡...',
-  '整箱卡包已就绪！',
-]
+const STEPS_OWNER = {
+  zh: ['读取项目清单', '逐项读取技术栈', '估算工程量', '评估代码质量'],
+  en: ['List projects', 'Read each tech stack', 'Estimate size', 'Assess code quality'],
+}
+const DIALOGS_OWNER = {
+  zh: [
+    '读取账号的项目清单...',
+    '逐个检查语言构成与项目结构...',
+    '统计每个项目的工程量...',
+    '逐个评估代码质量，抽成卡...',
+    '整箱卡包已就绪！',
+  ],
+  en: [
+    "Reading the account's project list...",
+    'Checking languages & project structure one by one...',
+    'Estimating the size of each project...',
+    'Assessing each project, turning them into cards...',
+    'The full box of packs is ready!',
+  ],
+}
 
 // 高级模式：仓库不扫描，全部评测由模型给出
-const STEPS_AI = ['连接模型', '推测仓库画像', '模型完成全部评测', '生成精灵卡']
-const DIALOGS_AI = [
-  '带上评测规则，连接你的模型...',
-  '模型正在凭知识推测这个项目的画像...',
-  '品质 / 六维 / 根基 / 词条 / 等级，连 4 个技能的名字 / 威力 / 解锁等级，全部按项目交给模型制定...',
-  '把模型的结果填进卡面...',
-  'AI 推测卡包已就绪！',
-]
+const STEPS_AI = {
+  zh: ['连接模型', '推测仓库画像', '模型完成全部评测', '生成精灵卡'],
+  en: ['Connect model', 'Guess repo profile', 'Model runs all evaluations', 'Generate sprite card'],
+}
+const DIALOGS_AI = {
+  zh: [
+    '带上评测规则，连接你的模型...',
+    '模型正在凭知识推测这个项目的画像...',
+    '品质 / 六维 / 根基 / 词条 / 等级，连 4 个技能的名字 / 威力 / 解锁等级，全部按项目交给模型制定...',
+    '把模型的结果填进卡面...',
+    'AI 推测卡包已就绪！',
+  ],
+  en: [
+    'Bringing the eval rules, connecting to your model...',
+    "The model is guessing this project's profile from its knowledge...",
+    "Quality / six stats / foundation / traits / level, plus the 4 skills' names / power / unlock levels — all left to the model per project...",
+    'Filling the card face with the model’s results...',
+    'AI-guess pack ready!',
+  ],
+}
 
 // 揭晓 / 详情：区分「真实审计 + 模型总评」与「纯模型推测」
 function AiNote({ pet }) {
+  const { t } = useI18n()
   if (!pet?.aiEvaluated) return null
   if (pet.audited) {
     return (
       <div className="ai-note">
-        <b>深度审计</b> · 前端真实抓取了本仓库（语言构成 / 目录线索 / 提交与贡献者 / 发行版等证据），
-        随后交给模型 <b> {pet.aiModel || '（未标注）'} </b>
-        {pet.aiProviderLabel && <b>（{pet.aiProviderLabel}）</b>} 基于证据总评；
-        品质 / 六维 / 根基 / 词条 / 等级与 4 个技能由模型按项目制定，本地未运行规则引擎
-        {pet.aiHint ? `；补充要求：${pet.aiHint}` : ''}。
-        分享卡上会盖上这枚模型的全息钢印。
-        {pet.aiComment && <span className="ai-comment">「{pet.aiComment}」</span>}
-        {pet.aiEvidence && <span className="ai-comment">模型依据：{pet.aiEvidence}</span>}
+        <b>{t('深度审计', 'Deep Audit')}</b>
+        {t(' · 前端真实抓取了本仓库（语言构成 / 目录线索 / 提交与贡献者 / 发行版等证据）， 随后交给模型', ' · The frontend really fetched this repo (evidence: language mix / directory clues / commits & contributors / releases), then handed it to the model')}{' '}
+        <b> {pet.aiModel || t('（未标注）', '(unlabeled)')} </b>
+        {pet.aiProviderLabel && <b>{t('（', '(')}{pet.aiProviderLabel}{t('）', ')')}</b>}
+        {t(' 基于证据总评； 品质 / 六维 / 根基 / 词条 / 等级与 4 个技能由模型按项目制定，本地未运行规则引擎', ' reviewed the evidence; quality / six stats / foundation / traits / level and the 4 skills were set by the model per project — no local rule engine ran')}{pet.aiHint ? t(`；补充要求：${pet.aiHint}`, `; extra requirement: ${pet.aiHint}`) : ''}{t('。 分享卡上会盖上这枚模型的全息钢印。', '. A holographic stamp of this model is embossed on the share card.')}
+        {pet.aiComment && <span className="ai-comment">{t('「', '“')}{pet.aiComment}{t('」', '”')}</span>}
+        {pet.aiEvidence && <span className="ai-comment">{t('模型依据：', 'Evidence used: ')}{pet.aiEvidence}</span>}
         {pet.aiWarnings?.length > 0 && (
-          <span className="ai-warn">模型输出有 {pet.aiWarnings.length} 项不完整，已做安全兜底：{pet.aiWarnings.slice(0, 2).join('；')}</span>
+          <span className="ai-warn">{t(`模型输出有 ${pet.aiWarnings.length} 项不完整，已做安全兜底：`, `${pet.aiWarnings.length} model outputs were incomplete, safe fallbacks applied: `)}{pet.aiWarnings.slice(0, 2).join(t('；', '; '))}</span>
         )}
       </div>
     )
   }
   return (
     <div className="ai-note">
-      <b>AI 推测</b> · 非真实扫描，品质 / 六维 / 根基 / 词条 / 等级，以及 4 个技能的
-      名称 / 属性 / 威力 / 解锁等级 / 描述，全部由模型
-      <b> {pet.aiModel || '（未标注）'} </b>
-      {pet.aiProviderLabel && <b>（{pet.aiProviderLabel}）</b>}
-      按项目制定，本地未运行规则引擎{pet.aiHint ? `；补充要求：${pet.aiHint}` : ''}。
-      分享卡上会盖上这枚模型的全息钢印。
-      {pet.aiComment && <span className="ai-comment">「{pet.aiComment}」</span>}
-      {pet.aiEvidence && <span className="ai-comment">推测依据：{pet.aiEvidence}</span>}
+      <b>{t('AI 推测', 'AI Guess')}</b>
+      {t(' · 非真实扫描，品质 / 六维 / 根基 / 词条 / 等级，以及 4 个技能的 名称 / 属性 / 威力 / 解锁等级 / 描述，全部由模型', ' · Not a real scan; quality / six stats / foundation / traits / level, plus the 4 skills’ name / element / power / unlock level / description — all decided by the model')}
+      <b> {pet.aiModel || t('（未标注）', '(unlabeled)')} </b>
+      {pet.aiProviderLabel && <b>{t('（', '(')}{pet.aiProviderLabel}{t('）', ')')}</b>}
+      {t('按项目制定，本地未运行规则引擎', ' set per project — no local rule engine ran')}{pet.aiHint ? t(`；补充要求：${pet.aiHint}`, `; extra requirement: ${pet.aiHint}`) : ''}{t('。 分享卡上会盖上这枚模型的全息钢印。', '. A holographic stamp of this model is embossed on the share card.')}
+      {pet.aiComment && <span className="ai-comment">{t('「', '“')}{pet.aiComment}{t('」', '”')}</span>}
+      {pet.aiEvidence && <span className="ai-comment">{t('推测依据：', 'Basis for the guess: ')}{pet.aiEvidence}</span>}
       {pet.aiWarnings?.length > 0 && (
-        <span className="ai-warn">模型输出有 {pet.aiWarnings.length} 项不完整，已做安全兜底：{pet.aiWarnings.slice(0, 2).join('；')}</span>
+        <span className="ai-warn">{t(`模型输出有 ${pet.aiWarnings.length} 项不完整，已做安全兜底：`, `${pet.aiWarnings.length} model outputs were incomplete, safe fallbacks applied: `)}{pet.aiWarnings.slice(0, 2).join(t('；', '; '))}</span>
       )}
     </div>
   )
@@ -144,6 +180,7 @@ function useTypewriter(lines, speed = 34) {
 }
 
 export default function App() {
+  const { t, lang } = useI18n()
   const [view, setView] = useState('boot') // boot | auth | home | scan | box | pack | reveal | detail | battle | training
   const [url, setUrl] = useState('')
   const [error, setError] = useState('')
@@ -194,7 +231,7 @@ export default function App() {
   const autoScanned = useRef('')
 
   useSfxBus()
-  const typed = useTypewriter(view === 'scan' ? (advanced ? DIALOGS_AI : mode === 'owner' ? DIALOGS_OWNER : DIALOGS) : [])
+  const typed = useTypewriter(view === 'scan' ? (advanced ? DIALOGS_AI : mode === 'owner' ? DIALOGS_OWNER : DIALOGS)[lang] : [])
 
   // 扫描阶段推进：每亮一格给一声，音高上行
   useEffect(() => {
@@ -214,7 +251,7 @@ export default function App() {
     let alive = true
     const query = consumeAuthQuery()
     if (query?.status === 'failed') {
-      setAuthNotice(decodeURIComponent(query.reason || '') || '授权没有完成，再试一次')
+      setAuthNotice(decodeURIComponent(query.reason || '') || t('授权没有完成，再试一次', 'Authorization was not completed, try again'))
     }
     ;(async () => {
       const [me, providerInfo] = await Promise.all([
@@ -284,17 +321,17 @@ export default function App() {
   }
 
   const fail = (e) => {
-    setError(e.message || '扫描失败，请检查地址')
+    setError(e.message || t('扫描失败，请检查地址', 'Scan failed, check the URL'))
     sfx.error()
     setProgress(null)
     setView('home')
   }
 
   const run = () => {
-    if (!url.trim()) { setError(advanced ? '请输入仓库地址或项目名' : '请输入仓库或账号地址'); sfx.error(); return }
+    if (!url.trim()) { setError(advanced ? t('请输入仓库地址或项目名', 'Enter a repo URL or project name') : t('请输入仓库或账号地址', 'Enter a repo or account URL')); sfx.error(); return }
     if (advanced) { runAdvanced(); return }
     const info = parseRepoInput(url)
-    if (!info) { setError('无法识别的地址：仓库链接、账号主页都行'); sfx.error(); return }
+    if (!info) { setError(t('无法识别的地址：仓库链接、账号主页都行', "Unrecognized URL: a repo link or an owner's profile page works")); sfx.error(); return }
     setError('')
     setBox(null)
     setOpened(new Set())
@@ -322,7 +359,7 @@ export default function App() {
       setBindState('bound')
       return next
     } catch (e) {
-      const msg = e.message || '自动绑定失败'
+      const msg = e.message || t('自动绑定失败', 'Auto-binding failed')
       setBindState('error')
       setBindError(msg)
       setError(msg)
@@ -337,11 +374,34 @@ export default function App() {
     applyBinding(llmConfig).then((ok) => { if (ok) sfx.blip() })
   }
 
+  // 高级模式（深度评测）开启状态持久化：刷新 / 重启后密钥还在就自动恢复，
+  // 避免「深度评测怎么没了」的静默消失；密钥本身只存 sessionStorage（不落盘）。
+  const persistAiMode = (on) => {
+    try {
+      if (on) localStorage.setItem('gitmon:ai-mode', '1')
+      else localStorage.removeItem('gitmon:ai-mode')
+    } catch { /* 隐私模式下忽略 */ }
+  }
+
+  useEffect(() => {
+    let saved = false
+    try { saved = localStorage.getItem('gitmon:ai-mode') === '1' } catch { /* noop */ }
+    if (!saved) return
+    if (llmConfig.apiKey?.trim() && llmConfig.binding) {
+      setAdvanced(true)
+      return
+    }
+    // 上次开着、但本会话密钥没了（新标签页 / 隐私窗口）：说明原因并打开入口
+    setGateMsg({ type: 'err', text: t('深度评测（AI高级版）的密钥只保存在本会话：重新粘贴 API Key，再点一次右上「AI高级版入口」即可恢复', 'The Deep Eval (AI Pro) key only lives in this session: paste your API Key again, then click “AI Pro Access” top-right to restore it') })
+    if (guestSkipped() || cachedProfile()?.authenticated) setAdvOpen(true)
+  }, [])
+
   // AI 入口：开启前必须先过连接测试（真打一次 chat/completions），
   // 绑定只验证过 /models 能列出模型，不能保证评测链路真的能通。
   const handleAiToggle = async () => {
     if (advanced) {
       setAdvanced(false)
+      persistAiMode(false)
       setAdvOpen(false)
       setGateMsg(null)
       return
@@ -349,11 +409,11 @@ export default function App() {
     setAdvOpen(true)
     const cfg = llmConfig
     if (bindState === 'binding') {
-      setGateMsg({ type: 'err', text: '正在识别厂商…完成后再开启高级模式' })
+      setGateMsg({ type: 'err', text: t('正在识别厂商…完成后再开启高级模式', 'Detecting provider… enable Advanced mode after it finishes') })
       return
     }
     if (!cfg.apiKey?.trim() || !cfg.binding) {
-      setGateMsg({ type: 'err', text: '先粘贴 API Key 完成识别，连接测试通过后才能开启高级模式' })
+      setGateMsg({ type: 'err', text: t('先粘贴 API Key 完成识别，连接测试通过后才能开启高级模式', 'Paste an API Key to bind first; Advanced mode unlocks after the connection test passes') })
       sfx.error()
       return
     }
@@ -362,11 +422,12 @@ export default function App() {
     try {
       const r = await pingWithLLM({ config: cfg })
       setAdvanced(true)
+      persistAiMode(true)
       const sec = r.latencyMs != null ? ` ${(r.latencyMs / 1000).toFixed(1)}s` : ''
-      setGateMsg({ type: 'ok', text: `连接测试通过（${r.model}${sec}）· 高级模式已开启` })
+      setGateMsg({ type: 'ok', text: t(`连接测试通过（${r.model}${sec}）· 高级模式已开启`, `Connection test passed (${r.model}${sec}) · Advanced mode on`) })
       sfx.blip()
     } catch (e) {
-      setGateMsg({ type: 'err', text: `连接测试未通过：${e.message}` })
+      setGateMsg({ type: 'err', text: t(`连接测试未通过：${e.message}`, `Connection test failed: ${e.message}`) })
       sfx.error()
     } finally {
       setPingTesting(false)
@@ -385,7 +446,7 @@ export default function App() {
     let cfg = llmConfig
     if (!cfg.binding || bindState !== 'bound' || !cfg.apiKey?.trim()) {
       if (!cfg.apiKey?.trim()) {
-        setError('先粘贴一枚 API Key（右上角 BYOK）；厂商和模型会自动识别')
+        setError(t('先粘贴一枚 API Key（右上角 BYOK）；厂商和模型会自动识别', 'Paste an API Key first (BYOK, top right); provider and model are detected automatically'))
         sfx.error()
         setAiBusy(false)
         return
@@ -479,7 +540,7 @@ export default function App() {
     if (revalBusy || !pet) return
     const cfg = llmConfig
     if (!cfg.apiKey?.trim() || !cfg.binding) {
-      setRevalError('先在右上角 BYOK 绑定一枚 API Key，才能重新鉴定')
+      setRevalError(t('先在右上角 BYOK 绑定一枚 API Key，才能重新鉴定', 'Bind an API Key via BYOK (top right) first to re-appraise'))
       sfx.error()
       return
     }
@@ -528,7 +589,7 @@ export default function App() {
       setRevalCount((n) => n + 1)
       sfx.blip()
     } catch (e) {
-      setRevalError(e.message || '重新鉴定失败，请稍后重试')
+      setRevalError(e.message || t('重新鉴定失败，请稍后重试', 'Re-appraisal failed, try again later'))
       sfx.error()
     } finally {
       setRevalBusy(false)
@@ -580,18 +641,18 @@ export default function App() {
       if (!res.snaps.length) {
         const total = res.owner?.repos?.length ?? 0
         const plat = res.owner?.platform === 'gitee' ? 'Gitee' : 'GitHub'
-        if (res.rateLimited) throw new Error('API 触发限流，稍后再试（登录后额度高得多）')
+        if (res.rateLimited) throw new Error(t('API 触发限流，稍后再试（登录后额度高得多）', 'API rate limited, try again later (logged-in quota is much higher)'))
         // 三种空结果要分开说，不然永远看不出是接口没给数据、还是被过滤掉了
-        if (!total) throw new Error(`${plat} 接口没有返回任何项目（仓库可能全是私有的，或授权没带上仓库权限）`)
+        if (!total) throw new Error(t(`${plat} 接口没有返回任何项目（仓库可能全是私有的，或授权没带上仓库权限）`, `${plat} returned no projects (they may all be private, or the grant had no repo scope)`))
         if (!res.listed) {
           // 把原始字段摊开，才知道是 fork 判错还是空仓库判错
           const sample = (res.owner?.repos || []).slice(0, 3)
             .map((r) => `${r.name}［fork=${r.raw?.fork} parent=${!!r.raw?.parent} empty_repo=${r.raw?.empty_repo} size=${r.raw?.size}］`)
             .join('；')
-          throw new Error(`名下有 ${total} 个项目，但都被判为 fork 或空仓库：${sample}`)
+          throw new Error(t(`名下有 ${total} 个项目，但都被判为 fork 或空仓库：${sample}`, `${total} projects under this account were all judged fork or empty: ${sample}`))
         }
         const first = res.failed[0]
-        throw new Error(`${res.listed} 个项目全部扫描失败：${first?.reason || '未知原因'}`)
+        throw new Error(t(`${res.listed} 个项目全部扫描失败：${first?.reason || '未知原因'}`, `all ${res.listed} projects failed to scan: ${first?.reason || 'unknown reason'}`))
       }
       setStep(3)
       const pets = res.snaps
@@ -646,7 +707,7 @@ export default function App() {
     setPreview({ full: fullName, loading: true })
     scanRepo(`https://github.com/${fullName}`)
       .then((snap) => setPreview({ full: fullName, pet: judge(snap) }))
-      .catch((e) => setPreview({ full: fullName, error: e.message || '读取失败，稍后再试' }))
+      .catch((e) => setPreview({ full: fullName, error: e.message || t('读取失败，稍后再试', 'Read failed, try again later') }))
   }
 
   // 登录用户：不用输仓库，直接把自己名下所有项目开成一整箱
@@ -736,16 +797,16 @@ export default function App() {
 
   // 顶栏主导航（大厅 / 竞技场 / 训练场 / 排行榜 / 设置；收藏走右上「🧰 精灵仓库」）
   const NAV_ITEMS = [
-    { key: 'home', label: '大厅' },
-    { key: 'battle', label: '竞技场' },
-    { key: 'training', label: '训练场' },
-    { key: 'leaderboard', label: '排行榜' },
-    { key: 'settings', label: '设置' },
+    { key: 'home', label: t('大厅', 'Lobby') },
+    { key: 'battle', label: t('竞技场', 'Arena') },
+    { key: 'training', label: t('训练场', 'Training') },
+    { key: 'leaderboard', label: t('排行榜', 'Leaderboard') },
+    { key: 'settings', label: t('设置', 'Settings') },
   ]
   const navActive = (key) => view === key
   const navGo = (key) => {
     sfx.swoosh()
-    // 顶栏进竞技场一律走常规通道；高级竞技场只从首页双通道入口进
+    // 顶栏进竞技场默认常规通道；AI 高级通道可在选场页顶切换（高级模式开启时）
     if (key === 'battle') setBattleChannel('classic')
     setView(key)
   }
@@ -763,7 +824,7 @@ export default function App() {
         <div className="topbar-inner">
           <div className="brand" onClick={reset}>
             <span className="logo">GitMon</span>
-            <span className="tagline">你的仓库，是一只活着的精灵</span>
+            <span className="tagline">{t('你的仓库，是一只活着的精灵', 'Your repo, a living sprite')}</span>
           </div>
           <nav className="nav">
             {NAV_ITEMS.map((item) => (
@@ -780,10 +841,10 @@ export default function App() {
                 className={`adv-btn ${advanced ? 'on' : ''}`}
                 onClick={handleAiToggle}
                 disabled={pingTesting}
-                title="AI 高级版：用自己的模型评测仓库；开启前会先做一次连接测试"
+                title={t('AI 高级版：用自己的模型评测仓库；开启前会先做一次连接测试', 'AI Pro: evaluate repos with your own model; a connection test runs before enabling')}
               >
                 <span className={`adv-dot ${bindState === 'bound' ? 'ok' : ''}`} />
-                <span className="adv-label-full">{pingTesting ? '连接测试中…' : 'AI高级版入口'}</span>
+                <span className="adv-label-full">{pingTesting ? t('连接测试中…', 'Testing…') : t('AI高级版入口', 'AI Pro')}</span>
                 <span className="adv-label-mini">{pingTesting ? '…' : 'AI'}</span>
               </button>
               {advOpen && (
@@ -809,6 +870,7 @@ export default function App() {
                         setBindError('')
                         setGateMsg(null)
                         setAdvanced(false)
+                        persistAiMode(false)
                       }}
                       busy={aiBusy}
                       bindState={bindState}
@@ -831,14 +893,14 @@ export default function App() {
             <button
               className="mute-btn"
               onClick={() => { sfx.blip(); setView('warehouse') }}
-              title="精灵仓库"
+              title={t('精灵仓库', 'Sprite Vault')}
             >
-              🧰 精灵仓库
+              🧰 {t('精灵仓库', 'Sprite Vault')}
             </button>
             {auth.profile?.authenticated ? (
               <div
                 className="user-chip"
-                title={`${PROVIDER_LABEL[auth.profile.provider] || 'GitHub'} @${auth.profile.login} · 配额 ${quotaText(auth.profile)}`}
+                title={`${PROVIDER_LABEL[auth.profile.provider] || 'GitHub'} @${auth.profile.login} · ${t('配额', 'Quota')} ${quotaText(auth.profile)}`}
               >
                 {auth.profile.avatar
                   ? <img src={auth.profile.avatar} alt="" />
@@ -848,10 +910,10 @@ export default function App() {
                 </span>
                 <span className="user-name">@{auth.profile.login}</span>
                 <span className="user-quota">{quotaText(auth.profile)}</span>
-                <button className="user-out" onClick={onLogout}>退出</button>
+                <button className="user-out" onClick={onLogout}>{t('退出', 'Log out')}</button>
               </div>
             ) : view !== 'auth' && view !== 'boot' ? (
-              <button className="mute-btn login-btn" onClick={() => setView('auth')}>登录</button>
+              <button className="mute-btn login-btn" onClick={() => setView('auth')}>{t('登录', 'Log in')}</button>
             ) : null}
             <a className="gh-link" href="https://github.com/4243342/gitmon" target="_blank" rel="noreferrer">GitHub</a>
           </div>
@@ -859,13 +921,13 @@ export default function App() {
       </header>
       {showBack && (
         <div className="topbar-back-row">
-          <button className="topbar-back" onClick={goBack} title="返回">← 返回</button>
+          <button className="topbar-back" onClick={goBack} title={t('返回', 'Back')}>{t('← 返回', '← Back')}</button>
         </div>
       )}
 
       {view === 'boot' && (
         <main className="auth-page">
-          <div className="auth-loading">正在检查登录状态…</div>
+          <div className="auth-loading">{t('正在检查登录状态…', 'Checking login status…')}</div>
         </main>
       )}
 
@@ -889,28 +951,28 @@ export default function App() {
                   : <span className="account-avatar account-avatar-ph" />}
                 <div className="account-meta">
                   <span className="account-badge">
-                    {PROVIDER_LABEL[auth.profile.provider] || 'GitHub'} · 已登录
+                    {PROVIDER_LABEL[auth.profile.provider] || 'GitHub'}{t(' · 已登录', ' · Logged in')}
                   </span>
                   <h2>{auth.profile.name || auth.profile.login}</h2>
                   <p>
                     @{auth.profile.login} ·{' '}
                     {box
-                      ? <>名下 <b>{box.pets.length}</b> 个项目已抽成卡包</>
-                      : '正在读取你名下的项目…'}
+                      ? <>{t('名下 ', 'Your ')}<b>{box.pets.length}</b>{t(' 个项目已抽成卡包', ' projects packed into cards')}</>
+                      : t('正在读取你名下的项目…', 'Reading your projects…')}
                   </p>
                 </div>
               </div>
               <div className="account-actions">
                 <button className="primary-btn" onClick={runAccountBox}>
-                  {box ? '重新读取全部项目' : '读取我的项目'}
+                  {box ? t('重新读取全部项目', 'Re-read All Projects') : t('读取我的项目', 'Read My Projects')}
                 </button>
                 {box && (
                   <button className="ghost-btn" onClick={() => { sfx.swoosh(); setView('box') }}>
-                    打开我的卡箱（{box.pets.length} 包）
+                    {t(`打开我的卡箱（${box.pets.length} 包）`, `Open My Box (${box.pets.length} packs)`)}
                   </button>
                 )}
                 <button className="ghost-btn" onClick={() => setView('battle')} disabled={collection.length === 0}>
-                  进入竞技场
+                  {t('进入竞技场', 'Enter Arena')}
                 </button>
               </div>
               {advanced && (
@@ -919,18 +981,17 @@ export default function App() {
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && !aiBusy && run()}
-                    placeholder="深度审计单个仓库：github.com/owner/repo 或 owner/repo"
+                    placeholder={t('深度审计单个仓库：github.com/owner/repo 或 owner/repo', 'Deep-audit one repo: github.com/owner/repo or owner/repo')}
                     spellCheck={false}
                   />
                   <button className="primary-btn" disabled={aiBusy} onClick={() => run()}>
-                    {aiBusy ? 'AI 评测中…' : '让模型评测并抽卡'}
+                    {aiBusy ? t('AI 评测中…', 'AI evaluating…') : t('让模型评测并抽卡', 'Evaluate & Draw')}
                   </button>
                 </div>
               )}
               {error && <p className="error">! {error}</p>}
               <p className="account-note">
-                登录账号不用再输入仓库地址 —— 你名下<b>每个项目自动生成一个卡包</b>，
-                私有仓库也会一起读出来（授权只读，不写代码）。
+                {t('登录账号不用再输入仓库地址 —— 你名下', 'Once you log in you never paste a repo URL again — each of your ')}<b>{t('每个项目自动生成一个卡包', 'projects gets its own pack')}</b>{t('， 私有仓库也会一起读出来（授权只读，不写代码）。', ', and private repos are read too (read-only grant, no code is written).')}
               </p>
             </section>
           ) : (
@@ -938,15 +999,14 @@ export default function App() {
             <DecoSprite seed="deco-thunder-01" colors={['#f5c542', '#ffdf7e']} body="biped" size={96} className="d1" />
             <DecoSprite seed="deco-water-02" colors={['#4a9eff', '#a8d8ff']} body="winged" size={72} className="d2" />
             <DecoSprite seed="deco-fire-03" colors={['#ff6b4a', '#ffb199']} body="slime" size={80} className="d3" />
-            <h2>仓库抽卡，召唤你的精灵</h2>
+            <h2>{t('仓库抽卡，召唤你的精灵', 'Draw Cards from Repos, Summon Your Sprites')}</h2>
             <p>
-              贴一个仓库地址，得到一个卡包；贴一个账号主页，得到<b>一整箱</b>——
-              <b>品种由技术栈决定</b>，<b>品质由代码质量决定</b>，<b>等级由工程量决定</b>。
+              {t('贴一个仓库地址，得到一个卡包；贴一个账号主页，得到', 'Paste a repo URL for one pack; paste an owner page to get ')}<b>{t('一整箱', 'a whole box')}</b>{t('——', ' — ')}<b>{t('品种由技术栈决定', 'Species by tech stack')}</b>{t('，', ', ')}<b>{t('品质由代码质量决定', 'Quality by code quality')}</b>{t('，', ', ')}<b>{t('等级由工程量决定', 'Level by project size')}</b>{t('。', '.')}
             </p>
             {advanced && (
               <p className="adv-on-note">
-                高级模式已开启 · 评测全部交给你的模型（BYOK）
-                <button onClick={() => { setAdvanced(false); setAdvOpen(false); setError('') }}>关闭</button>
+                {t('高级模式已开启 · 评测全部交给你的模型（BYOK）', 'Advanced mode on · evaluations all run on your own model (BYOK)')}
+                <button onClick={() => { setAdvanced(false); persistAiMode(false); setAdvOpen(false); setError('') }}>{t('关闭', 'Off')}</button>
               </p>
             )}
             <div className="input-row">
@@ -954,32 +1014,32 @@ export default function App() {
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && !aiBusy && run()}
-                placeholder={advanced ? '仓库地址或项目名，例如 dify、Odoo、github.com/facebook/react' : '仓库：github.com/owner/repo　　账号：github.com/owner'}
+                placeholder={advanced ? t('仓库地址或项目名，例如 dify、Odoo、github.com/facebook/react', 'Repo URL or project name, e.g. dify, Odoo, github.com/facebook/react') : t('仓库：github.com/owner/repo　　账号：github.com/owner', 'Repo: github.com/owner/repo　　Owner: github.com/owner')}
                 spellCheck={false}
               />
               <button onClick={run} disabled={aiBusy}>
-                {aiBusy ? '模型评测中…' : advanced ? '让模型评测并抽卡' : '抽卡'}
+                {aiBusy ? t('模型评测中…', 'Model evaluating…') : advanced ? t('让模型评测并抽卡', 'Evaluate & Draw') : t('抽卡', 'Draw')}
               </button>
             </div>
             {error && <p className="error">! {error}</p>}
             {advanced && error && (
               <p className="quota-note">
-                模型评测没成功，可以
-                <button onClick={() => { setAdvanced(false); setAdvOpen(false); setError('') }}>关闭高级模式 →</button>
+                {t('模型评测没成功，可以', 'Model evaluation failed — you can ')}
+                <button onClick={() => { setAdvanced(false); persistAiMode(false); setAdvOpen(false); setError('') }}>{t('关闭高级模式 →', 'turn off Advanced mode →')}</button>
               </p>
             )}
             {/限流|403|配额/.test(error) && (
               <p className="quota-note">
-                匿名额度很容易打满
-                <button onClick={() => setView('auth')}>去登录 GitHub / Gitee →</button>
+                {t('匿名额度很容易打满', 'The anonymous quota fills up fast')}
+                <button onClick={() => setView('auth')}>{t('去登录 GitHub / Gitee →', 'Log in to GitHub / Gitee →')}</button>
               </p>
             )}
             <p className="quota-note">
-              游客模式：匿名每小时 60 次，整箱抽卡容易打满
-              <button onClick={() => setView('auth')}>登录后自动读我的仓库 →</button>
+              {t('游客模式：匿名每小时 60 次，整箱抽卡容易打满', 'Guest mode: 60 anonymous draws per hour — a whole box can burn through it')}
+              <button onClick={() => setView('auth')}>{t('登录后自动读我的仓库 →', 'Log in to auto-read my repos →')}</button>
             </p>
             <div className="examples">
-              <span>▶ 快试试：</span>
+              <span>{t('▶ 快试试：', '▶ Try:')}</span>
               {[
                 'https://github.com/facebook/react',
                 'https://github.com/torvalds/linux',
@@ -992,7 +1052,7 @@ export default function App() {
               ))}
             </div>
             <p className="hero-note">
-              <b>项目 = 一包</b>　·　<b>账号 = 一整箱</b>（该账号每个项目各一包，品质各算各的）
+              <b>{t('项目 = 一包', 'Project = one pack')}</b>{t('　·　', ' · ')}<b>{t('账号 = 一整箱', 'Account = a whole box')}</b>{t('（该账号每个项目各一包，品质各算各的）', ' (one pack per project, each graded on its own)')}
             </p>
           </section>
           )}
@@ -1004,11 +1064,10 @@ export default function App() {
           <div className="home-features">
           <section className={`arena-entry ${advanced ? 'channels' : ''}`}>
             <div className="arena-copy">
-              <h3>竞技场</h3>
+              <h3>{t('竞技场', 'Arena')}</h3>
               <p>
-                三种打法：<b>在线对手</b>（输入对方仓库，按真实实力 1v1）、<b>同类型对战</b>（找同属性仓库）、<b>随机宠物</b>（抽到谁打谁）。
-                开战后<b>全自动</b>，不用点技能；可调难度的是后两种——属性克制、先制、异常状态和换人决定胜负，等级高不一定赢。
-                {advanced && <>　高级模式下还有一条 <b>AI 高级竞技场</b>通道：由模型对比两个项目的真实水平逐回合推演，结算附审计报告。</>}
+                {t('三种打法：', 'Three ways to play: ')}<b>{t('在线对手', 'Online opponent')}</b>{t('（输入对方仓库，按真实实力 1v1）、', ' (enter their repo, 1v1 on true strength), ')}<b>{t('同类型对战', 'Same-type battle')}</b>{t('（找同属性仓库）、', ' (vs a repo of the same element), ')}<b>{t('随机宠物', 'Random pet')}</b>{t('（抽到谁打谁）。 开战后', ' (fight whoever you drew). Battles are ')}<b>{t('全自动', 'fully auto')}</b>{t('，不用点技能；可调难度的是后两种——属性克制、先制、异常状态和换人决定胜负，等级高不一定赢。', ' — no skill picking; the other two modes let you tune difficulty — type matchups, priority, status and switches decide it, and a higher level does not always win.')}
+                {advanced && <>{t('　高级模式下还有一条 ', ' Advanced mode also unlocks the ')}<b>{t('AI 高级竞技场', 'AI Pro Arena')}</b>{t('通道：由模型对比两个项目的真实水平逐回合推演，结算附审计报告。', ' channel: the model compares both projects’ true strength round by round, and the settlement comes with an audit report.')}</>}
               </p>
             </div>
             <div className="arena-channel-btns">
@@ -1017,16 +1076,16 @@ export default function App() {
                 onClick={() => { setBattleInitial(null); setBattleChannel('classic'); setView('battle') }}
                 disabled={collection.length === 0}
               >
-                {collection.length === 0 ? '先抽一只' : '进入竞技场'}
+                {collection.length === 0 ? t('先抽一只', 'Draw One First') : t('进入竞技场', 'Enter Arena')}
               </button>
               {advanced && (
                 <button
                   className="ghost-btn arena-ai-btn"
                   onClick={() => { setBattleInitial(null); setBattleChannel('ai'); setView('battle') }}
                   disabled={collection.length === 0}
-                  title="AI 高级竞技场：模型对比两个项目水平，结算提供审计报告（消耗模型额度）"
+                  title={t('AI 高级竞技场：模型对比两个项目水平，结算提供审计报告（消耗模型额度）', 'AI Pro Arena: the model compares both projects and settles with an audit report (uses model quota)')}
                 >
-                  <span className="arena-ai-badge">AI</span>高级竞技场
+                  <span className="arena-ai-badge">AI</span>{t('高级竞技场', ' Pro Arena')}
                 </button>
               )}
             </div>
@@ -1034,27 +1093,25 @@ export default function App() {
 
           <section className="training-entry">
             <div className="training-entry-copy">
-              <h3>训练场</h3>
+              <h3>{t('训练场', 'Training')}</h3>
               <p>
-                六位 AI 教练随时待命：<b>Trae / WorkBuddy / Codex / Cursor / Claude Code / Grok Bot</b>。
-                点一下直达对应软件，不耗体力、不影响竞技场战绩，去过的自动打卡。
+                {t('六位 AI 教练随时待命：', 'Six AI coaches on call: ')}<b>Trae / WorkBuddy / Codex / Cursor / Claude Code / Grok Bot</b>{t('。 点一下直达对应软件，不耗体力、不影响竞技场战绩，去过的自动打卡。', '. One click jumps to that app — no stamina cost, no effect on your arena record, and visits are checked in automatically.')}
               </p>
             </div>
             <button className="ghost-btn" onClick={() => { sfx.swoosh(); setView('training') }}>
-              进入训练场
+              {t('进入训练场', 'Enter Training')}
             </button>
           </section>
 
           <section className="leaderboard-entry">
             <div className="leaderboard-entry-copy">
-              <h3>GitHub 排行榜</h3>
+              <h3>{t('GitHub 排行榜', 'GitHub Leaderboard')}</h3>
               <p>
-                GitHub 趋势榜实时拉取：<b>今日 / 本周 / 本月</b>最火仓库，按 Star 增长排序。
-                点「抽卡」能直接把榜单上的仓库变成一只精灵，看看它是什么品种、什么品质。
+                {t('GitHub 趋势榜实时拉取：', 'Live from the GitHub trending list: ')}<b>{t('今日 / 本周 / 本月', 'Today / This week / This month')}</b>{t('最火仓库，按 Star 增长排序。 点「抽卡」能直接把榜单上的仓库变成一只精灵，看看它是什么品种、什么品质。', ' hottest repos, sorted by Star growth. Hit “Draw” to turn a listed repo straight into a sprite and see its species and quality.')}
               </p>
             </div>
             <button className="ghost-btn" onClick={() => { sfx.swoosh(); setView('leaderboard') }}>
-              去看排行榜
+              {t('去看排行榜', 'View Leaderboard')}
             </button>
           </section>
           </div>
@@ -1083,6 +1140,8 @@ export default function App() {
               saveLLMConfig(next)
               setBindState('idle')
               setBindError('')
+              setAdvanced(false)
+              persistAiMode(false)
             }}
             aiBusy={aiBusy}
             bindState={bindState}
@@ -1097,15 +1156,15 @@ export default function App() {
       {view === 'warehouse' && (
         <main className="home">
           <section className="hero">
-            <h2>精灵仓库</h2>
-            <p>抽到的每一只精灵都住在<b>这里</b> —— 点开看详情、培育成长，或者直接带去对战。</p>
+            <h2>{t('精灵仓库', 'Sprite Vault')}</h2>
+            <p>{t('抽到的每一只精灵都住在', 'Every sprite you draw lives ')}<b>{t('这里', 'here')}</b>{t(' —— 点开看详情、培育成长，或者直接带去对战。', ' — open one to view details, grow it, or take it straight into battle.')}</p>
           </section>
           {collection.length > 0 ? (
             <Collection list={collection} onPick={(p) => { setPet(p); setView('detail') }} />
           ) : (
             <div className="warehouse-empty">
-              <p>仓库空空如也 —— 先去大厅抽一包？</p>
-              <button className="primary-btn" onClick={() => { sfx.swoosh(); setView('home') }}>去大厅抽卡</button>
+              <p>{t('仓库空空如也 —— 先去大厅抽一包？', 'The vault is empty — draw a pack in the Lobby first?')}</p>
+              <button className="primary-btn" onClick={() => { sfx.swoosh(); setView('home') }}>{t('去大厅抽卡', 'Go Draw in Lobby')}</button>
             </div>
           )}
         </main>
@@ -1122,7 +1181,7 @@ export default function App() {
             </p>
           </div>
           <ul className="scan-steps">
-            {(advanced ? STEPS_AI : mode === 'owner' ? STEPS_OWNER : STEPS).map((s, i) => (
+            {(advanced ? STEPS_AI : mode === 'owner' ? STEPS_OWNER : STEPS)[lang].map((s, i) => (
               <li key={s} className={i < step ? 'done' : i === step ? 'active' : ''}>
                 <span className="dot" />
                 {s}
@@ -1132,7 +1191,7 @@ export default function App() {
           </ul>
           {progress && (
             <div className="scan-progress">
-              <span>正在判定 {progress.done}/{progress.total} · {progress.name}</span>
+              <span>{t('正在判定 ', 'Judging ')}{progress.done}/{progress.total} · {progress.name}</span>
               <div className="sp-bar">
                 <div className="sp-fill" style={{ width: `${(progress.done / Math.max(1, progress.total)) * 100}%` }} />
               </div>
@@ -1150,7 +1209,7 @@ export default function App() {
           onOpenAll={() => setRevealedAll(true)}
           onSaveAll={saveAll}
           onExit={auth.profile?.authenticated ? backToAccount : reset}
-          exitLabel={auth.profile?.authenticated ? '回到我的主页' : '换个账号 / 仓库'}
+          exitLabel={auth.profile?.authenticated ? t('回到我的主页', 'Back to My Home') : t('换个账号 / 仓库', 'Switch account / repo')}
         />
       )}
 
@@ -1163,7 +1222,7 @@ export default function App() {
       {view === 'reveal' && pet && (
         <main className="reveal-stage">
           <h2 className={`reveal-title quality-text-${pet.quality.key}`}>
-            {pet.quality.name} · {pet.element.name}系{pet.species.name} 登场
+            {pet.quality.name} · {pet.element.name}{t('系', ' ')}{pet.species.name}{t(' 登场', ' appears')}
           </h2>
           <AiNote pet={pet} />
           <PetCard key={revalCount} pet={pet} revealed />
@@ -1171,12 +1230,12 @@ export default function App() {
             {box ? (
               <>
                 <button className="primary-btn" onClick={backToBox}>
-                  收下 · 回卡箱{box.pets.length - opened.size > 0 ? `（还剩 ${box.pets.length - opened.size} 包）` : ''}
+                  {t('收下 · 回卡箱', 'Collect · Back to Box')}{box.pets.length - opened.size > 0 ? t(`（还剩 ${box.pets.length - opened.size} 包）`, ` (${box.pets.length - opened.size} left)`) : ''}
                 </button>
-                <button className="ghost-btn" onClick={goDetail}>看详情</button>
+                <button className="ghost-btn" onClick={goDetail}>{t('看详情', 'Details')}</button>
               </>
             ) : (
-              <button className="primary-btn" onClick={goDetail}>收入图鉴</button>
+              <button className="primary-btn" onClick={goDetail}>{t('收入图鉴', 'Add to Dex')}</button>
             )}
             {llmConfig.apiKey?.trim() && llmConfig.binding && (
               <button
@@ -1185,16 +1244,16 @@ export default function App() {
                 onClick={handleReevaluate}
                 disabled={revalBusy}
                 title={pet.aiEvaluated
-                  ? '用你绑定的模型对这个仓库再评测一次，重 roll 品质 / 六维 / 技能 / 词条'
-                  : '用你的模型做一次 AI 专业评测：品质 / 六维 / 技能 / 词条全部由模型按项目定制，替代规则引擎的结果'}
+                  ? t('用你绑定的模型对这个仓库再评测一次，重 roll 品质 / 六维 / 技能 / 词条', 'Re-evaluate this repo with your bound model — re-roll quality / six stats / skills / traits')
+                  : t('用你的模型做一次 AI 专业评测：品质 / 六维 / 技能 / 词条全部由模型按项目定制，替代规则引擎的结果', 'Run a pro AI evaluation with your model: quality / six stats / skills / traits all customized per project, replacing the rule engine result')}
               >
                 <span className="reeval-btn-text">
-                  {revalBusy ? (pet.aiEvaluated ? '鉴定中…' : '评测中…') : (pet.aiEvaluated ? '重新鉴定' : 'AI 专业评测')}
+                  {revalBusy ? (pet.aiEvaluated ? t('鉴定中…', 'Appraising…') : t('评测中…', 'Evaluating…')) : (pet.aiEvaluated ? t('重新鉴定', 'Re-appraise') : t('AI 专业评测', 'Pro AI Eval'))}
                 </span>
               </button>
             )}
-            <button className="ghost-btn" onClick={() => exportShareCard(pet)}>导出分享卡</button>
-            <button className="ghost-btn" onClick={reset}>再抽一只</button>
+            <button className="ghost-btn" onClick={() => exportShareCard(pet)}>{t('导出分享卡', 'Export Share Card')}</button>
+            <button className="ghost-btn" onClick={reset}>{t('再抽一只', 'Draw Another')}</button>
           </div>
           {revalError && <p className="error reval-error">! {revalError}</p>}
         </main>
@@ -1205,10 +1264,10 @@ export default function App() {
           <AiNote pet={pet} />
           <PetCard pet={pet} />
           <div className="actions">
-            <button className="primary-btn" onClick={() => exportShareCard(pet)}>导出分享卡</button>
-            <button className="primary-btn" onClick={() => { setBattleInitial(pet); setBattleChannel('classic'); setView('battle') }}>带它去对战</button>
-            {box && <button className="ghost-btn" onClick={() => setView('box')}>返回卡箱</button>}
-            <button className="ghost-btn" onClick={reset}>再抽一只</button>
+            <button className="primary-btn" onClick={() => exportShareCard(pet)}>{t('导出分享卡', 'Export Share Card')}</button>
+            <button className="primary-btn" onClick={() => { setBattleInitial(pet); setBattleChannel('classic'); setView('battle') }}>{t('带它去对战', 'Take It to Battle')}</button>
+            {box && <button className="ghost-btn" onClick={() => setView('box')}>{t('返回卡箱', 'Back to Box')}</button>}
+            <button className="ghost-btn" onClick={reset}>{t('再抽一只', 'Draw Another')}</button>
           </div>
           <GrowPanel
             pet={pet}
@@ -1230,6 +1289,8 @@ export default function App() {
             challenge={battleChallenge}
             channel={battleChannel}
             llmConfig={llmConfig}
+            advanced={advanced}
+            onChannel={setBattleChannel}
             onExit={() => { setBattleChannel('classic'); setView(battleInitial ? 'detail' : 'home') }}
             onReward={grantBattleXp}
           />
@@ -1248,17 +1309,17 @@ export default function App() {
       {preview && (
         <>
           <div className="preview-backdrop" onClick={() => setPreview(null)} />
-          <div className="preview-pop" role="dialog" aria-label="观摩项目卡面">
+          <div className="preview-pop" role="dialog" aria-label={t('观摩项目卡面', 'Preview project card')}>
             <div className="preview-head">
-              <span className="preview-title">观摩 · <b>{preview.full}</b></span>
-              <button className="preview-close" onClick={() => { sfx.back(); setPreview(null) }}>✕ 关闭</button>
+              <span className="preview-title">{t('观摩 · ', 'Preview · ')}<b>{preview.full}</b></span>
+              <button className="preview-close" onClick={() => { sfx.back(); setPreview(null) }}>{t('✕ 关闭', '✕ Close')}</button>
             </div>
-            {preview.loading && <p className="preview-loading">正在读取对方仓库的档案…</p>}
+            {preview.loading && <p className="preview-loading">{t('正在读取对方仓库的档案…', "Reading the opponent's repo profile…")}</p>}
             {preview.error && <p className="error">! {preview.error}</p>}
             {preview.pet && (
               <>
                 <PetCard pet={preview.pet} />
-                <p className="preview-note">只看不收 —— 想收服它，点行内的「挑战」进竞技场</p>
+                <p className="preview-note">{t('只看不收 —— 想收服它，点行内的「挑战」进竞技场', 'View only — to catch it, tap “Challenge” in its row to enter the Arena')}</p>
               </>
             )}
           </div>
@@ -1266,7 +1327,7 @@ export default function App() {
       )}
 
       <footer className="footer">
-        GitMon Prototype v0.3 · 数据来自 GitHub / Gitee 公开 API · 开包动画 pack-opener-js · 粒子 tsParticles · 对战机制参照 Pokémon Showdown（MIT）
+        {t('GitMon Prototype v0.3 · 数据来自 GitHub / Gitee 公开 API · 开包动画 pack-opener-js · 粒子 tsParticles · 对战机制参照 Pokémon Showdown（MIT）', 'GitMon Prototype v0.3 · Data from GitHub / Gitee public APIs · Pack animation pack-opener-js · Particles tsParticles · Battle mechanics modeled on Pokémon Showdown (MIT)')}
       </footer>
     </div>
   )

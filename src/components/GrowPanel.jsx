@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { expForLevel } from '../engine.js'
+import { useI18n } from '../i18n.js'
 
 // 养成面板（文档 §7.2）：每日投喂 / 每周训练任务 / 羁绊值
 const TASK_POOL = [
-  { key: 'test', label: '补一个单元测试', hint: '测试完备度 +', xp: 120 },
-  { key: 'doc', label: '补写一段 README 文档', hint: '文档完整度 +', xp: 100 },
-  { key: 'ci', label: '给仓库加上 CI 配置', hint: '工程质量 +', xp: 150 },
-  { key: 'issue', label: '关闭一个陈年 issue', hint: '维护健康度 +', xp: 90 },
-  { key: 'release', label: '发布一个 release', hint: '维护健康度 +', xp: 200 },
+  { key: 'test', label: ['补一个单元测试', 'Add a unit test'], hint: ['测试完备度 +', 'Test coverage +'], xp: 120 },
+  { key: 'doc', label: ['补写一段 README 文档', 'Write a README section'], hint: ['文档完整度 +', 'Docs completeness +'], xp: 100 },
+  { key: 'ci', label: ['给仓库加上 CI 配置', 'Set up CI for the repo'], hint: ['工程质量 +', 'Code quality +'], xp: 150 },
+  { key: 'issue', label: ['关闭一个陈年 issue', 'Close a stale issue'], hint: ['维护健康度 +', 'Maintenance health +'], xp: 90 },
+  { key: 'release', label: ['发布一个 release', 'Ship a release'], hint: ['维护健康度 +', 'Maintenance health +'], xp: 200 },
 ]
 
 function pickTasks(pet) {
@@ -25,6 +26,7 @@ function pickTasks(pet) {
 }
 
 export default function GrowPanel({ pet, onUpdate }) {
+  const { t: tf } = useI18n()
   const [tasks] = useState(() => pickTasks(pet))
   const [done, setDone] = useState([])
   const [fedAt, setFedAt] = useState(pet.fedAt || 0)
@@ -46,28 +48,29 @@ export default function GrowPanel({ pet, onUpdate }) {
 
   const feed = () => {
     const today = new Date().toDateString()
-    if (fedAt === today) { setMsg('今天已经投喂过啦'); return }
-    if (pet.status === 'sleeping') { setMsg('精灵沉睡中，先提交一次代码唤醒它'); return }
+    if (fedAt === today) { setMsg(tf('今天已经投喂过啦', 'Already fed today')); return }
+    if (pet.status === 'sleeping') { setMsg(tf('精灵沉睡中，先提交一次代码唤醒它', 'Fast asleep — push a commit to wake it')); return }
     setFedAt(today)
-    setMsg('投喂成功，精灵开心地晃了晃')
+    setMsg(tf('投喂成功，精灵开心地晃了晃', 'Fed! Your pet wiggled happily'))
     gain(40, 5)
   }
 
   const complete = (task) => {
     if (done.includes(task.key)) return
     setDone([...done, task.key])
-    setMsg(`完成「${task.label}」，+${task.xp} XP`)
+    const label = tf(...task.label)
+    setMsg(tf(`完成「${label}」，+${task.xp} XP`, `Completed “${label}” · +${task.xp} XP`))
     gain(task.xp, 4)
   }
 
   const bond = pet.bond || 0
-  const bondTitle = bond >= 80 ? '灵魂伴侣' : bond >= 50 ? '默契伙伴' : bond >= 20 ? '熟悉的朋友' : '初次见面'
+  const bondTitle = bond >= 80 ? tf('灵魂伴侣', 'Soulmates') : bond >= 50 ? tf('默契伙伴', 'Trusted Partner') : bond >= 20 ? tf('熟悉的朋友', 'Familiar Friend') : tf('初次见面', 'First Meeting')
 
   return (
     <section className="grow">
       <div className="grow-head">
-        <h3>养成</h3>
-        <span className="bond">羁绊 {bond} · {bondTitle}</span>
+        <h3>{tf('养成', 'Growth')}</h3>
+        <span className="bond">{tf('羁绊', 'Bond')} {bond} · {bondTitle}</span>
       </div>
 
       <div className="exp-row">
@@ -77,23 +80,23 @@ export default function GrowPanel({ pet, onUpdate }) {
       </div>
 
       <div className="grow-actions">
-        <button className="ghost-btn" onClick={feed}>每日投喂</button>
+        <button className="ghost-btn" onClick={feed}>{tf('每日投喂', 'Daily Feed')}</button>
         {msg && <span className="grow-msg">{msg}</span>}
       </div>
 
       <div className="tasks">
-        <h4>本周训练任务</h4>
+        <h4>{tf('本周训练任务', 'This Week’s Training')}</h4>
         {tasks.map((t) => (
           <div key={t.key} className={`task ${done.includes(t.key) ? 'done' : ''}`}>
-            <span className="task-label">{t.label}<em>{t.hint}</em></span>
+            <span className="task-label">{tf(...t.label)}<em>{tf(...t.hint)}</em></span>
             <span className="task-xp">+{t.xp} XP</span>
             <button onClick={() => complete(t)} disabled={done.includes(t.key)}>
-              {done.includes(t.key) ? '已完成' : '完成'}
+              {done.includes(t.key) ? tf('已完成', 'Done') : tf('完成', 'Complete')}
             </button>
           </div>
         ))}
       </div>
-      <p className="grow-note">真实版本中，XP 由仓库 commit / PR / release 自动结算（每日同步）。</p>
+      <p className="grow-note">{tf('真实版本中，XP 由仓库 commit / PR / release 自动结算（每日同步）。', 'In the real product, XP settles automatically from repo commits / PRs / releases (synced daily).')}</p>
     </section>
   )
 }

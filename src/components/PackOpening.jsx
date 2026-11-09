@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPackOpener } from 'pack-opener-js'
 import { packArtwork, cardArtwork } from '../sprite.js'
 import { sfx } from '../sfx.js'
+import { useI18n } from '../i18n.js'
 import RevealBurst from './RevealBurst.jsx'
 
 // 品质 → 开包库的落档位（决定"落地"这一击有多重）
@@ -15,6 +16,7 @@ const BADGE = { SSR: 'Grail', SR: 'Epic', R: 'Rare' }
 //  2. 项目自己的芯片音（sfx）—— 只补库里没有的时刻：卡包浮现、开包页进场、
 //     撤退、以及揭晓页的结算音。
 export default function PackOpening({ pet, onReveal, muted }) {
+  const { t } = useI18n()
   const stageRef = useRef(null)
   const openerRef = useRef(null)
   const mutedRef = useRef(muted ?? sfx.muted)
@@ -173,18 +175,18 @@ export default function PackOpening({ pet, onReveal, muted }) {
         <div className="pack-fallback" onClick={fallbackOpen}>
           <div className="pack-fallback-inner">
             <div className="pf-title">GITMON</div>
-            <div className="pf-sub">点击开包</div>
+            <div className="pf-sub">{t('点击开包', 'Click to open')}</div>
           </div>
         </div>
       )}
 
       <p className="pack-hint">
         {ready || failed
-          ? <>拖动划过封口撕开卡包，或<span className="hint-arrow" /></>
-          : '正在准备这只精灵的卡面立绘…'}
+          ? <>{t('拖动划过封口撕开卡包，或', 'Drag across the seal to rip the pack open, or')}<span className="hint-arrow" /></>
+          : t('正在准备这只精灵的卡面立绘…', 'Preparing this pet’s card art…')}
       </p>
       <button className="primary-btn" onClick={failed ? fallbackOpen : autoOpen} disabled={!ready && !failed}>
-        {failed ? '直接开包' : ready ? '一键开包' : '立绘准备中…'}
+        {failed ? t('直接开包', 'Open Directly') : ready ? t('一键开包', 'Open in One Tap') : t('立绘准备中…', 'Preparing art…')}
       </button>
 
       {burst && <RevealBurst color={pet.quality.color} intensity={pet.quality.key === 'SSR' ? 1.6 : pet.quality.key === 'SR' ? 1.2 : 0.8} />}

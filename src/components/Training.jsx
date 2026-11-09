@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { TRAINING_TOOLS, hostOf } from '../training-tools.js'
 import { sfx } from '../sfx.js'
+import { useI18n } from '../i18n.js'
 
 const VISITED_KEY = 'gitmon:training:visited'
 
@@ -15,6 +16,7 @@ function readVisited() {
 
 // 训练场：六种 AI 编程搭子，点卡片在新标签页打开对应软件，并记一次打卡
 export default function Training() {
+  const { t } = useI18n()
   const [visited, setVisited] = useState(readVisited)
 
   const markVisited = (id) => {
@@ -32,15 +34,14 @@ export default function Training() {
       <header className="training-head">
         <div className="training-title">
           <span className="training-eyebrow">TRAINING GROUND · 06 COACHES</span>
-          <h2>训练场</h2>
+          <h2>{t('训练场', 'Training Ground')}</h2>
           <p>
-            换个教练练练手：六款 AI 编程工具，点一下直达对应软件。
-            不消耗体力、不占用竞技场战绩，去过的会留下打卡记录。
+            {t('换个教练练练手：六款 AI 编程工具，点一下直达对应软件。 不消耗体力、不占用竞技场战绩，去过的会留下打卡记录。', 'Try a different coach: six AI coding tools, one tap jumps straight into the app. Costs no stamina, never touches your arena record — visited ones keep a check-in badge.')}
           </p>
         </div>
         <div className="training-counter">
           <b>{visited.length}</b><span> / {TRAINING_TOOLS.length}</span>
-          <small>已打卡</small>
+          <small>{t('已打卡', 'Checked in')}</small>
         </div>
       </header>
 
@@ -67,12 +68,12 @@ export default function Training() {
                 <h3>{tool.name}</h3>
                 <div className="tool-meta">{tool.vendor} · {tool.kind}</div>
                 <p className="tool-desc">{tool.desc}</p>
-                <span className="tool-cta">打开 {hostOf(tool.url)} →</span>
+                <span className="tool-cta">{t('打开', 'Open')} {hostOf(tool.url)} →</span>
               </a>
               <footer className="tool-foot">
                 {done
-                  ? <span className="tool-done">✓ 已打卡</span>
-                  : <span className="tool-pending">未打卡</span>}
+                  ? <span className="tool-done">{t('✓ 已打卡', '✓ Checked in')}</span>
+                  : <span className="tool-pending">{t('未打卡', 'Not checked in')}</span>}
                 {tool.alt
                   ? <a href={tool.alt.url} target="_blank" rel="noopener noreferrer">{tool.alt.label}</a>
                   : <span className="tool-host">{hostOf(tool.url)}</span>}
@@ -83,7 +84,7 @@ export default function Training() {
       </div>
 
       <p className="training-note">
-        ※ 链接在新标签页打开，均指向官方站点（Trae 默认国内版）。打卡记录只存在本机浏览器，不上传。
+        {t('※ 链接在新标签页打开，均指向官方站点（Trae 默认国内版）。打卡记录只存在本机浏览器，不上传。', '※ Links open in a new tab and point to official sites (Trae defaults to the China build). Check-ins stay in this browser and are never uploaded.')}
       </p>
     </main>
   )

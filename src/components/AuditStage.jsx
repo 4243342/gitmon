@@ -6,12 +6,21 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { stageFromLevel, stageName } from '../evolution.js'
 import { finalRollDuration } from '../audit.js'
 import { sfx } from '../sfx.js'
+import { useI18n } from '../i18n.js'
 import PixelSprite from './PixelSprite.jsx'
 import '../audit.css'
 
-const STEPS = ['M0 连接仓库', 'M1 发现属性', 'M2 生态位', 'M3 工程量勘测', 'M4 质量检验', 'M5 模型总评']
+const STEPS = [
+  ['M0 连接仓库', 'M0 Connect repo'],
+  ['M1 发现属性', 'M1 Discover element'],
+  ['M2 生态位', 'M2 Ecological niche'],
+  ['M3 工程量勘测', 'M3 Scale survey'],
+  ['M4 质量检验', 'M4 Quality check'],
+  ['M5 模型总评', 'M5 Model verdict'],
+]
 
 export default function AuditStage({ events = [], onSkip }) {
+  const { t } = useI18n()
   const [popup, setPopup] = useState(null)
   const shownPopup = useRef(-1)
 
@@ -41,7 +50,7 @@ export default function AuditStage({ events = [], onSkip }) {
   // 属性弹窗亮起 = 确定属性 → 光团显形为宠物
   const revealed = useMemo(() => events.some((e) => e.kind === 'popup' && e.kindOf === 'element'), [events])
   const finished = events.some((e) => e.kind === 'done')
-  const lastLine = barrages.length ? barrages[barrages.length - 1].text : '连接仓库，读取档案...'
+  const lastLine = barrages.length ? barrages[barrages.length - 1].text : t('连接仓库，读取档案...', 'Connecting to repo, reading archive...')
 
   // ---- 等级显示值：目标一变就 countUp 滚动（easeOutExpo，对标 countUp.js）----
   const [disp, setDisp] = useState(1)
@@ -101,8 +110,8 @@ export default function AuditStage({ events = [], onSkip }) {
   return (
     <main className="scan audit-stage">
       <div className="audit-topline">
-        <span className="audit-badge">深度审计 · 真实抓取</span>
-        <span className="audit-badge audit-badge--muted">等级随勘测实时结算</span>
+        <span className="audit-badge">{t('深度审计 · 真实抓取', 'Deep audit · real scan')}</span>
+        <span className="audit-badge audit-badge--muted">{t('等级随勘测实时结算', 'Level settles with the survey')}</span>
       </div>
 
       {/* 中央舞台：光团 → 属性确定显形宠物；等级大字随勘测滚动 */}
@@ -122,7 +131,7 @@ export default function AuditStage({ events = [], onSkip }) {
         {evolve && <span className="audit-evolve-flash" key={`f${evolve.key}`} aria-hidden />}
         {evolve && (
           <strong className="audit-evolve-tag" key={`t${evolve.key}`}>
-            进化 · {evolve.name}
+            {t(`进化 · ${evolve.name}`, `EVOLVE · ${evolve.name}`)}
           </strong>
         )}
 
@@ -141,10 +150,10 @@ export default function AuditStage({ events = [], onSkip }) {
       </div>
 
       <ul className="scan-steps audit-steps">
-        {STEPS.map((s, i) => (
-          <li key={s} className={finished || i < activeStep ? 'done' : i === activeStep ? 'active' : ''}>
+        {STEPS.map(([zh, en], i) => (
+          <li key={zh} className={finished || i < activeStep ? 'done' : i === activeStep ? 'active' : ''}>
             <span className="dot" />
-            {s}
+            {t(zh, en)}
             {(finished || i < activeStep) && <em>OK!</em>}
           </li>
         ))}
@@ -158,7 +167,7 @@ export default function AuditStage({ events = [], onSkip }) {
 
       {popup && (
         <div className={`audit-popup audit-popup--${popup.kindOf}`} key={popup.seq}>
-          <span className="audit-popup-tag">{popup.kindOf === 'element' ? '发现属性' : '种族判定'}</span>
+          <span className="audit-popup-tag">{popup.kindOf === 'element' ? t('发现属性', 'Element found') : t('种族判定', 'Species verdict')}</span>
           <strong className="audit-popup-name">{popup.name}</strong>
           {popup.sub && <span className="audit-popup-sub">{popup.sub}</span>}
         </div>
@@ -168,7 +177,7 @@ export default function AuditStage({ events = [], onSkip }) {
 
       {!finished && (
         <button type="button" className="ghost-btn audit-skip" onClick={onSkip}>
-          跳过演出 → 直接出卡
+          {t('跳过演出 → 直接出卡', 'Skip show → draw card now')}
         </button>
       )}
     </main>

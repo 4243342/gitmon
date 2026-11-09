@@ -5,6 +5,7 @@ import { hasCustomSprite, setCustomSprite, clearCustomSprite, onCustomSprite } f
 import { MAX_STAGE, nextStage, stageInfo, stageProgress } from '../evolution.js'
 import { StarBadge } from '../starBadge.jsx'
 import ModelSeal from './ModelSeal.jsx'
+import { useI18n } from '../i18n.js'
 
 // 卡面材质由 GPL-3.0 库 pokemon-cards-css（simeydotme，8.3k★）接管，
 // 拼接内置在 src/vendor/pokemon-cards.css（同目录附 LICENSE，GPL-3.0）。
@@ -23,6 +24,7 @@ const REST_VARS = {
 
 // 精灵卡片：标准集换式卡比例 63:88；倾斜/全息材质全部由 pokemon-cards-css 接管。
 export default function PetCard({ pet, revealed = false }) {
+  const { t: tf } = useI18n()
   const rootRef = useRef(null)
   const contentRef = useRef(null)
   const fileRef = useRef(null)
@@ -108,25 +110,25 @@ export default function PetCard({ pet, revealed = false }) {
                   <div className="card-head-text">
                     <div className="pet-name">{pet.repo}</div>
                     <div className="pet-sub">
-                      {pet.element.name}系
+                      {tf(`${pet.element.name}系`, `${pet.element.name}-type`)}
                       {pet.elementSecondary && <span className="dual">/{pet.elementSecondary.name}</span>}
                       {' · '}{pet.species.name} · {evo.name}
-                      {pet.status === 'sleeping' && <span className="sleep-tag">沉睡</span>}
+                      {pet.status === 'sleeping' && <span className="sleep-tag">{tf('沉睡', 'Sleep')}</span>}
                       {pet.aiEvaluated && (
                         <span
                           className="ai-tag"
                           title={pet.audited
-                            ? `深度审计：真实抓取后由模型 ${pet.aiModel || ''} 总评`
-                            : `全部评测由模型 ${pet.aiModel || ''} 给出，非真实扫描`}
+                            ? tf(`深度审计：真实抓取后由模型 ${pet.aiModel || ''} 总评`, `Deep audit: overall rating by model ${pet.aiModel || ''} after real fetch`)
+                            : tf(`全部评测由模型 ${pet.aiModel || ''} 给出，非真实扫描`, `All ratings by model ${pet.aiModel || ''} · not a real scan`)}
                         >
-                          {pet.audited ? '深度审计' : 'AI 推测'}
+                          {pet.audited ? tf('深度审计', 'Deep Audit') : tf('AI 推测', 'AI Guess')}
                         </span>
                       )}
                     </div>
                   </div>
                   {/* 星级段位：GitHub / Gitee star，1 颗 = 1 级，右上角 */}
                   <StarBadge stars={pet.stars} size={26} />
-                  <div className={`quality-badge len-${q.key.length}`} title={`品质：${q.name}`}>
+                  <div className={`quality-badge len-${q.key.length}`} title={tf(`品质：${q.name}`, `Quality: ${q.name}`)}>
                     <span>{q.key}</span>
                   </div>
                 </div>
@@ -142,10 +144,10 @@ export default function PetCard({ pet, revealed = false }) {
                   <ModelSeal pet={pet} />
                   <div className="sprite-tools">
                     {hasCustomSprite(pet) && (
-                      <button className="sprite-tool" title="恢复默认立绘" onClick={() => clearCustomSprite(pet)}>还原</button>
+                      <button className="sprite-tool" title={tf('恢复默认立绘', 'Restore default art')} onClick={() => clearCustomSprite(pet)}>{tf('还原', 'Reset')}</button>
                     )}
-                    <button className="sprite-tool" title="上传自定义形象，也可以直接把图片拖到这里" onClick={() => fileRef.current?.click()}>
-                      换形象
+                    <button className="sprite-tool" title={tf('上传自定义形象，也可以直接把图片拖到这里', 'Upload a custom sprite, or drop an image here')} onClick={() => fileRef.current?.click()}>
+                      {tf('换形象', 'Change Sprite')}
                     </button>
                   </div>
                   <input
@@ -169,7 +171,7 @@ export default function PetCard({ pet, revealed = false }) {
                   <div className="mini-row">
                     <span className="mini-label">{pet.evolutionStage}/{MAX_STAGE}</span>
                     <div className="evo-bar"><div className="evo-fill" style={{ width: `${progress}%` }} /></div>
-                    <span className="mini-val">{nextEvo ? `Lv.${nextEvo.min}` : '最终'}</span>
+                    <span className="mini-val">{nextEvo ? `Lv.${nextEvo.min}` : tf('最终', 'Final')}</span>
                   </div>
                   <div className="mini-row">
                     <span className="mini-label">根基</span>
@@ -180,7 +182,7 @@ export default function PetCard({ pet, revealed = false }) {
                       />
                     </div>
                     <span className={`mini-val tier-${pet.foundationTier?.key || 'fair'}`}>
-                      {pet.foundationTier?.name || '未评估'}
+                      {pet.foundationTier?.name || tf('未评估', 'Not rated')}
                     </span>
                   </div>
                 </div>
@@ -206,17 +208,17 @@ export default function PetCard({ pet, revealed = false }) {
                     // 高级模式：技能名 / 属性 / 威力 / 解锁等级 / 描述 / 依据全部来自模型，hover 可看定制依据
                     const tip = [
                       s.name,
-                      s.element ? `${s.element.name}系` : '',
-                      s.power != null ? `威力 ${s.power}` : '',
-                      `Lv.${s.unlockLevel} 解锁`,
+                      s.element ? tf(`${s.element.name}系`, `${s.element.name}-type`) : '',
+                      s.power != null ? tf(`威力 ${s.power}`, `Power ${s.power}`) : '',
+                      tf(`Lv.${s.unlockLevel} 解锁`, `Unlocks at Lv.${s.unlockLevel}`),
                       s.desc,
-                      s.reason ? `定制依据：${s.reason}` : '',
+                      s.reason ? tf(`定制依据：${s.reason}`, `Basis: ${s.reason}`) : '',
                     ].filter(Boolean).join('\n')
                     return (
                       <div
                         key={`${s.name}-${i}`}
                         className={`skill ${s.unlocked ? '' : 'locked'}`}
-                        title={s.unlocked ? tip : `Lv.${s.unlockLevel} 解锁 · ${s.name}`}
+                        title={s.unlocked ? tip : tf(`Lv.${s.unlockLevel} 解锁 · ${s.name}`, `Unlocks at Lv.${s.unlockLevel} · ${s.name}`)}
                         style={s.element ? { '--skill-color': s.element.color } : undefined}
                       >
                         <span className="skill-dot" />
@@ -230,7 +232,7 @@ export default function PetCard({ pet, revealed = false }) {
                 {(pet.traits?.length > 0 || pet.traitHints?.filter((h) => h.fix).length > 0) && (
                   <div className="traits">
                     {pet.traits.slice(0, 3).map((t) => (
-                      <span key={t.key} className={`trait-chip ${t.kind}`} title={`${t.desc}\n触发：${t.reason}`}>
+                      <span key={t.key} className={`trait-chip ${t.kind}`} title={`${t.desc}\n${tf('触发：', 'Trigger: ')}${t.reason}`}>
                         {t.kind === 'negative' ? '▾' : '▴'} {t.name}
                       </span>
                     ))}
@@ -250,7 +252,7 @@ export default function PetCard({ pet, revealed = false }) {
                 </div>
 
                 <div className="card-foot">
-                  <span>品质 {pet.qualityScore} · 工程量 {pet.engineeringScore} · 战力 {pet.combatPower ?? '—'}</span>
+                  <span>{tf('品质', 'Quality')} {pet.qualityScore} · {tf('工程量', 'Engineering')} {pet.engineeringScore} · {tf('战力', 'Power')} {pet.combatPower ?? '—'}</span>
                   <span className="card-foot-right">
                     <a
                       className="card-repo-url"

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useI18n } from '../i18n.js'
 import '../advanced.css'
 
 // 高级模式（BYOK）：全程只填一枚密钥，后端自动识别厂商 / 模型，无需点任何按钮。
@@ -8,6 +9,7 @@ export default function AdvancedPanel({
   bindState = 'idle', bindError = '', gate = null, pingTesting = false, onBind, onClose,
   deepAudit = true, onDeepAuditChange,
 }) {
+  const { t: tf } = useI18n()
   const [showCustom, setShowCustom] = useState(false)
   const onKeyChange = (apiKey) => onConfigChange?.({ ...config, apiKey, binding: null })
 
@@ -31,17 +33,17 @@ export default function AdvancedPanel({
   }, [config.apiKey, bindState])
 
   return (
-    <section className="llm-panel" aria-label="高级模式：模型评测配置">
+    <section className="llm-panel" aria-label={tf('高级模式：模型评测配置', 'Advanced mode: model evaluation settings')}>
       <header className="llm-head">
-        <span className="llm-badge">AI高级版</span>
+        <span className="llm-badge">{tf('AI高级版', 'AI Pro')}</span>
         {onClose && (
-          <button type="button" className="llm-close" onClick={onClose} aria-label="关闭">✕</button>
+          <button type="button" className="llm-close" onClick={onClose} aria-label={tf('关闭', 'Close')}>✕</button>
         )}
       </header>
 
       {/* 开启高级模式的门槛：连接测试（真打一次 chat/completions）没通过就不放行 */}
       {pingTesting && (
-        <p className="llm-bind-status busy">正在做连接测试…</p>
+        <p className="llm-bind-status busy">{tf('正在做连接测试…', 'Running connection test…')}</p>
       )}
       {!pingTesting && gate && (
         <p className={`llm-bind-status ${gate.type === 'ok' ? 'ok' : 'error'}`}>
@@ -55,7 +57,7 @@ export default function AdvancedPanel({
           value={config.apiKey || ''}
           onChange={(e) => onKeyChange(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && keyReady && !busy) onBindRef.current?.() }}
-          placeholder="粘贴 API Key，粘贴后自动识别厂商与模型"
+          placeholder={tf('粘贴 API Key，粘贴后自动识别厂商与模型', 'Paste API Key — provider & model auto-detected')}
           autoComplete="off"
           spellCheck={false}
           disabled={busy}
@@ -63,10 +65,10 @@ export default function AdvancedPanel({
       </label>
 
       {bindState === 'binding' && (
-        <p className="llm-bind-status busy">正在识别…</p>
+        <p className="llm-bind-status busy">{tf('正在识别…', 'Detecting…')}</p>
       )}
       {bindState === 'error' && (
-        <p className="llm-bind-status error">! {bindError || '识别失败'}</p>
+        <p className="llm-bind-status error">! {bindError || tf('识别失败', 'Detection failed')}</p>
       )}
       {bound && (
         <div className="llm-bound">
@@ -75,8 +77,8 @@ export default function AdvancedPanel({
           {modelOptions.length > 1 ? (
             <select
               className="llm-model-select"
-              aria-label="选择评测模型"
-              title="识别厂商时已自动拉取该厂商的模型列表，选一个用于抽卡评测"
+              aria-label={tf('选择评测模型', 'Select evaluation model')}
+              title={tf('识别厂商时已自动拉取该厂商的模型列表，选一个用于抽卡评测', 'Model list fetched from the provider — pick one for evaluation')}
               value={binding.model}
               onChange={(e) => {
                 const model = e.target.value
@@ -95,15 +97,15 @@ export default function AdvancedPanel({
               className="llm-fetch"
               onClick={onBind}
               disabled={busy || bindState === 'binding'}
-              title="重新向厂商拉取 /models 模型列表"
-            >拉取模型列表</button>
+              title={tf('重新向厂商拉取 /models 模型列表', 'Re-fetch the /models list from the provider')}
+            >{tf('拉取模型列表', 'Fetch models')}</button>
           )}
-          <span className="llm-bound-ok">{binding.verified ? '已验证' : '已识别'}</span>
+          <span className="llm-bound-ok">{binding.verified ? tf('已验证', 'Verified') : tf('已识别', 'Detected')}</span>
         </div>
       )}
 
       {/* 深度审计（docs/AI-AUDIT.md）：默认开——真实扫仓 + 里程碑弹幕 + 等级进化演出 */}
-      <label className="llm-deep" title="开启后抽卡会先真实抓取仓库证据（2–5 分钟）：里程碑弹幕、属性/种族弹窗、等级从 Lv.1 滚到审计完成等级并触发进化；关闭则退回即时推测">
+      <label className="llm-deep" title={tf('开启后抽卡会先真实抓取仓库证据（2–5 分钟）：里程碑弹幕、属性/种族弹窗、等级从 Lv.1 滚到审计完成等级并触发进化；关闭则退回即时推测', 'When on, pulls first fetch real repo evidence (2–5 min): milestone barrage, attribute/species popups, level rolls from Lv.1 to the audited level and may evolve; off falls back to instant guesses')}>
         <input
           type="checkbox"
           checked={deepAudit}
@@ -111,13 +113,13 @@ export default function AdvancedPanel({
           disabled={busy}
         />
         <span className="llm-deep-text">
-          深度审计（2–5 分钟）
-          <em>真实扫仓 · 里程碑弹幕 · 等级进化演出</em>
+          {tf('深度审计（2–5 分钟）', 'Deep Audit (2–5 min)')}
+          <em>{tf('真实扫仓 · 里程碑弹幕 · 等级进化演出', 'Real repo scan · milestone barrage · level-up evolution show')}</em>
         </span>
       </label>
 
       <details className="llm-custom" open={showCustom} onToggle={(e) => setShowCustom(e.currentTarget.open)}>
-        <summary>更多选项（可选）</summary>
+        <summary>{tf('更多选项（可选）', 'More options (optional)')}</summary>
         <div className="llm-custom-fields">
           <label>
             <span>Base URL</span>
@@ -132,19 +134,19 @@ export default function AdvancedPanel({
             />
           </label>
           <label>
-            <span>显示名称</span>
+            <span>{tf('显示名称', 'Display name')}</span>
             <input
               value={config.custom?.label || ''}
               onChange={(e) => onConfigChange?.({
                 ...config, custom: { baseUrl: '', label: '', model: '', ...(config.custom || {}), label: e.target.value }, binding: null,
               })}
-              placeholder="本地 Ollama"
+              placeholder={tf('本地 Ollama', 'Local Ollama')}
               spellCheck={false}
               disabled={busy}
             />
           </label>
           <label>
-            <span>模型名</span>
+            <span>{tf('模型名', 'Model name')}</span>
             <input
               value={config.custom?.model || ''}
               onChange={(e) => onConfigChange?.({
@@ -156,11 +158,11 @@ export default function AdvancedPanel({
             />
           </label>
           <label className="llm-hint-field">
-            <span>补充说明（可选）</span>
+            <span>{tf('补充说明（可选）', 'Extra notes (optional)')}</span>
             <textarea
               value={hint}
               onChange={(e) => onHintChange?.(e.target.value)}
-              placeholder="例如：按 2024 年状态评、把等级压低一点…"
+              placeholder={tf('例如：按 2024 年状态评、把等级压低一点…', 'e.g. judge by 2024 state, keep the level lower…')}
               rows={2}
               disabled={busy}
             />
@@ -170,7 +172,7 @@ export default function AdvancedPanel({
 
       {keyReady && (
         <div className="llm-foot">
-          <button type="button" className="llm-clear" onClick={onClearKey} disabled={busy}>清除密钥</button>
+          <button type="button" className="llm-clear" onClick={onClearKey} disabled={busy}>{tf('清除密钥', 'Clear key')}</button>
         </div>
       )}
     </section>

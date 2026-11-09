@@ -70,6 +70,21 @@ let flushing = null
 let touchedInFlight = null
 let starting = false
 
+// 未被服务端确认的键的重试次数：连续多次收不下就出队（本地保留，靠 synced 标记兜底）
+const ATTEMPT_KEY = 'gitmon:sync_attempts'
+const ATTEMPT_CAP = 5
+
+function bumpAttempts(keys) {
+  if (!keys.length) return []
+  try {
+    const all = JSON.parse(localStorage.getItem(ATTEMPT_KEY) || '{}')
+    const capped = keys.filter((k) => (all[k] = (all[k] || 0) + 1) >= ATTEMPT_CAP)
+    capped.forEach((k) => delete all[k])
+    localStorage.setItem(ATTEMPT_KEY, JSON.stringify(all))
+    return capped
+  } catch { return [] }
+}
+
 function schedulePush(ms = DEBOUNCE_MS) {
   if (pushTimer) clearTimeout(pushTimer)
   pushTimer = setTimeout(() => { pushTimer = null; flushQueue() }, ms)
@@ -151,10 +166,23 @@ async function pushLoop() {
     touchedInFlight = null
     // 用响应里的权威版本覆盖本地（saveCollection 直接落盘，不走 markDirty）
     const serverItems = Array.isArray(data?.items) ? data.items : []
-    if (serverItems.length) saveCollection(overlay(loadCollection(), serverItems))
-    // 本批出队；推送期间又被改动的键留下，下一轮接着推
+    const confirmed = new Set(serverItems.map(petKey))
+    if (serverItems.length) {
+      // 服务端确认收下的条目打上 synced 标记（仅本地字段，供下次启动判断是否别端删除）
+      const merged = overlay(loadCollection(), serverItems)
+      saveCollection(merged.map((p) => (confirmed.has(petKey(p)) ? { ...p, synced: true } : p)))
+    }
+    // 出队只看服务端是否确认：被整条拒收的条目（如 AI 卡的特殊名字）留在队列里重试，
+    // 超次后出队但本地保留——否则下次启动会被「本地有服务端无 → 丢弃」规则误杀
     const batchKeys = new Set(batch.map(petKey))
-    writeQueue(readQueue().filter((k) => !batchKeys.has(k) || touched.has(k)))
+    const unconfirmed = [...batchKeys].filter((k) => !confirmed.has(k))
+    const capped = bumpAttempts(unconfirmed)
+    writeQueue(readQueue().filter((k) => !(confirmed.has(k) || capped.includes(k)) || touched.has(k)))
+    // 本轮还有未确认条目：停一轮 30s 后再试，避免同一坏条目紧循环打后端
+    if (unconfirmed.some((k) => !capped.includes(k))) {
+      scheduleRetry()
+      return true
+    }
   }
 }
 
@@ -189,7 +217,7 @@ export async function startupSync() {
       return (await flushQueue()) ? loadCollection() : null
     }
     // 4) 逐 pet 合并：本地脏的本地赢（等推送），否则服务端赢；
-    //    服务端有本地无 → 追加；本地有服务端无且不脏 → 丢弃（已被别端删除）
+    //    服务端有本地无 → 追加；本地有服务端无：同步过（synced）才视为别端删除丢弃
     const queue = new Set(readQueue())
     const serverMap = new Map(server.map((p) => [petKey(p), p]))
     const seen = new Set()
@@ -203,10 +231,15 @@ export async function startupSync() {
       }
       const s = serverMap.get(key)
       if (s) {
-        merged.push({ ...p, ...s })
+        // 服务端有 → 权威侧确认过，顺手补上 synced 标记
+        merged.push({ ...p, ...s, synced: true })
         seen.add(key)
+        continue
       }
-      // 本地有、服务端无且不脏 → 丢弃
+      // 本地有、服务端无：曾同步过才是「已被别端删除」；
+      // 从未被服务端确认过（拒收 / 离线新建）必须保留
+      if (p.synced) continue
+      merged.push(p)
     }
     for (const s of server) {
       const key = petKey(s)

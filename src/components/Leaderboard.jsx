@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { sfx } from '../sfx.js'
 import { ownerHeader } from '../sync.js'
+import { useI18n } from '../i18n.js'
 
 const SINCE_OPTIONS = [
-  { key: 'daily', label: '今日' },
-  { key: 'weekly', label: '本周' },
-  { key: 'monthly', label: '本月' },
+  { key: 'daily', zh: '今日', en: 'Today' },
+  { key: 'weekly', zh: '本周', en: 'This week' },
+  { key: 'monthly', zh: '本月', en: 'This month' },
 ]
 const LANGUAGES = [
   '', 'Python', 'JavaScript', 'TypeScript', 'Rust', 'Go', 'Java', 'C++', 'C#', 'Ruby',
@@ -33,6 +34,7 @@ function fmt(n) {
 }
 
 export default function Leaderboard({ onChallenge, onPreview, canChallenge = false }) {
+  const { t } = useI18n()
   const [since, setSince] = useState('weekly')
   const [language, setLanguage] = useState('')
   const [items, setItems] = useState([])
@@ -62,7 +64,7 @@ export default function Leaderboard({ onChallenge, onPreview, canChallenge = fal
       })
       .catch(() => {
         if (!alive) return
-        setError('排行榜加载失败：后端未启动，或 GitHub 限流，稍后重试')
+        setError(t('排行榜加载失败：后端未启动，或 GitHub 限流，稍后重试', 'Leaderboard failed to load: backend offline or GitHub rate-limited — retry later'))
         setLoading(false)
       })
     return () => {
@@ -73,8 +75,8 @@ export default function Leaderboard({ onChallenge, onPreview, canChallenge = fal
   return (
     <main className="leaderboard">
       <div className="lb-head">
-        <h2>GitHub 排行榜</h2>
-        <p className="lb-sub">GitHub 趋势榜实时拉取 · 谁正在被 Star，一眼看清</p>
+        <h2>{t('GitHub 排行榜', 'GitHub Leaderboard')}</h2>
+        <p className="lb-sub">{t('GitHub 趋势榜实时拉取 · 谁正在被 Star，一眼看清', 'Live GitHub trending · see who’s getting starred at a glance')}</p>
       </div>
 
       <div className="lb-controls">
@@ -90,25 +92,25 @@ export default function Leaderboard({ onChallenge, onPreview, canChallenge = fal
                 }
               }}
             >
-              {o.label}
+              {t(o.zh, o.en)}
             </button>
           ))}
         </div>
         <select className="lb-lang" value={language} onChange={(e) => setLanguage(e.target.value)}>
           {LANGUAGES.map((l) => (
             <option key={l || '*'} value={l}>
-              {l || '全部语言'}
+              {l || t('全部语言', 'All languages')}
             </option>
           ))}
         </select>
       </div>
 
-      {cached && <p className="lb-cached">趋势榜缓存 30 分钟，数据来自 GitHub</p>}
+      {cached && <p className="lb-cached">{t('趋势榜缓存 30 分钟，数据来自 GitHub', 'Trending cached for 30 min · data from GitHub')}</p>}
       {source === 'search' && (
-        <p className="lb-cached">GitHub 网页版当前不可达，榜单改用 GitHub 搜索接口（近期新建的高星仓库）近似排序</p>
+        <p className="lb-cached">{t('GitHub 网页版当前不可达，榜单改用 GitHub 搜索接口（近期新建的高星仓库）近似排序', 'GitHub web is unreachable — falling back to the search API (recent high-star repos), approximate order')}</p>
       )}
       {error && <p className="error">! {error}</p>}
-      {loading && <div className="lb-loading">正在拉取 GitHub 趋势榜…</div>}
+      {loading && <div className="lb-loading">{t('正在拉取 GitHub 趋势榜…', 'Fetching GitHub trending…')}</div>}
 
       {!loading && !error && (
         <ol className="lb-list">
@@ -139,7 +141,7 @@ export default function Leaderboard({ onChallenge, onPreview, canChallenge = fal
                       {it.language}
                     </span>
                   )}
-                  <span className="lb-stat" title="总 Star">★ {fmt(it.stars)}</span>
+                  <span className="lb-stat" title={t('总 Star', 'Total stars')}>★ {fmt(it.stars)}</span>
                   {it.period_label && (
                     <span className="lb-stat lb-hot" title={it.period_label}>🔥 {fmt(it.period_stars)}</span>
                   )}
@@ -149,23 +151,23 @@ export default function Leaderboard({ onChallenge, onPreview, canChallenge = fal
               <div className="lb-acts">
                 <button
                   className="lb-view"
-                  title="先看看对方的项目卡面"
+                  title={t('先看看对方的项目卡面', 'Preview their project card first')}
                   onClick={() => {
                     sfx.blip()
                     onPreview?.(it.full_name)
                   }}
                 >
-                  观摩
+                  {t('观摩', 'View')}
                 </button>
                 <button
                   className="lb-hatch"
-                  title={canChallenge ? '进竞技场挑战这只仓库的精灵' : '还没有出战精灵，先抽这只仓库'}
+                  title={canChallenge ? t('进竞技场挑战这只仓库的精灵', 'Enter the arena and challenge this repo’s pet') : t('还没有出战精灵，先抽这只仓库', 'No battle pet yet — draw this repo first')}
                   onClick={() => {
                     sfx.blip()
                     onChallenge(it.full_name)
                   }}
                 >
-                  {canChallenge ? '挑战' : '抽卡'}
+                  {canChallenge ? t('挑战', 'Challenge') : t('抽卡', 'Draw')}
                 </button>
               </div>
             </li>
@@ -174,7 +176,7 @@ export default function Leaderboard({ onChallenge, onPreview, canChallenge = fal
       )}
 
       {!loading && !error && items.length === 0 && (
-        <p className="lb-empty">这个榜单暂时没有数据，换一个周期或语言试试。</p>
+        <p className="lb-empty">{t('这个榜单暂时没有数据，换一个周期或语言试试。', 'No data in this board yet — try another period or language.')}</p>
       )}
     </main>
   )

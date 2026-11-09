@@ -966,6 +966,33 @@
   box-shadow: 0 0 0 2px var(--px-line);
 }
 
+/* 选场页标题行：标题 + 常规 / AI 高级通道切换（高级模式开启时出现） */
+.battle-stage .picker-title-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 8px;
+}
+.battle-stage .picker-title-row h2 { margin-bottom: 0; }
+.battle-stage .picker-channel {
+  display: inline-flex; gap: 4px; padding: 4px;
+  border: 1px solid var(--arena-line); border-radius: 12px;
+  background: rgba(7, 12, 22, .65);
+}
+.battle-stage .picker-channel button {
+  border: 1px solid transparent; background: transparent; color: var(--dim);
+  font-size: 12px; letter-spacing: 1px; padding: 6px 14px; border-radius: 9px;
+  cursor: pointer; transition: color .15s ease, background .15s ease, box-shadow .15s ease;
+}
+.battle-stage .picker-channel button:hover { color: var(--text); }
+.battle-stage .picker-channel button.on {
+  color: #0b101c; background: var(--arena-gold); font-weight: 800;
+  box-shadow: 0 0 10px -3px var(--arena-gold);
+}
+.battle-stage .picker-channel button.on:last-child {
+  background: linear-gradient(135deg, #cbbcff, #9b7aff); color: #14093a;
+  box-shadow: 0 0 10px -3px #9b7aff;
+}
+.battle-stage .picker-channel .picker-channel-ai { font-weight: 900; margin-right: 4px; }
+
 /* 模型推演失败错误条 */
 .battle-stage .ai-error-bar {
   margin: 14px auto 0;

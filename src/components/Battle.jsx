@@ -23,44 +23,45 @@ import { parseRepoInput, scanOwnerBox, scanRepo } from '../scan.js'
 import { battleWithLLM } from '../llm.js'
 import { bgm } from '../bgm.js'
 import { sfx } from '../sfx.js'
+import { useI18n, t as bt } from '../i18n.js'
 
 // 三种挑战：在线对手（输入仓库/账号，真实强度）／同类型（找同属性仓库）／随机宠物
 const MODES = [
   {
     key: 'online',
     index: '01',
-    name: '在线对手',
-    tag: '单项目 1v1 · 整仓全员',
-    desc: '填一个仓库打它的单项目，或填一个账号让它的整仓项目排队上。按对方的真实强度来，不设难度。',
+    name: ['在线对手', 'Online Rival'],
+    tag: ['单项目 1v1 · 整仓全员', '1v1 single repo · full-repo squad'],
+    desc: ['填一个仓库打它的单项目，或填一个账号让它的整仓项目排队上。按对方的真实强度来，不设难度。', 'Enter a repo to fight it 1v1, or an account to field its whole portfolio. Strength mirrors the real repo — no difficulty setting.'],
   },
   {
     key: 'same',
     index: '02',
-    name: '同类型对战',
-    tag: '找同属性的仓库',
-    desc: '只从和你先发精灵同属性的知名仓库里挑对手。克制关系一眼看得懂，适合摸清属性打法。',
+    name: ['同类型对战', 'Same-Type Battle'],
+    tag: ['找同属性的仓库', 'Same element only'],
+    desc: ['只从和你先发精灵同属性的知名仓库里挑对手。克制关系一眼看得懂，适合摸清属性打法。', 'Rivals are drawn only from famous repos sharing your lead pet’s element. Type matchups stay readable — ideal for learning the meta.'],
   },
   {
     key: 'random',
     index: '03',
-    name: '随机宠物',
-    tag: '抽到谁打谁',
-    desc: '从全部对手池里随机抽。可能撞上 SSR 巨兽，也可能抽到 N 级小玩意——难度自己定。',
+    name: ['随机宠物', 'Random Foe'],
+    tag: ['抽到谁打谁', 'Whoever you draw'],
+    desc: ['从全部对手池里随机抽。可能撞上 SSR 巨兽，也可能抽到 N 级小玩意——难度自己定。', 'Rolled from the whole rival pool. Could be an SSR giant or a no-name N — you set your own stakes.'],
   },
 ]
 
 const DIFFICULTIES = [
-  { key: 'easy', name: '新手', desc: '对手六维 ×0.65' },
-  { key: 'normal', name: '相当', desc: '对手原样实力' },
-  { key: 'hard', name: '强敌', desc: '对手六维 ×1.35' },
+  { key: 'easy', name: ['新手', 'Rookie'], desc: ['对手六维 ×0.65', 'Rival stats ×0.65'] },
+  { key: 'normal', name: ['相当', 'Even'], desc: ['对手原样实力', 'Rival at full strength'] },
+  { key: 'hard', name: ['强敌', 'Fierce'], desc: ['对手六维 ×1.35', 'Rival stats ×1.35'] },
 ]
 
 const XP_BASE = { easy: 90, normal: 150, hard: 240 }
 const ONLINE_XP = { single: 200, team: 280 }
 
 const ONLINE_SIZES = [
-  { key: 'single', name: '单项目', hint: '1v1 · 一个仓库' },
-  { key: 'team', name: '整仓', hint: '全员 · 整个账号' },
+  { key: 'single', name: ['单项目', 'Single Repo'], hint: ['1v1 · 一个仓库', '1v1 · one repo'] },
+  { key: 'team', name: ['整仓', 'Full Repo'], hint: ['全员 · 整个账号', 'Everyone · one account'] },
 ]
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -140,20 +141,20 @@ function aiProfile(pet) {
 
 // 审计报告 → Markdown（结算页导出用）
 function reportMarkdown(report, me, foe, win) {
-  const side = (w) => (w === 'player' ? '我方' : w === 'enemy' ? '对手' : '持平')
+  const side = (w) => (w === 'player' ? bt('我方', 'Mine') : w === 'enemy' ? bt('对手', 'Foe') : bt('持平', 'Even'))
   return [
-    '# GitMon 高级竞技场 · 审计报告', '',
-    `- **对局**：${me} vs ${foe}`,
-    `- **结果**：${win ? '胜利' : '惜败'}`,
-    `- **结论**：${report.verdict}`, '',
-    '## 维度对比', '',
-    '| 维度 | 我方 | 对手 | 优势 | 说明 |',
+    bt('# GitMon 高级竞技场 · 审计报告', '# GitMon Advanced Arena · Audit Report'), '',
+    bt(`- **对局**：${me} vs ${foe}`, `- **Match**: ${me} vs ${foe}`),
+    bt(`- **结果**：${win ? '胜利' : '惜败'}`, `- **Result**: ${win ? 'Victory' : 'Defeat'}`),
+    bt(`- **结论**：${report.verdict}`, `- **Verdict**: ${report.verdict}`), '',
+    bt('## 维度对比', '## Dimension Comparison'), '',
+    bt('| 维度 | 我方 | 对手 | 优势 | 说明 |', '| Dimension | Mine | Foe | Edge | Note |'),
     '| --- | ---: | ---: | --- | --- |',
     ...report.dims.map((d) => `| ${d.name} | ${d.player} | ${d.enemy} | ${side(d.winner)} | ${d.note} |`),
-    '', '## 证据引用', ...report.evidence.map((x) => `- ${x}`),
-    '', '## 风险', ...report.risks.map((x) => `- ${x}`),
-    '', '## 建议', ...report.suggestions.map((x) => `- ${x}`),
-    '', `> 生成：${new Date().toLocaleString('zh-CN')} · GitMon 高级竞技场`,
+    '', bt('## 证据引用', '## Evidence'), ...report.evidence.map((x) => `- ${x}`),
+    '', bt('## 风险', '## Risks'), ...report.risks.map((x) => `- ${x}`),
+    '', bt('## 建议', '## Suggestions'), ...report.suggestions.map((x) => `- ${x}`),
+    '', bt(`> 生成：${new Date().toLocaleString('zh-CN')} · GitMon 高级竞技场`, `> Generated: ${new Date().toLocaleString('en-US')} · GitMon Advanced Arena`),
   ].join('\n')
 }
 
@@ -201,25 +202,39 @@ function UnitPanel({ unit, side, fx, shaking, juiceRef }) {
 }
 
 function EmptyState({ onExit }) {
+  const { t } = useI18n()
   return (
     <div className="picker-empty">
-      <p>图鉴里还没有精灵。</p>
-      <button className="primary-btn" onClick={onExit}>先去抽一只</button>
+      <p>{t('图鉴里还没有精灵。', 'No pets in your dex yet.')}</p>
+      <button className="primary-btn" onClick={onExit}>{t('先去抽一只', 'Go draw one')}</button>
     </div>
   )
 }
 
 // 第一步：选挑战方式（channel='ai' 时为高级竞技场：选择页一样，战斗改 AI 对比）
-function ModePicker({ pets, onPick, onExit, channel }) {
+function ModePicker({ pets, onPick, onExit, channel, advanced = false, onChannel = null }) {
+  const { t } = useI18n()
   const ai = channel === 'ai'
   return (
     <div className="battle-picker">
       <div className="picker-head">
-        <h2>竞技场{ai && <span className="picker-ai-badge">AI 高级</span>}</h2>
+        <div className="picker-title-row">
+          <h2>{t('竞技场', 'Arena')}{ai && <span className="picker-ai-badge">{t('AI 高级', 'AI Advanced')}</span>}</h2>
+          {advanced && onChannel && (
+            <div className="picker-channel" role="tablist" aria-label={t('竞技场通道', 'Arena channel')}>
+              <button role="tab" aria-selected={!ai} className={!ai ? 'on' : ''} onClick={() => onChannel('classic')}>
+                {t('常规', 'Classic')}
+              </button>
+              <button role="tab" aria-selected={ai} className={ai ? 'on' : ''} onClick={() => onChannel('ai')}>
+                <span className="picker-channel-ai">AI</span>{t('高级', ' Advanced')}
+              </button>
+            </div>
+          )}
+        </div>
         {ai ? (
-          <p>选法和常规竞技场一样。开战后<b>由模型逐回合对比两个项目的真实水平</b>出招解说（不用点技能），结算会附一份<b>审计报告</b>：维度对比、证据引用、风险与建议，可导出 Markdown。消耗模型额度。</p>
+          <p>{t('选法和常规竞技场一样。开战后', 'Same setup as the classic arena. Once the fight starts, ')}<b>{t('由模型逐回合对比两个项目的真实水平', 'the model compares both projects round by round')}</b>{t('出招解说（不用点技能），结算会附一份', ' to call every move — no skill picking needed. The result ships an ')}<b>{t('审计报告', 'audit report')}</b>{t('：维度对比、证据引用、风险与建议，可导出 Markdown。消耗模型额度。', ': dimension comparison, evidence, risks and suggestions, exportable as Markdown. Uses model quota.')}</p>
         ) : (
-          <p>挑一种挑战方式。在线对手打的是对方仓库的真实实力；同类型和随机宠物可以自己定难度。开战后双方自动出招，无需点技能。</p>
+          <p>{t('挑一种挑战方式。在线对手打的是对方仓库的真实实力；同类型和随机宠物可以自己定难度。开战后双方自动出招，无需点技能。', 'Pick a challenge. Online rivals use their repo’s real stats; same-type and random let you choose difficulty. Once the fight starts both sides act on their own — no skill picking.')}</p>
         )}
       </div>
 
@@ -231,13 +246,13 @@ function ModePicker({ pets, onPick, onExit, channel }) {
             <button key={m.key} className={`mode-card mode-${m.key}`} onClick={() => onPick(m.key)}>
               <span className="mode-top">
                 <span className="mode-index">{m.index}</span>
-                <span className="mode-go">选择 →</span>
+                <span className="mode-go">{t('选择 →', 'Pick →')}</span>
               </span>
-              <span className="mode-title">{m.name}</span>
-              <span className="mode-tag">{m.tag}</span>
-              <span className="mode-desc">{m.desc}</span>
+              <span className="mode-title">{t(...m.name)}</span>
+              <span className="mode-tag">{t(...m.tag)}</span>
+              <span className="mode-desc">{t(...m.desc)}</span>
               <span className="mode-foot">
-                {m.key === 'online' ? '1v1 · 固定真实强度' : '1–3v1–3 · 可选难度'}
+                {m.key === 'online' ? t('1v1 · 固定真实强度', '1v1 · true strength') : t('1–3v1–3 · 可选难度', '1–3v1–3 · choose difficulty')}
               </span>
             </button>
           ))}
@@ -249,6 +264,7 @@ function ModePicker({ pets, onPick, onExit, channel }) {
 
 // 在线对手：单项目（一个仓库 1v1）／整仓（一个账号的全部项目 3v3）；AI 通道只有单项目
 function OnlineSetup({ size, setSize, repoInput, setRepoInput, onScan, scanning, scanError, opponent, ownerTeam, opponentNote, onClear, channel }) {
+  const { t } = useI18n()
   const isTeam = size === 'team' && channel !== 'ai'
   const hasOpponent = isTeam ? ownerTeam.length > 0 : !!opponent
   return (
@@ -262,8 +278,8 @@ function OnlineSetup({ size, setSize, repoInput, setRepoInput, onScan, scanning,
               onClick={() => setSize(s.key)}
               disabled={scanning}
             >
-              <b>{s.name}</b>
-              <small>{s.hint}</small>
+              <b>{t(...s.name)}</b>
+              <small>{t(...s.hint)}</small>
             </button>
           ))}
         </div>
@@ -274,12 +290,12 @@ function OnlineSetup({ size, setSize, repoInput, setRepoInput, onScan, scanning,
           value={repoInput}
           onChange={(e) => setRepoInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !scanning) onScan() }}
-          placeholder={isTeam ? '对方账号：github.com/owner（也可填仓库，按它的账号整仓出战）' : '对方的仓库：https://github.com/owner/repo'}
+          placeholder={isTeam ? t('对方账号：github.com/owner（也可填仓库，按它的账号整仓出战）', 'Opponent account: github.com/owner (a repo works too — its whole account fights)') : t('对方的仓库：https://github.com/owner/repo', 'Opponent repo: https://github.com/owner/repo')}
           spellCheck={false}
           disabled={scanning}
         />
         <button className="primary-btn" onClick={onScan} disabled={scanning}>
-          {scanning ? (isTeam ? '整仓扫描中…' : '扫描中…') : hasOpponent ? '重新扫描' : isTeam ? '扫描整仓' : '扫描仓库'}
+          {scanning ? (isTeam ? t('整仓扫描中…', 'Scanning repo…') : t('扫描中…', 'Scanning…')) : hasOpponent ? t('重新扫描', 'Rescan') : isTeam ? t('扫描整仓', 'Scan Full Repo') : t('扫描仓库', 'Scan Repo')}
         </button>
       </div>
       {scanError && <p className="online-error">! {scanError}</p>}
@@ -288,9 +304,9 @@ function OnlineSetup({ size, setSize, repoInput, setRepoInput, onScan, scanning,
         ownerTeam.length > 0 ? (
           <div className="opponent-team">
             <div className="opponent-team-head">
-              <span>整仓出战 · {ownerTeam.length} 个项目</span>
+              <span>{t(`整仓出战 · ${ownerTeam.length} 个项目`, `Full-repo squad · ${ownerTeam.length} projects`)}</span>
               <span className="opponent-source">{opponentNote}</span>
-              <button className="ghost-btn tiny" onClick={onClear}>换一个</button>
+              <button className="ghost-btn tiny" onClick={onClear}>{t('换一个', 'Swap')}</button>
             </div>
             <div className="opponent-team-list">
               {ownerTeam.map((p) => (
@@ -301,7 +317,7 @@ function OnlineSetup({ size, setSize, repoInput, setRepoInput, onScan, scanning,
                       <b>{p.repo}</b>
                       <span className={`mini-quality q-${p.qualityKey}`}>{p.qualityKey}</span>
                     </div>
-                    <small>Lv.{p.level} · {p.element.name}系</small>
+                    <small>Lv.{p.level} · {p.element.name}{t('系', ' type')}</small>
                   </div>
                 </div>
               ))}
@@ -309,7 +325,7 @@ function OnlineSetup({ size, setSize, repoInput, setRepoInput, onScan, scanning,
           </div>
         ) : (
           <p className="online-hint">
-            整仓 = 对方账号下的项目全部上场，有几只打几只，不设人数上限。整仓按真实数值打，不叠难度；扫描会消耗 API 额度，内置快照账号可离线直接打。
+            {t('整仓 = 对方账号下的项目全部上场，有几只打几只，不设人数上限。整仓按真实数值打，不叠难度；扫描会消耗 API 额度，内置快照账号可离线直接打。', 'Full repo = every project under that account takes the field, no cap. They fight on true stats with no difficulty stacking; scanning spends API quota, while built-in snapshot accounts fight offline.')}
           </p>
         )
       ) : opponent ? (
@@ -321,16 +337,16 @@ function OnlineSetup({ size, setSize, repoInput, setRepoInput, onScan, scanning,
               <span className={`mini-quality q-${opponent.qualityKey}`}>{opponent.qualityKey}</span>
             </div>
             <small>
-              Lv.{opponent.level} · {opponent.element.name}系
+              Lv.{opponent.level} · {opponent.element.name}{t('系', ' type')}
               {opponent.elementSecondary ? `/${opponent.elementSecondary.name}` : ''} · {opponent.species?.name}
             </small>
             <span className="opponent-source">{opponentNote}</span>
           </div>
-          <button className="ghost-btn tiny" onClick={onClear}>换一个</button>
+          <button className="ghost-btn tiny" onClick={onClear}>{t('换一个', 'Swap')}</button>
         </div>
       ) : (
         <p className="online-hint">
-          单项目 PK 只打对方一个仓库，按仓库真实数值生成，等级、品质、六维都是它自己的，不叠加难度系数。已经内置快照的仓库可以离线直接打。
+          {t('单项目 PK 只打对方一个仓库，按仓库真实数值生成，等级、品质、六维都是它自己的，不叠加难度系数。已经内置快照的仓库可以离线直接打。', 'Single-repo PK fights just one repo, generated from its real numbers — level, rarity and stats are its own, with no difficulty scaling. Repos with built-in snapshots can fight offline.')}
         </p>
       )}
     </div>
@@ -338,6 +354,7 @@ function OnlineSetup({ size, setSize, repoInput, setRepoInput, onScan, scanning,
 }
 
 function Setup({ mode, pets, team, setTeam, difficulty, setDifficulty, onStart, onBack, onExit, online, channel = 'classic' }) {
+  const { t } = useI18n()
   const onlineCap = online.size === 'team' ? Math.max(1, online.ownerTeam.length) : 1
   // AI 高级竞技场恒为 1v1：只比两个项目
   const cap = channel === 'ai' ? 1 : mode === 'online' ? onlineCap : 3
@@ -359,11 +376,11 @@ function Setup({ mode, pets, team, setTeam, difficulty, setDifficulty, onStart, 
 
   return (
     <div className="battle-picker">
-      <button className="back-link" onClick={onBack}>← 换挑战方式</button>
+      <button className="back-link" onClick={onBack}>{t('← 换挑战方式', '← Change challenge')}</button>
 
       <div className="picker-head">
-        <h2>{modeInfo.name}</h2>
-        <p>{modeInfo.desc}</p>
+        <h2>{t(...modeInfo.name)}</h2>
+        <p>{t(...modeInfo.desc)}</p>
       </div>
 
       {mode === 'online' && <OnlineSetup {...online} channel={channel} />}
@@ -372,36 +389,36 @@ function Setup({ mode, pets, team, setTeam, difficulty, setDifficulty, onStart, 
         <div className="same-type-bar">
           {lead ? (
             <>
-              <span className="same-label">你的先发属性</span>
+              <span className="same-label">{t('你的先发属性', 'Your lead type')}</span>
               <span className="type-chip big" style={{ color: lead.element.color, borderColor: `${lead.element.color}66` }}>
-                {lead.element.name}系
+                {lead.element.name}{t('系', ' type')}
               </span>
               <span className="same-pool">
-                同属性仓库 {samePool.length} 个：
+                {t(`同属性仓库 ${samePool.length} 个：`, `${samePool.length} same-type repos: `)}
                 {samePool.slice(0, 6).map((p) => p.repo).join(' · ')}
                 {samePool.length > 6 ? ' …' : ''}
               </span>
             </>
           ) : (
-            <span className="same-pool">先选一只精灵，我再去找和它同属性的仓库。</span>
+            <span className="same-pool">{t('先选一只精灵，我再去找和它同属性的仓库。', 'Pick a pet first, then I’ll find repos of the same type.')}</span>
           )}
         </div>
       )}
 
       {mode === 'random' && (
         <div className="same-type-bar">
-          <span className="same-label">对手池</span>
-          <span className="same-pool">全部 {rivalPets().length} 只知名仓库精灵随机抽取，抽到谁都事先不知道。</span>
+          <span className="same-label">{t('对手池', 'Rival pool')}</span>
+          <span className="same-pool">{t(`全部 ${rivalPets().length} 只知名仓库精灵随机抽取，抽到谁都事先不知道。`, `Random draw from all ${rivalPets().length} famous-repo pets — never know what’s coming.`)}</span>
         </div>
       )}
 
       <div className="picker-subhead">
-        <span>出战精灵（{team.length}/{cap}）</span>
+        <span>{t(`出战精灵（${team.length}/${cap}）`, `Team (${team.length}/${cap})`)}</span>
         {mode === 'online' && (
           <em>
             {online.size === 'team'
-              ? `整仓 ${cap}v${cap}：对方账号下每个项目一只`
-              : '单项目 1v1：只能带一只'}
+              ? t(`整仓 ${cap}v${cap}：对方账号下每个项目一只`, `Full repo ${cap}v${cap}: one pet per project in that account`)
+              : t('单项目 1v1：只能带一只', 'Single repo 1v1: one pet only')}
           </em>
         )}
       </div>
@@ -422,7 +439,7 @@ function Setup({ mode, pets, team, setTeam, difficulty, setDifficulty, onStart, 
                 <PixelSprite pet={pet} size={64} animate={false} />
                 <span className="picker-info">
                   <b>{pet.repo}</b>
-                  <small>Lv.{pet.level} · {pet.element.name}系 · {pet.quality.key}</small>
+                  <small>Lv.{pet.level} · {pet.element.name}{t('系', ' type')} · {pet.quality.key}</small>
                 </span>
                 <span className="picker-check">{active ? '✓' : '+'}</span>
               </button>
@@ -433,22 +450,22 @@ function Setup({ mode, pets, team, setTeam, difficulty, setDifficulty, onStart, 
 
       {mode !== 'online' ? (
         <div className="difficulty-row">
-          <span className="difficulty-label">对手强度</span>
+          <span className="difficulty-label">{t('对手强度', 'Rival strength')}</span>
           {DIFFICULTIES.map((d) => (
             <button
               key={d.key}
               className={`diff-btn ${difficulty === d.key ? 'on' : ''}`}
               onClick={() => setDifficulty(d.key)}
             >
-              {d.name}
-              <small>{d.desc}</small>
+              {t(...d.name)}
+              <small>{t(...d.desc)}</small>
             </button>
           ))}
         </div>
       ) : (
         <div className="difficulty-row">
-          <span className="difficulty-label">对手强度</span>
-          <span className="fixed-diff">在线对战按仓库真实实力，不设难度</span>
+          <span className="difficulty-label">{t('对手强度', 'Rival strength')}</span>
+          <span className="fixed-diff">{t('在线对战按仓库真实实力，不设难度', 'Online battles use true repo strength — no difficulty')}</span>
         </div>
       )}
 
@@ -456,16 +473,17 @@ function Setup({ mode, pets, team, setTeam, difficulty, setDifficulty, onStart, 
         <button className="primary-btn" disabled={!ready} onClick={onStart}>
           {mode === 'online'
             ? online.size === 'team'
-              ? online.ownerTeam.length ? `整仓出战（${team.length}/${cap}）` : '先扫描整仓'
-              : online.opponent ? `挑战 ${online.opponent.repo}` : '先扫描对手仓库'
-            : `出战（${team.length}/${cap}）`}
+              ? online.ownerTeam.length ? t(`整仓出战（${team.length}/${cap}）`, `Full-repo squad (${team.length}/${cap})`) : t('先扫描整仓', 'Scan the full repo first')
+              : online.opponent ? t(`挑战 ${online.opponent.repo}`, `Challenge ${online.opponent.repo}`) : t('先扫描对手仓库', 'Scan the rival repo first')
+            : t(`出战（${team.length}/${cap}）`, `Deploy (${team.length}/${cap})`)}
         </button>
       </div>
     </div>
   )
 }
 
-export default function Battle({ pets = [], initial = null, challenge = null, channel = 'classic', llmConfig = null, onExit, onReward }) {
+export default function Battle({ pets = [], initial = null, challenge = null, channel = 'classic', llmConfig = null, advanced = false, onChannel = null, onExit, onReward }) {
+  const { t: tf } = useI18n()
   const candidates = useMemo(() => {
     const list = [...pets]
     if (initial && !list.some((p) => p.fullName === initial.fullName)) list.unshift(initial)
@@ -606,25 +624,25 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
 
   const scanOpponent = async (rawInput) => {
     const raw = (rawInput ?? repoInput).trim()
-    if (!raw) { setScanError(onlineSize === 'team' ? '先填一个账号或仓库地址' : '先填一个仓库地址'); return }
+    if (!raw) { setScanError(onlineSize === 'team' ? tf('先填一个账号或仓库地址', 'Enter an account or repo URL first') : tf('先填一个仓库地址', 'Enter a repo URL first')); return }
     const info = parseRepoInput(raw)
-    if (!info) { setScanError('无法识别的地址，请输入 GitHub / Gitee 仓库或账号链接'); return }
+    if (!info) { setScanError(tf('无法识别的地址，请输入 GitHub / Gitee 仓库或账号链接', 'Unrecognized URL — paste a GitHub / Gitee repo or account link')); return }
 
     setScanError('')
     setScanning(true)
     try {
       // ① 单项目：只打对方一个仓库
       if (onlineSize === 'single') {
-        if (info.kind !== 'repo') throw new Error('单项目 PK 需要具体仓库地址，例如 github.com/owner/repo')
+        if (info.kind !== 'repo') throw new Error(tf('单项目 PK 需要具体仓库地址，例如 github.com/owner/repo', 'Single-repo PK needs a concrete repo URL, e.g. github.com/owner/repo'))
         const builtin = matchBuiltinRival(info.platform, info.fullName)
         if (builtin) {
           setOpponent(builtin)
-          setOpponentNote('内置快照 · 离线可打')
+          setOpponentNote(tf('内置快照 · 离线可打', 'Built-in snapshot · offline ready'))
           return
         }
         const snap = await scanRepo(raw)
         setOpponent(rivalFromSnapshot(snap))
-        setOpponentNote(snap.cached ? '线上数据 · 本地缓存' : '线上数据 · 刚刚扫描')
+        setOpponentNote(snap.cached ? tf('线上数据 · 本地缓存', 'Live data · cached locally') : tf('线上数据 · 刚刚扫描', 'Live data · just scanned'))
         return
       }
 
@@ -635,24 +653,24 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
       if (localTeam.length >= 2) {
         setOwnerTeam(localTeam)
         fillTeam(localTeam.length)
-        setOpponentNote(`内置快照 · ${owner} 的 ${localTeam.length} 个项目`)
+        setOpponentNote(tf(`内置快照 · ${owner} 的 ${localTeam.length} 个项目`, `Built-in snapshot · ${localTeam.length} projects of ${owner}`))
         return
       }
       const res = await scanOwnerBox({ kind: 'owner', platform, owner }, { limit: 30 })
       if (!res.snaps.length) {
         throw new Error(res.rateLimited
-          ? 'API 触发限流，稍后再试（设置 Token 可提高额度）'
-          : '这个账号没有可挑战的公开项目')
+          ? tf('API 触发限流，稍后再试（设置 Token 可提高额度）', 'API rate limited — try again later (set a Token for more quota)')
+          : tf('这个账号没有可挑战的公开项目', 'This account has no public projects to challenge'))
       }
       const pets = res.snaps
         .map((s) => rivalFromSnapshot(s))
         .sort((a, b) => powerOf(b) - powerOf(a))
-      if (!pets.length) throw new Error('这个账号没有可挑战的公开项目')
+      if (!pets.length) throw new Error(tf('这个账号没有可挑战的公开项目', 'This account has no public projects to challenge'))
       setOwnerTeam(pets)
       fillTeam(pets.length)
-      setOpponentNote(`线上数据 · ${owner} 的 ${pets.length} 个项目`)
+      setOpponentNote(tf(`线上数据 · ${owner} 的 ${pets.length} 个项目`, `Live data · ${pets.length} projects of ${owner}`))
     } catch (e) {
-      setScanError(e.message || '扫描失败，请检查地址')
+      setScanError(e.message || tf('扫描失败，请检查地址', 'Scan failed — check the URL'))
     } finally {
       setScanning(false)
     }
@@ -747,7 +765,7 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
         })
         const actor = r.actor === 'player' ? playerPet : enemyPet
         const target = r.actor === 'player' ? 'enemy' : 'player'
-        setLog((prev) => [...prev, `${actor.repo || actor.name} 使出「${r.move}」—— ${r.text}`].slice(-40))
+        setLog((prev) => [...prev, tf(`${actor.repo || actor.name} 使出「${r.move}」—— ${r.text}`, `${actor.repo || actor.name} uses「${r.move}」 — ${r.text}`)].slice(-40))
         setLunging(r.actor)
         sfx.attack({ physical: true, element: 'normal', power: 65 })
         setTimeout(() => setLunging(null), 300)
@@ -792,8 +810,8 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
       juiceRef.current?.shakeField(fieldRef.current, { intensity: finalWinner === 'player' ? 0.8 : 0.5 })
     } catch (e) {
       setAiStatus('error')
-      setAiError(e.message || '模型推演失败，请重试')
-      setLog((prev) => [...prev, `AI 推演失败：${e.message || '请重试'}`].slice(-40))
+      setAiError(e.message || tf('模型推演失败，请重试', 'Model simulation failed — please retry'))
+      setLog((prev) => [...prev, tf(`AI 推演失败：${e.message || '请重试'}`, `AI simulation failed: ${e.message || 'please retry'}`)].slice(-40))
     } finally {
       setBusy(false)
     }
@@ -929,7 +947,7 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
   if (phase === 'mode') {
     return (
       <main className="battle-wrap">
-        <ModePicker pets={candidates} onPick={pickMode} onExit={onExit} channel={channel} />
+        <ModePicker pets={candidates} onPick={pickMode} onExit={onExit} channel={channel} advanced={advanced} onChannel={onChannel} />
       </main>
     )
   }
@@ -978,10 +996,10 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
     if (kind === 'copy') {
       try {
         await navigator.clipboard.writeText(md)
-        setReportTip('已复制 Markdown')
+        setReportTip(tf('已复制 Markdown', 'Markdown copied'))
         setTimeout(() => setReportTip(''), 1800)
       } catch {
-        setReportTip('复制失败，请用下载')
+        setReportTip(tf('复制失败，请用下载', 'Copy failed — use download'))
         setTimeout(() => setReportTip(''), 1800)
       }
       return
@@ -1000,18 +1018,18 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
       <div className="battle-topbar">
         <span className="hud-turn">TURN {String(state.turn + 1).padStart(2, '0')}</span>
         <span>{rivalTeamLabel(difficulty, mode, onlineSize)}</span>
-        <span className="hud-dots" title={`我方存活 ${myTeamAlive}`}>
+        <span className="hud-dots" title={tf(`我方存活 ${myTeamAlive}`, `${myTeamAlive} alive on our side`)}>
           {state.sides.player.team.map((u, i) => <i key={i} className={u.fainted ? 'down' : ''} />)}
         </span>
         <span className="hud-vs">VS</span>
-        <span className="hud-dots foe" title={`对手存活 ${foeTeamAlive}`}>
+        <span className="hud-dots foe" title={tf(`对手存活 ${foeTeamAlive}`, `${foeTeamAlive} alive on the rival side`)}>
           {state.sides.enemy.team.map((u, i) => <i key={i} className={u.fainted ? 'down' : ''} />)}
         </span>
         <span className="hud-actions">
-          <button className={`hud-btn ${fast ? 'on' : ''}`} onClick={toggleFast} title="跳过出手演出，点一下立即结算（F）">
-            » {fast ? '快进中' : '快进'}
+          <button className={`hud-btn ${fast ? 'on' : ''}`} onClick={toggleFast} title={tf('跳过出手演出，点一下立即结算（F）', 'Skip the attack animation — tap to resolve instantly (F)')}>
+            » {fast ? tf('快进中', 'Fast▸') : tf('快进', 'Fast')}
           </button>
-          <button className="ghost-btn tiny" onClick={onExit}>离开</button>
+          <button className="ghost-btn tiny" onClick={onExit}>{tf('离开', 'Leave')}</button>
         </span>
       </div>
 
@@ -1047,7 +1065,7 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
         {/* 招式横幅：取最近一条出招播报，索引变化即重挂载重播动画（播完停在透明） */}
         {(() => {
           let idx = -1
-          for (let i = log.length - 1; i >= 0; i--) { if (/使出|使用/.test(log[i])) { idx = i; break } }
+          for (let i = log.length - 1; i >= 0; i--) { if (/使出|使用|uses/.test(log[i])) { idx = i; break } }
           return (
             <div className="move-banner" key={idx} aria-hidden={idx < 0}>
               {idx >= 0 ? log[idx] : ''}
@@ -1081,17 +1099,17 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
               </div>
               <div className={`result-grade g-${grade.toLowerCase()}`} key={grade}>
                 <b>{grade}</b>
-                <small>评级</small>
+                <small>{tf('评级', 'Rank')}</small>
               </div>
-              <h2 className={win ? 'win' : 'lose'}>{win ? '胜利' : '惜败'}</h2>
-              <p>{win ? '对手的仓库被你压了一头。' : '属性与节奏都被对手抓到了。'}</p>
+              <h2 className={win ? 'win' : 'lose'}>{win ? tf('胜利', 'VICTORY') : tf('惜败', 'DEFEAT')}</h2>
+              <p>{win ? tf('对手的仓库被你压了一头。', 'You out-classed the rival repo.') : tf('属性与节奏都被对手抓到了。', 'They read your typing and tempo.')}</p>
               <div className="result-stats">
-                <span>回合<b>{state.turn}</b></span>
-                <span>存活<b>{alive}/{total}</b></span>
-                <span>击倒<b>{state.sides.enemy.team.filter((u) => u.fainted).length}</b></span>
+                <span>{tf('回合', 'Turns')}<b>{state.turn}</b></span>
+                <span>{tf('存活', 'Alive')}<b>{alive}/{total}</b></span>
+                <span>{tf('击倒', 'KO')}<b>{state.sides.enemy.team.filter((u) => u.fainted).length}</b></span>
               </div>
               <div className="result-exp">
-                <p className="reward">全队获得 <b>+{reward} EXP</b></p>
+                <p className="reward">{tf('全队获得 ', 'Team earned ')}<b>+{reward} EXP</b></p>
                 <div className="exp-track" aria-hidden>
                   {Array.from({ length: 20 }, (_, i) => (
                     <i key={i} className={i < Math.min(20, Math.ceil(reward / 15)) ? 'on' : ''} />
@@ -1105,10 +1123,10 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
                 </div>
               )}
               <div className="actions">
-                <button className="primary-btn" onClick={start}>{mode === 'random' ? '再抽一只' : '再战一场'}</button>
-                <button className="ghost-btn" onClick={() => setPhase('select')}>换阵容</button>
-                <button className="ghost-btn" onClick={() => setPhase('mode')}>换模式</button>
-                <button className="ghost-btn" onClick={onExit}>返回图鉴</button>
+                <button className="primary-btn" onClick={start}>{mode === 'random' ? tf('再抽一只', 'Draw Another') : tf('再战一场', 'Battle Again')}</button>
+                <button className="ghost-btn" onClick={() => setPhase('select')}>{tf('换阵容', 'Change Team')}</button>
+                <button className="ghost-btn" onClick={() => setPhase('mode')}>{tf('换模式', 'Change Mode')}</button>
+                <button className="ghost-btn" onClick={onExit}>{tf('返回图鉴', 'Back to Dex')}</button>
               </div>
             </div>
 
@@ -1116,8 +1134,8 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
             {channel === 'ai' && aiReport && (
               <div className="audit-report px-box">
                 <div className="audit-head">
-                  <h3>审计报告</h3>
-                  <span className="audit-sub">AI 对比 · {playerUnit.name} vs {enemyUnit.name}</span>
+                  <h3>{tf('审计报告', 'Audit Report')}</h3>
+                  <span className="audit-sub">{tf('AI 对比 · ', 'AI compare · ')}{playerUnit.name} vs {enemyUnit.name}</span>
                 </div>
                 <p className="audit-verdict">{aiReport.verdict}</p>
 
@@ -1129,7 +1147,7 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
                         <span className="dim-nums">
                           <b className="me">{d.player}</b>
                           <i className={d.winner === 'player' ? 'lead me' : d.winner === 'enemy' ? 'lead foe' : ''}>
-                            {d.winner === 'player' ? '◀ 我方领先' : d.winner === 'enemy' ? '对手领先 ▶' : '持平'}
+                            {d.winner === 'player' ? tf('◀ 我方领先', '◀ Ours') : d.winner === 'enemy' ? tf('对手领先 ▶', 'Rival ▶') : tf('持平', 'Even')}
                           </i>
                           <b className="foe">{d.enemy}</b>
                         </span>
@@ -1145,28 +1163,28 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
 
                 {aiReport.evidence.length > 0 && (
                   <div className="audit-sec">
-                    <h4>证据引用</h4>
+                    <h4>{tf('证据引用', 'Evidence')}</h4>
                     <ul>{aiReport.evidence.map((x, i) => <li key={i}>{x}</li>)}</ul>
                   </div>
                 )}
                 <div className="audit-cols">
                   {aiReport.risks.length > 0 && (
                     <div className="audit-sec">
-                      <h4>风险</h4>
+                      <h4>{tf('风险', 'Risks')}</h4>
                       <ul>{aiReport.risks.map((x, i) => <li key={i}>{x}</li>)}</ul>
                     </div>
                   )}
                   {aiReport.suggestions.length > 0 && (
                     <div className="audit-sec">
-                      <h4>建议</h4>
+                      <h4>{tf('建议', 'Suggestions')}</h4>
                       <ul>{aiReport.suggestions.map((x, i) => <li key={i}>{x}</li>)}</ul>
                     </div>
                   )}
                 </div>
 
                 <div className="audit-actions">
-                  <button className="ghost-btn" onClick={() => exportReport('copy')}>复制 Markdown</button>
-                  <button className="ghost-btn" onClick={() => exportReport('download')}>下载 .md</button>
+                  <button className="ghost-btn" onClick={() => exportReport('copy')}>{tf('复制 Markdown', 'Copy Markdown')}</button>
+                  <button className="ghost-btn" onClick={() => exportReport('download')}>{tf('下载 .md', 'Download .md')}</button>
                   {reportTip && <span className="audit-tip">{reportTip}</span>}
                 </div>
               </div>
@@ -1185,9 +1203,9 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
               disabled={busy}
               onClick={() => { const m = aiMatchRef.current; if (m) runAiBattle(m.baseState, m.playerPet, m.enemyPet) }}
             >
-              重试
+              {tf('重试', 'Retry')}
             </button>
-            <button className="ghost-btn" onClick={() => setPhase('select')}>回上一步</button>
+            <button className="ghost-btn" onClick={() => setPhase('select')}>{tf('回上一步', 'Back')}</button>
           </div>
         </div>
       )}
@@ -1196,28 +1214,28 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
         <div className="control-head">
           <span className="control-title">
             {channel === 'ai'
-              ? state.winner ? '推演结束' : aiStatus === 'thinking' ? 'AI 正在对比两个项目水平…' : 'AI 逐回合推演中'
-              : state.winner ? '战斗结束' : busy ? '自动结算中…' : '自动对战中'}
+              ? state.winner ? tf('推演结束', 'Simulation done') : aiStatus === 'thinking' ? tf('AI 正在对比两个项目水平…', 'AI comparing both projects…') : tf('AI 逐回合推演中', 'AI simulating round by round')
+              : state.winner ? tf('战斗结束', 'Battle over') : busy ? tf('自动结算中…', 'Resolving…') : tf('自动对战中', 'Auto-battling')}
           </span>
           <span className="control-hint">
-            {channel === 'ai' ? '模型推演 · 结算附审计报告' : <>AI 自动挑招式 / 换人 · <kbd>F</kbd> 快进</>}
+            {channel === 'ai' ? tf('模型推演 · 结算附审计报告', 'Model-driven · report included') : <>AI {tf('自动挑招式 / 换人 · ', 'auto picks moves / swaps · ')}<kbd>F</kbd>{tf(' 快进', ' fast')}</>}
           </span>
         </div>
         <div className="auto-status">
           <span className={`auto-pulse ${state.winner ? 'done' : ''}`} aria-hidden="true" />
           <span className="auto-unit">
             <b>{playerUnit.name}</b>
-            <small>Lv.{playerUnit.level} · 战力 {playerUnit.combatPower} · HP {playerUnit.hp}/{playerUnit.maxHp}</small>
+            <small>Lv.{playerUnit.level} · {tf('战力', 'PWR')} {playerUnit.combatPower} · HP {playerUnit.hp}/{playerUnit.maxHp}</small>
           </span>
           <span className="auto-vs">VS</span>
           <span className="auto-unit foe">
             <b>{enemyUnit.name}</b>
-            <small>Lv.{enemyUnit.level} · 战力 {enemyUnit.combatPower} · HP {enemyUnit.hp}/{enemyUnit.maxHp}</small>
+            <small>Lv.{enemyUnit.level} · {tf('战力', 'PWR')} {enemyUnit.combatPower} · HP {enemyUnit.hp}/{enemyUnit.maxHp}</small>
           </span>
         </div>
         <div className="battle-side-actions">
           <span className="battle-tip">
-            {[enemyUnit.element.name, enemyUnit.elementSecondary?.name].filter(Boolean).join('/')}系 · 我方速度 {Math.round(playerUnit.stats.spe * (playerUnit.passive === 'static' ? 1.15 : 1))}
+            {[enemyUnit.element.name, enemyUnit.elementSecondary?.name].filter(Boolean).join('/')}{tf('系', ' type')} · {tf('我方速度', 'Our speed')} {Math.round(playerUnit.stats.spe * (playerUnit.passive === 'static' ? 1.15 : 1))}
             {mode !== 'online' && ` · ${modeLabel(mode)}`}
           </span>
         </div>
