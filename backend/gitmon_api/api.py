@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
-from . import auth, engine, growth, services
+from . import auth, engine, growth, services, trending
 from .badge import badge_svg, card_svg, placeholder_badge
 from .config import settings
 from .errors import PetNotFound, ScanError
@@ -163,6 +163,27 @@ def pet_growth(pet_id: str, limit: int = Query(default=20, ge=1, le=100)) -> dic
 @router.get("/api/leaderboard", tags=["pets"])
 def leaderboard(limit: int = Query(default=20, ge=1, le=100)) -> dict[str, Any]:
     return services.leaderboard(limit)
+
+
+@router.get("/api/trending", tags=["meta"])
+def github_trending(
+    since: str = Query(default="weekly", pattern="^(daily|weekly|monthly)$"),
+    language: str = Query(default=""),
+    limit: int = Query(default=30, ge=1, le=50),
+) -> dict[str, Any]:
+    """GitHub 趋势榜：把 github.com/trending 的排行榜拉成结构化数据。"""
+    try:
+        items = trending.fetch_trending(since, language)
+    except Exception as exc:  # 网络抖动 / 匿名限流都归一成 502，前端统一报错
+        raise ScanError(f"GitHub 趋势榜拉取失败：{exc}", hint="GitHub 可能对匿名请求限流，稍后重试")
+    return {
+        "items": items[:limit],
+        "since": since,
+        "language": language,
+        "count": min(len(items), limit),
+        "total": len(items),
+        "fetched_at": int(time.time()),
+    }
 
 
 # ---------------------------------------------------------------- 立绘与卡片
