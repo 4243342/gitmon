@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import logging
 import re
 import time
 from typing import Any
@@ -21,6 +22,8 @@ from urllib.parse import urlparse
 from urllib.request import getproxies, proxy_bypass
 
 import httpx
+
+logger = logging.getLogger("gitmon.llm")
 
 ELEMENT_KEYS = {"water", "thunder", "steel", "earth", "rock", "fire", "wind", "grass", "normal"}
 SPECIES_KEYS = {"beast", "bird", "element", "dragon", "flying", "phantom", "fairy"}
@@ -288,6 +291,39 @@ def _outbound_proxy(url: str) -> str | None:
     return proxies.get("https") or proxies.get("http") or None
 
 
+def _host_of(url: str) -> str:
+    return urlparse(url).hostname or url
+
+
+# 各系统 getaddrinfo 失败时的原始措辞：出现这些就说明域名根本没解析出来，
+# 与「解析成功但连不上」是两类完全不同的病，提示必须分开写。
+_DNS_FAILURES = (
+    "nodename nor servname",       # macOS
+    "name or service not known",   # Linux glibc
+    "temporary failure in name resolution",
+    "getaddrinfo failed",
+)
+
+
+def _connect_hint(url: str, exc: Exception, proxy: str | None) -> str:
+    """把 ConnectError 拆成能照着改的人话：域名拼错 / 本机连不上。
+
+    原来只有一句「检查 Base URL、网络代理」，地址打错一个字符和代理挂掉长得一模一样，
+    用户只能干猜。这里把目标主机、有没有走代理、底层原因都点出来（不含密钥）。
+    """
+    host = _host_of(url)
+    text = f"{exc}".lower()
+    if any(word in text for word in _DNS_FAILURES):
+        return (
+            f"域名 {host} 解析不了，基本是 Base URL 写错了（注意 -cn 与 .cn 这类差别）；"
+            "正确写法一般形如 https://xxx.com/v1"
+        )
+    via = f"经代理 {proxy} 与直连" if proxy else "直连"
+    if _is_local_url(url):
+        return f"{via}都连不上 {host}；本地模型请确认服务已启动（如 Ollama 的 http://127.0.0.1:11434/v1）"
+    return f"{via}都连不上 {host}；检查网络代理是否可用，或换一个本机可直连的服务商"
+
+
 async def http_request(
     method: str,
     url: str,
@@ -310,11 +346,17 @@ async def http_request(
             ) as client:
                 return await client.request(method, url, headers=headers, json=json_body)
         except (httpx.ConnectError, httpx.ConnectTimeout):
-            pass  # 代理端口没了或连不上 → 直连重试一次
+            logger.info("代理 %s 连不上，改直连重试：%s", proxy, url)
     async with httpx.AsyncClient(
         timeout=timeout, trust_env=False, follow_redirects=follow_redirects,
     ) as client:
-        return await client.request(method, url, headers=headers, json=json_body)
+        try:
+            return await client.request(method, url, headers=headers, json=json_body)
+        except (httpx.ConnectError, httpx.ConnectTimeout):
+            # 直连也会偶发抖动（DNS / TLS 握手瞬时失败），连接层失败时请求根本没到服务端，
+            # 重试一次是安全的；否则一次抖动就会让用户看到「连不上模型接口」。
+            logger.info("直连失败，重试一次：%s", url)
+            return await client.request(method, url, headers=headers, json=json_body)
 
 
 def _fix_payload_for_400(payload: dict, text: str) -> bool:
@@ -357,8 +399,12 @@ async def chat_completion(
             )
         except httpx.TimeoutException:
             raise LLMError(f"模型响应超时（{int(timeout)} 秒）", "换更快的模型，或检查网络代理") from None
-        except httpx.ConnectError:
-            raise LLMError("连不上模型接口", "检查 Base URL、网络代理；本地模型请确认服务已启动") from None
+        except httpx.ConnectError as exc:
+            proxy = _outbound_proxy(f"{base_url}/chat/completions")
+            logger.warning("LLM 连接失败 target=%s proxy=%s err=%s", base_url, proxy or "direct", exc)
+            raise LLMError(
+                f"连不上模型接口（{_host_of(base_url)}）", _connect_hint(base_url, exc, proxy),
+            ) from None
         except httpx.HTTPError:
             raise LLMError("模型接口请求失败", "检查 Base URL 与网络连通性") from None
 
@@ -459,8 +505,10 @@ async def ping(*, base_url: str, api_key: str, model: str) -> dict[str, Any]:
             )
         except httpx.TimeoutException:
             raise LLMError("连接测试超时（20 秒）", "检查网络代理，或换一个更快的模型") from None
-        except httpx.ConnectError:
-            raise LLMError("连不上模型接口", "检查 Base URL、网络代理；本地模型请确认服务已启动") from None
+        except httpx.ConnectError as exc:
+            proxy = _outbound_proxy(url)
+            logger.warning("LLM 连接测试失败 target=%s proxy=%s err=%s", url, proxy or "direct", exc)
+            raise LLMError(f"连不上模型接口（{_host_of(url)}）", _connect_hint(url, exc, proxy)) from None
         except httpx.HTTPError:
             raise LLMError("模型接口请求失败", "检查 Base URL 与网络连通性") from None
         if resp.status_code != 400 or not _fix_payload_for_400(payload, resp.text):

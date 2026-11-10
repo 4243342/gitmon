@@ -61,6 +61,7 @@ def create_app(settings: Settings | None = None, *, start_queue: bool = True) ->
         application.state.scan_queue = scan_queue
         if start_queue:
             scan_queue.start()
+        _warm_tts_in_background()
         scheduler = asyncio.create_task(_daily_loop(cfg)) if cfg.daily_sync else None
         try:
             yield
@@ -115,10 +116,14 @@ def create_app(settings: Settings | None = None, *, start_queue: bool = True) ->
 
     app.include_router(api_router)
     app.include_router(auth_router)
+    from .inventory_api import router as inventory_router
+    app.include_router(inventory_router)
     from .llm_api import router as llm_router
     app.include_router(llm_router)
     from .story_api import router as story_router
     app.include_router(story_router)
+    from .tts_api import router as tts_router
+    app.include_router(tts_router)
     install_error_handlers(app)
 
     # 前端构建产物（单容器部署）：必须在 API 路由之后挂载
@@ -126,6 +131,32 @@ def create_app(settings: Settings | None = None, *, start_queue: bool = True) ->
         app.mount("/", StaticFiles(directory=str(cfg.static_dir), html=True), name="web")
 
     return app
+
+
+def _warm_tts_in_background() -> None:
+    """本地语音模型冷启动要 1.2s，进程起来先热一遍，别让玩家第一句台词干等。
+
+    测试里不加载（320MB 模型会把 pytest 拖慢），可用 GITMON_TTS_WARM=0 关掉。
+    """
+    import os
+    import sys
+    import threading
+
+    if os.environ.get("GITMON_TTS_WARM", "1") == "0":
+        return
+    if "pytest" in sys.modules:
+        return
+
+    def run() -> None:
+        try:
+            from . import tts
+
+            if tts.local_ready():
+                tts.warm()
+        except Exception:  # 预热失败不影响主流程，第一句会自己再试
+            pass
+
+    threading.Thread(target=run, name="tts-warm", daemon=True).start()
 
 
 async def _daily_loop(cfg: Settings) -> None:

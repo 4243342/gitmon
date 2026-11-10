@@ -2,6 +2,10 @@
 
 状态：草案（待评审）。与 `docs/STORY.md`（剧情模式）并列，互不占用。
 
+前端现状：顶栏已有「任务」入口（排在「设置」前），点进去是**最小占位页**
+（`src/components/Quest.jsx`），只讲清楚玩法差异并引导去竞技场攒星尘。
+本设计里的 `quest_runs` 表与 `/api/quest/*` 接口**尚未实现**，占位页不代表功能上线。
+
 > 相关实现：`src/engine.js`（judge 的体检分项）、`src/scan.js`（仓库快照）、
 > `src/llm.js`（模型绑定）、`docs/SSOT.md`（同步契约）
 

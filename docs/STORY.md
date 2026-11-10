@@ -49,7 +49,8 @@
 
 ## 3. 建线：先选 Boss，再选剧本
 
-进入剧情模式后有两步选择：**先定打谁，再定这个故事怎么讲**。两步都是「三选一 + 右上角自定义」。
+进入剧情模式后有两步选择：**先定打谁，再定这个故事怎么讲**。选对手是「三选一 + 右上角自选对手」；
+选剧本是**来源三选一**（系统模板 / 自定义 / AI 生成），不再是抽完对手就自动花一次模型调用。
 先选 Boss 是有意的——剧本要围绕你已经选中的对手来写，否则两边容易各说各话。
 
 ### 3.1 流程
@@ -63,7 +64,10 @@
    ↓
 模型挑 3 个 Boss + 写解释 ──右上角「自选 Boss」──▶ 输入仓库地址
    ↓ 选一个作为最终方向（不可逆，其余丢弃）
-第二步：AI 生成 3 个剧本名 ──右上角「自定义」──▶ 输入你喜欢的小说 / 梗概
+第二步：剧本来源三选一（系统模板 / 自定义 / AI 生成）
+   ├─ 系统剧本 ──▶ 内置三套模板，秒出，不调模型
+   ├─ 自定义   ──▶ 输入小说名 / 梗概，照它写三案
+   └─ AI 生成  ──▶ 围绕这只对手的调研现场写三案
    ↓ 选一个（不可逆）
 建线（写入 story_runs）
 ```
@@ -159,12 +163,22 @@
   模型不可用时退化为模板文案
 - `selection_source` 记为 `manual`
 
-### 3.6 第二步：选剧本（三个片名 + 自选小说）
+### 3.6 第二步：选剧本（来源三选一：系统 / 自定义 / AI）
 
 Boss 定下来之后，才轮到写「这个故事怎么讲」——因为剧本要围绕**你已经选中的那个对手**来编，
 天然避免「剧本和 Boss 各说各话」。
 
-AI 读三样东西：主角仓库的定位（是什么项目、解决什么问题、什么量级）、选中 Boss 的身份与赛道、
+进 03 步**不会自动生成任何东西**，先让玩家选来源（三张并排的来源卡，可随时改选）：
+
+| 来源 | 行为 | 成本 | 标记 |
+|---|---|---|---|
+| **系统剧本** | 读某个剧本包内置的三套模板，立刻出卡 | 0 调用、0 等待 | `source='system'`，界面注明「不含本次调研」 |
+| **自定义** | 输入小说名 / 梗概，模型围绕它写三案 | 1 次模型调用 | `source='llm' / 'manual'`，卡上带桥接说明 |
+| **AI 生成** | 模型读调研现场写三案 | 1 次模型调用，约 20–40s | `source='llm'`；失败降级为 `rule` 并显式告警 |
+
+选「系统剧本」后会出现**剧本包选择器**（见 §3.9）：包决定正片跑哪条路线，先选包再选包里的方案。
+
+「AI 生成」读三样东西：主角仓库的定位（是什么项目、解决什么问题、什么量级）、选中 Boss 的身份与赛道、
 以及两者的关系（同赛道竞争 / 跨量级挑战 / 生态上下游），产出 **3 个剧本名**。
 
 每个方案包含三样：
@@ -175,11 +189,12 @@ AI 读三样东西：主角仓库的定位（是什么项目、解决什么问�
 | `logline` | 一句话：谁、想要什么、被什么挡住 |
 | `beats` | 三个节拍预演：开局钩子 / 中段反转 / 收束方式（必须点名 Boss） |
 
-**右上角「自定义」**：输入你喜欢的小说名，或一句故事梗概，用它替代 AI 的三个方案。
+**自定义**：输入你喜欢的小说名，或一句故事梗概，用它替代 AI 的三个方案。
 
 规则：
 
-- **三选一 + 自选，选中即锁定**：写进 `story_runs.script_title` 与 `script_brief`
+- **来源三选一 + 方案选中即锁定**：选中方案写进 `story_runs.script_title` 与 `script_brief`
+- 换对手会清空上一只对手的来源与方案，避免「卡是旧的、对手是新的」
 - 剧本只影响叙事骨架与结局文案，**不改战斗数值**（战斗仍由真实战报决定）
 - 自选输入 ≤40 字按书名处理，由模型补全设定；>40 字按梗概处理，直接作为故事前提
 - 自选同样要过校验：空白、纯符号、敏感内容要求重填
@@ -243,6 +258,97 @@ AI 读三样东西：主角仓库的定位（是什么项目、解决什么问�
 
 - 每条检索带 `seed` 派生的抽样偏移，同 seed 结果可复现
 - 「换一批」换 seed 重新检索，模型调用计入限额（见 §8）
+
+### 3.9 剧本包（pack）：一个包 = 一条完整路线
+
+「系统剧本」不是一个三段模板，而是**可独立装载的剧本包**。一个包自带五样东西，
+互相绑定、绝不混用：
+
+| 组成 | 文件 | 作用 |
+|---|---|---|
+| 路线 | `story.ink` | 场景 / 选项 / 变量 / 跳转 / 结局，发布前定稿 |
+| 角色表 | `characters.json` | 这一包里登场的人（名字 / 颜色 / 定位） |
+| 台词兜底 | `lines.json` | 模型不可用时这一包每句 key 的中文台词 |
+| 背景地点牌 | `meta.json` → `bgs` | 这一包每个背景 key 的地点名 |
+| 结局标题 | `meta.json` → `endings` | 这一包每个结局 id 的标题 |
+
+```
+src/story/packs/<id>/
+  ├── story.ink        # 路线
+  ├── lines.json       # 台词兜底
+  ├── characters.json  # 角色表
+  └── meta.json        # 标题 / 标签 / 世界观 / 文风 / bgs / endings / variants
+```
+
+#### 已有两个包
+
+| 包 id | 名称 | 定位 |
+|---|---|---|
+| `default` | 通用远征 | 兜底包。AI 生成与自定义剧本走它；老存档也走它 |
+| `douma` | 斗码苍穹 | 第一条专属包。斗破苍穹骨架：项目即宗门，star 是香火，fork 是分家，release 是境界 |
+
+`default` 不是「没人要的包」，它是**兼容层**：所有非系统剧本的路径都落到它，
+所以任何一次改动都不会波及原有行为。
+
+`douma` 是一条完整主线：序章（被逐出宗门名册）→ 成长章（`chapter == 1` 时插入魂殿追杀）
+→ 终章分流（`trust >= 7` 走内应线借势，否则独闯山门）→ Boss 战 → 四个结局
+（`ending_flame` / `ending_withered` / `ending_lone` / `ending_steady`）。
+
+#### 单一真相源
+
+包内容只写在 `src/story/packs/` 下，两个消费者各取所需，不会出现两份内容对不上：
+
+| 消费者 | 读什么 | 怎么读 |
+|---|---|---|
+| 前端构建产物 | ink 路线 + 角色表 + 台词兜底 + meta | `scripts/story-build.mjs` 编译成单个 `src/story/packs.js` |
+| 后端 | meta（方案卡 / 世界观 / 文风 / 结局标题） | 直接读磁盘上的 `meta.json`，带 mtime 缓存自动重载 |
+
+后端**不需要额外一步构建**：改完 `meta.json` 不用重启后端。
+（部署只带 `dist/` 时 `packs/` 目录读不到，后端退回内置的 default 模板，功能不挂。）
+
+#### 运行时按 pack 装载
+
+```js
+const runtime = createStoryRuntime({ vars, pack: 'douma' })
+```
+
+`StoryRuntime` 构造时把路线 / 角色 / 台词兜底绑成一体（`this.pack.characters` / `this.lines` /
+`new Story(this.pack.story)`），`enter()` 的返回值带上 `packId` / `characters` / `bgLabels` /
+`endingTitles`，界面必须按这些渲染——**不能用全局的通用角色表去画一个玄幻包的场景**。
+
+未知的 pack id 一律退回 `default`，绝不让正片因为一个写错的 id 整个挂掉。
+
+#### 一条线从头到尾必须是同一个包
+
+这是最容易出错的地方。建线、读档、续跑、重同步、读档槽、终章结算——六条路径
+全都要按这条线自己的 `script_pack` 装载：
+
+| 路径 | 取包来源 |
+|---|---|
+| 建线 | 服务端落库的 `run.script_pack`（权威） |
+| 读档 / 续跑 | `run.script_pack` |
+| 409 后重同步 | 服务端返回的 `run.script_pack` |
+| 读档槽 | `res.run.script_pack` |
+
+漏掉任何一处都会导致「建线时选了斗码苍穹，读档后却跑成通用路线」——正片串包，
+而且很难被察觉（画面能看，故事不对）。
+
+#### 包要影响的不只是路线
+
+- **台词**：后端按包把 `meta.world` / `meta.style` 注入 prompt；台词缓存键必须含 pack id，
+  否则同一个 scene 在不同包之间会复用旧台词（换包等于没换）
+- **结局标题**：`progress()` 结算时按 `run.script_pack` 取标题，斗码苍穹的
+  `ending_flame` 与通用包的 `ending_trust` 不是同一套
+- **界面**：角色名 / 颜色、背景地点牌、结局标题全部按包渲染
+
+#### 构建期守卫
+
+`npm run story:build` 会逐包校验，任何一条不过就中止构建：
+
+- `meta.id` 必须等于目录名
+- `meta.endings` 必须覆盖该包 ink 里出现的所有结局 id
+- `meta.variants` 不能为空
+- 台词 key 全覆盖，且说话人存在于该包的角色表里
 
 ## 4. 章节：差距越大，关卡越多
 
@@ -437,7 +543,7 @@ idle ──建线──▶ active ──走到 ending 节点──▶ finish ─
 | `pet_key` | TEXT | 主角，`platform-fullName` |
 | `script_title` | TEXT | 选中的剧本名，或自选小说的归一化标题 |
 | `script_brief` | TEXT | 故事前提（AI 生成的 logline，或玩家输入的梗概） |
-| `script_source` | TEXT | `ai` / `manual`，标识剧本来源 |
+| `script_source` | TEXT | `ai` / `manual` / `system` / `rule` / `mixed`，标识剧本来源（模型没写成时记 `rule`，不许冒充 `ai`） |
 | `track` | TEXT | 模型判定的赛道 |
 | `boss` | TEXT | JSON：`{full_name, stars, tier, reason, snapshot}`，只有一个；`snapshot` 是开打时用的仓库快照，保证离线可复现 |
 | `rationale` | TEXT | 解释框总述（含「你选择了 X 方向」的确认文案） |
@@ -451,6 +557,7 @@ idle ──建线──▶ active ──走到 ending 节点──▶ finish ─
 | `visited` | TEXT | JSON 数组：已读节点，用于跳过与回想 |
 | `history` | TEXT | JSON：最近 100 句台词，供回想翻页 |
 | `route` | TEXT | 当前路线标识，由 `route` 节点写入 |
+| `script_pack` | TEXT | 剧本包 id（`douma` 等），决定正片跑哪条路线；老数据为 `default` |
 | `ending` | TEXT | 已达成的结局 ID |
 | `status` | TEXT | `active` / `finish` / `cleared` / `abandoned` |
 | `created_at` / `updated_at` / `closed_at` | REAL | 时间戳 |
@@ -479,10 +586,12 @@ CREATE TABLE story_saves (
 );
 ```
 
-**剧情内容是文件，不是数据表**：`src/story/*.ink` 定义场景图（编译产物入库），
-`src/story/characters.json` 定义角色与表情映射，用 **ajv** 做 schema 校验。
+**剧情内容是文件，不是数据表**：`src/story/packs/<id>/story.ink` 定义场景图，
+`characters.json` 定义角色与表情映射，`lines.json` 是台词兜底，`meta.json` 是元信息；
+用 **ajv** 做 schema 校验。
 启动时检查：`->` 指向不存在的 knot、`EXTERNAL` 未注册、ending 表为空，都会直接报错而不是运行时崩。
 这与 Ren'Py 的 `.rpy` 编译期检查同一个思路——**结构错误必须在启动时暴露**。
+详见 §3.9（剧本包）。
 
 **桌宠状态归属**：`deskPet` 仍属轻 UI 状态（只存本地，见 SSOT §1 的排除项）。
 但存在 `active` 剧情线时，桌宠显示以 `story_run.pet_key` 为准，本地 `deskPet.key` 被覆盖且不可改。
@@ -493,7 +602,8 @@ CREATE TABLE story_saves (
 |---|---|---|
 | `POST` | `/api/story/preview` | 选 Boss 预演 `{ pet }`，返回 track / bosses / rationale，不落库 |
 | `POST` | `/api/story/boss/check` | 自选 Boss 校验 `{ full_name }`，返回标准化候选或 4xx 原因 |
-| `POST` | `/api/story/scripts` | Boss 选定后生成剧本方案 `{ pet, boss }`，返回 3 个 `{title, logline, beats}`，不落库 |
+| `GET` | `/api/story/packs` | 剧本包清单（id / 标题 / 标签 / 结局表 / 方案数），`default` 排最后 |
+| `POST` | `/api/story/scripts` | 剧本方案 `{ pet, boss, research, mode, pack }`：`mode=system` 只读指定包内置的模板（零模型调用），`mode=auto` 才让模型写，返回 3 个 `{title, logline, beats, pack}`，不落库 |
 | `POST` | `/api/story/scripts/custom` | 自选剧本校验 `{ pet, boss, input }`，返回归一化标题与梗概 |
 | `POST` | `/api/story/start` | 建线 `{ pet, script, boss, seed, selection_source }`；缺 `script` 或 `boss` 返回 400，已有 active 返回 409 |
 | `GET` | `/api/story/current` | 当前状态：`scene_id` / `vars` / `route` / 主角 / Boss / 桌宠锁定态 |
@@ -553,16 +663,17 @@ CREATE TABLE story_saves (
 6. 解释框展示 track、三只候选的 reason 与总述 rationale，并标注 Boss 来源（`ai` / `rule` / `fallback_pool` / `manual`）
 7. 自选 Boss 校验通过后自动选中并落库，`selection_source='manual'`，其余候选丢弃
 8. 自选 Boss 输入不存在的仓库 / 已归档仓库时，输入框下方给出对应原因且不建线
-9. Boss 选定后才请求剧本方案，返回 3 个剧本名，每个含 title / logline / beats 且 beats 点名 Boss
-10. 剧本页右上角「自定义」可输入小说名或梗概；≤40 字按书名补全，>40 字按梗概处理
-11. 未选剧本时 `start` 返回 400
-12. 已有 active 线时再次建线返回 409
-13. 建线后桌宠切到主角且切换被拦截；结案后可自由切换
-14. 模型不可用时自动降级为规则检索，`selection_source='rule'`
-15. GitHub 不可达时退回内置池，`selection_source='fallback_pool'`，界面有明确标注
-16. 删除主角精灵后，剧情线自动转 `abandoned` 且桌宠解锁
-17. 同一 seed 下 Boss 三人组可复现
-18. 离线推进不改变本地 `scene_id` 与 `vars`
+9. Boss 选定后进入 03 步，**不自动请求剧本**：先显示「系统剧本 / 自定义 / AI 生成」三张来源卡，此时无剧本方案、`start` 按钮不出现
+10. 选「系统剧本」返回 3 个内置模板方案且**零模型调用**；选「自定义」可输入小说名或梗概（≤40 字按书名补全，>40 字按梗概处理）；选「AI 生成」才请求模型，返回 3 个剧本名，每个含 title / logline / beats 且 beats 点名 Boss
+11. 三种来源互斥：改选会清掉上一来源的方案与选中态，不允许「旧卡配新来源」
+12. 未选剧本时 `start` 返回 400
+13. 已有 active 线时再次建线返回 409
+14. 建线后桌宠切到主角且切换被拦截；结案后可自由切换
+15. 模型不可用时自动降级为规则检索，`selection_source='rule'`
+16. GitHub 不可达时退回内置池，`selection_source='fallback_pool'`，界面有明确标注
+17. 删除主角精灵后，剧情线自动转 `abandoned` 且桌宠解锁
+18. 同一 seed 下 Boss 三人组可复现
+19. 离线推进不改变本地 `scene_id` 与 `vars`
 19. 进入剧情模式渲染一个 `scene` 节点：背景 + 登场角色 + ≥1 句台词
 20. 选项 `requires` 不满足时前端置灰，服务端对伪造提交返回 403
 21. 选择后 `effects` 只改声明过的变量，未声明变量保持不变
@@ -580,6 +691,13 @@ CREATE TABLE story_saves (
 33. 成长章实例数 = `chapter_count − 1`，终章固定 1 章
 34. `repeat` 节点的 `count` 表达式非法或求值结果 ≤ 0 时，启动或建线阶段报错
 35. 章节数落库后不再随玩家练级变化（中途变强也不会砍掉已定的关卡）
+36. `GET /api/story/packs` 返回全部包；`default` 排最后（它是 AI / 自定义剧本的兜底路线）
+37. `mode=system` + `pack=douma` 返回的是斗码苍穹的方案（玄幻语汇），与 `pack=default` 的方案不同
+38. 选了斗码苍穹后，正片的角色名、背景地点牌、结局标题都来自这个包，不出现通用包的文案
+39. 建线 → 存档 → 重新进页面续跑，仍跑同一个包（不串回 default）
+40. 同一个场景在两个包里各自生成台词（缓存键含 pack id），不互相复用
+41. `meta.endings` 漏掉该包 ink 里出现的结局 id 时，`npm run story:build` 直接报错中止
+42. 未知 pack id 退回 default，不让正片整个挂掉
 
 ## 11. 开源组件选型：能直接套的都套
 
@@ -624,6 +742,15 @@ CREATE TABLE story_saves (
 inkjs 与 ajv 均为 MIT，可商用。**依赖已安装并锁定**（`package.json`：`inkjs@2.4.0`、`ajv@8.20.0`），
 许可证条目见 [`THIRD-PARTY.md`](../THIRD-PARTY.md)。构建期用 ajv 校验内容库；
 `npm run story:build` 负责编译与校验，`npm run test:story` 跑路线自检。
+
+### 剧情模式的四层测试
+
+| 命令 | 覆盖 |
+|---|---|
+| `npm run story:build` | 逐包编译 + 构建期守卫（结局表覆盖、台词 key 全覆盖、说话人存在） |
+| `npm run test:story` | 路线自检：场景进入、选项、变量、战斗分支、动态章节数、存档回滚、多结局、**多包隔离**（两个包的路线 / 结局 / 角色表互不串） |
+| `cd backend && .venv/bin/python -m pytest tests/ -q` | 后端：包注册表、系统剧本读包、世界观注入、缓存键按包隔离、pack 落库、结局标题按包取 |
+| `node scripts/story-pack-check.mjs` | 浏览器端：包选择器 → 方案卡 → 建线 → 正片渲染 → **重新进页面续跑不串包**（需前后端已启动） |
 
 ## 12. 未决问题
 

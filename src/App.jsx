@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useI18n } from './i18n.js'
 import { parseRepoInput, scanOwnerBox, scanRepo } from './scan.js'
-import { expForLevel, judge, recomputePetStats } from './engine.js'
+import { derivedFieldsOf, expForLevel, judge, recomputePetStats } from './engine.js'
 import {
   cachedProfile, clearGuest, consumeAuthQuery, fetchMe, fetchProviders,
   guestSkipped, logout, PROVIDER_LABEL, quotaText, skipLogin,
@@ -10,6 +10,7 @@ import { loadCollection, upsertPet } from './storage.js'
 import { markDirty, startupSync } from './sync.js'
 import { exportShareCard } from './share.js'
 import { sfx } from './sfx.js'
+import { bgm } from './bgm.js'
 import AuthPage from './components/AuthPage.jsx'
 import PetCard from './components/PetCard.jsx'
 import PackOpening from './components/PackOpening.jsx'
@@ -27,15 +28,21 @@ import Settings from './components/Settings.jsx'
 import DesktopPet from './components/DesktopPet.jsx'
 import DeskPetPicker from './components/DeskPetPicker.jsx'
 import StoryMode from './components/StoryMode.jsx'
+import { unlockTts } from './tts.js'
 import { loadDesk, saveDesk, petKey } from './deskPet.js'
 import { finalRollDuration, runDeepAudit, buildEvidence } from './audit.js'
 import { bindWithLLM, clearLLMKey, evaluateWithLLM, loadLLMConfig, pingWithLLM, saveLLMConfig } from './llm.js'
 import { buildPetFromEvaluation } from './llmEval.js'
+import Inventory from './components/Inventory.jsx'
+import Shop from './components/Shop.jsx'
+import Quest from './components/Quest.jsx'
+import { exchangeOffer, fetchInventory, grantItem, newRequestId, spendItem } from './inventory.js'
 // 卡面全息材质库（pokemon-cards-css / GPL-3.0）必须先于项目样式加载，保证本项目的覆盖规则生效
 import './vendor/pokemon-cards.css'
 import './styles.css'
 import './game-theme.css'
 import './training.css'
+import './vault.css'
 
 const RANK = { SSR: 4, SR: 3, R: 2, N: 1 }
 
@@ -247,6 +254,13 @@ export default function App() {
   const auditSkipRef = useRef(false) // 跳过：节拍归零（同步给 runDeepAudit）
   // 右上角高级模式弹层开关
   const [advOpen, setAdvOpen] = useState(false)
+  // 背包 / 商店（仓库页的第二、第三个 Tab）：余额与流水一律以服务端为准
+  const [inv, setInv] = useState(null)
+  const [invTab, setInvTab] = useState('pets') // pets | bag | shop
+  const [invBusy, setInvBusy] = useState(false)
+  const [invMsg, setInvMsg] = useState('')
+  // 结算序号：发星尘的幂等键要每次都不一样，同一场结算重放也只发一次
+  const settleSeq = useRef(0)
   // 登录态：loading 期间不闪首页，避免"先显示未登录再跳授权页"
   const [auth, setAuth] = useState(() => ({
     loading: true,
@@ -319,6 +333,108 @@ export default function App() {
     setView('auth')
   }
 
+  // 等级一变就重算派生值：规则引擎卡按种族值+个体值+新等级重算六维，
+  // AI 评测卡（六维是模型给的评分，没有个体值）只刷新战力 / 归一化上限。
+  // 战力永远由「当前六维 + 当前等级」算出来，别让旧值留在卡上。
+  const refreshPet = (p) => {
+    const merged = { ...p, ...recomputePetStats(p, p.level) }
+    return { ...merged, ...derivedFieldsOf(merged) }
+  }
+
+  // ---------------------------------------------------------------- 背包 / 商店
+  // 余额与流水只存在服务端：读的时候直接拉，不做本地镜像。
+  // 两边各存一份账，迟早会对不上，而玩家对不上账是零容忍的。
+  const loadInv = async () => {
+    try {
+      setInv(await fetchInventory())
+    } catch (e) {
+      setInvMsg(e.message || t('背包打不开', 'Could not open your pack'))
+    }
+  }
+
+  // 进仓库页 / 精灵详情页都要看到最新余额：这两处都有道具要用
+  useEffect(() => {
+    if (view === 'warehouse' || view === 'detail') loadInv()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view])
+
+  // 结算发星尘。source_key 带序号：同一场结算重放也只发一次。
+  // 额度口径与后端 inventory.GRANTS 一致，改一处要改两处。
+  const grantStardust = (amount, reason, prefix) => {
+    if (!amount) return
+    const sourceKey = `${prefix}:${Date.now()}:${settleSeq.current++}`
+    grantItem('stardust', amount, sourceKey, reason).catch(() => { /* 发奖失败不影响结算本身 */ })
+  }
+
+  // 同一次购买意图复用同一个 request_id：网络抖动后重试不会重复扣款
+  const buyReqIds = useRef({})
+  const handleExchange = async (offer) => {
+    const reqId = buyReqIds.current[offer.key] || newRequestId()
+    buyReqIds.current[offer.key] = reqId
+    setInvBusy(true)
+    setInvMsg('')
+    try {
+      await exchangeOffer(offer.key, reqId)
+      delete buyReqIds.current[offer.key]
+      await loadInv()
+      setInvMsg(t(`兑换成功，去背包看看`, 'Purchased — check your pack'))
+      sfx.blip()
+    } catch (e) {
+      setInvMsg(e.message || t('兑换失败', 'Purchase failed'))
+      sfx.error()
+    } finally {
+      setInvBusy(false)
+    }
+  }
+
+  // 在精灵身上用道具：羁绊符 / 经验液 / 词条碎片。
+  // 先算效果再扣道具——净化不到负面词条时不能白扣一张碎片。
+  const useItemOnPet = async (target, itemKey) => {
+    if (!target) return
+    let next = null
+    let note = ''
+    if (itemKey === 'bond_charm') {
+      next = { ...target, bond: Math.min(100, (target.bond || 0) + 20) }
+      note = t(`羁绊 +20（现在 ${next.bond}）`, `Bond +20 (now ${next.bond})`)
+    } else if (itemKey === 'exp_tonic') {
+      let exp = (target.exp || 0) + 200
+      let level = Number(target.level) || 1
+      while (level < 999 && exp >= expForLevel(level)) { exp -= expForLevel(level); level += 1 }
+      next = { ...target, exp, level }
+      note = t(`经验 +200（Lv.${level}）`, `EXP +200 (Lv.${level})`)
+    } else if (itemKey === 'trait_shard') {
+      const traits = Array.isArray(target.traits) ? target.traits : []
+      const negIdx = traits.findIndex((x) => x && x.kind === 'negative')
+      if (negIdx < 0) {
+        setInvMsg(t('这只精灵没有负面词条可以净化', 'This sprite has no negative trait to purify'))
+        sfx.error()
+        return
+      }
+      const dropped = traits[negIdx]
+      next = { ...target, traits: traits.filter((_, i) => i !== negIdx) }
+      note = t(`净化掉「${dropped.name}」`, `Purified “${dropped.name}”`)
+    } else {
+      return
+    }
+    setInvBusy(true)
+    setInvMsg('')
+    try {
+      await spendItem(itemKey, 1, `使用于 ${target.fullName}`)
+      const saved = refreshPet(next)
+      setCollection(upsertPet(loadCollection(), saved))
+      markDirty([saved])
+      setPet(saved)
+      setInvMsg(note)
+      sfx.blip()
+      await loadInv()
+    } catch (e) {
+      setInvMsg(e.message || t('道具用不了', 'Could not use that item'))
+      sfx.error()
+    } finally {
+      setInvBusy(false)
+    }
+  }
+
   // 战斗结算：全队分经验，升级按 engine 的成长曲线走
   const grantBattleXp = (team, xp, won) => {
     const updated = (team || []).map((p) => {
@@ -328,17 +444,14 @@ export default function App() {
         exp -= expForLevel(level)
         level += 1
       }
-      // 升级后按新等级重算六维 / 最大HP / 战力（个体值与词条保持不变）
-      const recomputed = recomputePetStats(p, level)
-      return {
+      return refreshPet({
         ...p,
-        ...recomputed,
         exp,
         level,
         bond: Math.min(100, (p.bond || 0) + (won ? 4 : 1)),
         battles: (p.battles || 0) + 1,
         wins: (p.wins || 0) + (won ? 1 : 0),
-      }
+      })
     })
     let list = loadCollection()
     updated.forEach((p) => { list = upsertPet(list, p) })
@@ -346,6 +459,8 @@ export default function App() {
     markDirty(updated) // 结算落盘后进脏队列，debounce 推送服务端
     const mine = updated.find((p) => pet && p.fullName === pet.fullName && p.platform === pet.platform)
     if (mine) setPet(mine)
+    // 打赢 / 打输都给一点星尘：这是商店唯一的收入来源
+    grantStardust(won ? 30 : 8, won ? '竞技场胜利' : '竞技场落败', 'battle')
   }
 
   // 剧情结算：只给经验与升级，不计入竞技场战绩
@@ -357,10 +472,11 @@ export default function App() {
       exp -= expForLevel(level)
       level += 1
     }
-    const recomputed = recomputePetStats(target, level)
-    const next = { ...target, ...recomputed, exp, level }
+    const next = refreshPet({ ...target, exp, level })
     setCollection(upsertPet(loadCollection(), next))
     markDirty(next)
+    // 剧情达成（结案）发一笔星尘：比竞技场多，这是主线玩法该有的分量
+    grantStardust(80, '剧情达成', 'story')
   }
 
   const fail = (e) => {
@@ -470,16 +586,12 @@ export default function App() {
     if (guestSkipped() || cachedProfile()?.authenticated) setAdvOpen(true)
   }, [llmConfig.apiKey, llmConfig.binding])
 
-  // AI 入口：开启前必须先过连接测试（真打一次 chat/completions），
+  // AI 入口：点开面板并重新做一次连接测试（真打一次 chat/completions），
   // 绑定只验证过 /models 能列出模型，不能保证评测链路真的能通。
+  // 注意：这里不再「点一下就把高级模式关掉」——连接测试失败时用户会反复点这个入口重试，
+  // 旧语义下第一下就把 advanced 踢成 false，深度审计演出（AuditStage）跟着一起消失，
+  // 表现就是「挖掘过场又没了」。关掉高级模式改由面板里的显式按钮负责。
   const handleAiToggle = async () => {
-    if (advanced) {
-      setAdvanced(false)
-      persistAiMode(false)
-      setAdvOpen(false)
-      setGateMsg(null)
-      return
-    }
     setAdvOpen(true)
     const cfg = llmConfig
     if (bindState === 'binding') {
@@ -492,6 +604,14 @@ export default function App() {
       return
     }
     await enableAdvanced(cfg)
+  }
+
+  // 退出高级模式（面板里显式操作）：抽卡退回普通扫描台，深度审计演出与大竞技场一并收起
+  const disableAdvanced = () => {
+    setAdvanced(false)
+    persistAiMode(false)
+    setAdvOpen(false)
+    setGateMsg(null)
   }
 
   // 高级模式：不调 GitHub/Gitee API，也不跑 judge() —— 评测整体交给模型
@@ -886,7 +1006,7 @@ export default function App() {
   }
 
   // 顶栏左上角全局返回：按当前页智能回退到上一页
-  const SUBVIEWS = ['scan', 'box', 'pack', 'reveal', 'detail', 'battle', 'training', 'leaderboard', 'settings', 'warehouse', 'story']
+  const SUBVIEWS = ['scan', 'box', 'pack', 'reveal', 'detail', 'battle', 'training', 'leaderboard', 'settings', 'warehouse', 'story', 'quest']
   const backTarget = (() => {
     switch (view) {
       case 'reveal': return box ? 'box' : 'home'
@@ -899,12 +1019,13 @@ export default function App() {
   const goBack = () => { sfx.back(); setView(backTarget) }
   const showBack = SUBVIEWS.includes(view)
 
-  // 顶栏主导航（大厅 / 竞技场 / 训练场 / 排行榜 / 设置；收藏走右上「🧰 精灵仓库」）
+  // 顶栏主导航（大厅 / 竞技场 / 训练场 / 排行榜 / 任务 / 设置；收藏走右上「🧰 仓库」）
   const NAV_ITEMS = [
     { key: 'home', label: t('大厅', 'Lobby') },
     { key: 'battle', label: t('竞技场', 'Arena') },
     { key: 'training', label: t('训练场', 'Training') },
     { key: 'leaderboard', label: t('排行榜', 'Leaderboard') },
+    { key: 'quest', label: t('任务', 'Quests') },
     { key: 'settings', label: t('设置', 'Settings') },
   ]
   const navActive = (key) => view === key
@@ -922,10 +1043,14 @@ export default function App() {
     setPet(null)
   }
 
-  // 剧情模式：C3 = 已绑定模型 + 至少一只 AI 认证精灵（不再看 advanced 开关）
+  // 剧情模式：C3 = 已绑定模型 + 本次会话密钥有效 + 至少一只 AI 认证精灵
+  // binding 落 localStorage（持久），密钥只在 sessionStorage（新标签页即失效）。
+  // 只验 binding 会放行「密钥已丢」的会话：后端收到空 key 后静默降级成规则检索，
+  // 界面却仍显示「模型已绑定」，于是出现中文总述配英文卡片说明。
   const storyCast = collection.filter((p) => p.aiEvaluated)
   const storyBinding = Boolean(llmConfig?.binding) && llmConfig.binding.verified !== false
-  const storyReady = storyBinding && storyCast.length > 0
+  const storyKey = Boolean(llmConfig?.apiKey?.trim())
+  const storyReady = storyBinding && storyKey && storyCast.length > 0
 
   return (
     <div className="app">
@@ -991,6 +1116,8 @@ export default function App() {
                       pingTesting={pingTesting}
                       onBind={handleBind}
                       onClose={() => setAdvOpen(false)}
+                      advanced={advanced}
+                      onDisable={disableAdvanced}
                     />
                   </div>
                 </>
@@ -998,10 +1125,15 @@ export default function App() {
             </div>
             <button
               className="mute-btn"
-              onClick={() => { sfx.blip(); setView('warehouse') }}
-              title={t('精灵仓库', 'Sprite Vault')}
+              onClick={() => {
+                sfx.blip()
+                setView('warehouse')
+                // 余额永远从服务端拉：本地留一份账迟早和服务器对不上
+                loadInv()
+              }}
+              title={t('仓库：精灵 · 背包 · 商店', 'Vault: sprites, pack, shop')}
             >
-              🧰 {t('精灵仓库', 'Sprite Vault')}
+              🧰 {t('仓库', 'Vault')}
             </button>
             {auth.profile?.authenticated ? (
               <div
@@ -1082,7 +1214,7 @@ export default function App() {
                 </button>
                 <button
                   className="ghost-btn"
-                  onClick={() => { if (storyReady) { sfx.swoosh(); setView('story') } else { sfx.blip(); setStoryGate(true) } }}
+                  onClick={() => { if (storyReady) { sfx.swoosh(); bgm.unlock(); unlockTts(); setView('story') } else { sfx.blip(); setStoryGate(true) } }}
                   title={t('查看剧情模式进入条件', 'See Story Mode requirements')}
                 >
                   {t('进入剧情模式', 'Enter Story Mode')}
@@ -1137,7 +1269,7 @@ export default function App() {
             <div className="account-actions" style={{ marginTop: 10 }}>
               <button
                 className="ghost-btn"
-                onClick={() => { if (storyReady) { sfx.swoosh(); setView('story') } else { sfx.blip(); setStoryGate(true) } }}
+                onClick={() => { if (storyReady) { sfx.swoosh(); bgm.unlock(); unlockTts(); setView('story') } else { sfx.blip(); setStoryGate(true) } }}
                 title={t('查看剧情模式进入条件', 'See Story Mode requirements')}
               >
                 {t('进入剧情模式', 'Enter Story Mode')}
@@ -1256,6 +1388,16 @@ export default function App() {
                 <span className={storyBinding ? 'ok' : 'no'}>{storyBinding ? '✓' : '✗'}</span>
                 <span>{t('账号已绑定模型（高级模式可用）', 'A model is bound to this account')}</span>
               </li>
+              {storyBinding && (
+                <li>
+                  <span className={storyKey ? 'ok' : 'no'}>{storyKey ? '✓' : '✗'}</span>
+                  <span>
+                    {storyKey
+                      ? t('本次会话的模型密钥有效', 'Model key is valid in this tab')
+                      : t('本次会话密钥已失效：密钥只保存在当前标签页，重新粘贴一次即可', 'Session key expired: keys live in this tab only — paste it again')}
+                  </span>
+                </li>
+              )}
               <li>
                 <span className={storyCast.length ? 'ok' : 'no'}>{storyCast.length ? '✓' : '✗'}</span>
                 <span>
@@ -1266,17 +1408,19 @@ export default function App() {
             <p className="preview-note">
               {storyReady
                 ? t('条件已满足，可以进入剧情模式。', 'All requirements met — you can enter.')
-                : t('两项都满足后即可进入剧情模式。', 'Meet both requirements to enter Story Mode.')}
+                : storyBinding && !storyKey
+                  ? t('重新粘贴密钥后即可进入剧情模式。', 'Paste your key again to enter Story Mode.')
+                  : t('两项都满足后即可进入剧情模式。', 'Meet both requirements to enter Story Mode.')}
             </p>
             <div className="account-actions">
               {storyReady && (
-                <button className="primary-btn" onClick={() => { setStoryGate(false); sfx.swoosh(); setView('story') }}>
+                <button className="primary-btn" onClick={() => { setStoryGate(false); sfx.swoosh(); bgm.unlock(); unlockTts(); setView('story') }}>
                   {t('进入剧情模式', 'Enter Story Mode')}
                 </button>
               )}
-              {!storyBinding && (
+              {(!storyBinding || !storyKey) && (
                 <button className="primary-btn" onClick={() => { setStoryGate(false); setAdvOpen(true) }}>
-                  {t('去绑定模型', 'Bind a model')}
+                  {t(!storyBinding ? '去绑定模型' : '重新粘贴密钥', !storyBinding ? 'Bind a model' : 'Paste the key again')}
                 </button>
               )}
               <button className="ghost-btn" onClick={() => setStoryGate(false)}>{t('知道了', 'Got It')}</button>
@@ -1335,7 +1479,7 @@ export default function App() {
         <main className="home">
           <section className="hero">
             <div className="hero-title-row">
-              <h2>{t('精灵仓库', 'Sprite Vault')}</h2>
+              <h2>{t('仓库', 'Vault')}</h2>
               {/* 「桌宠上任」卡片可视化选择（spec §2 修订 v2） */}
               {collection.length > 0 && (
                 <DeskPetPicker
@@ -1350,17 +1494,50 @@ export default function App() {
               )}
             </div>
             <p>{t('抽到的每一只精灵都住在', 'Every sprite you draw lives ')}<b>{t('这里', 'here')}</b>{t(' —— 点开看详情、培育成长，或者直接带去对战。', ' — open one to view details, grow it, or take it straight into battle.')}</p>
-          </section>
-          {collection.length > 0 ? (
-            <Collection list={collection} onPick={(p) => { setPet(p); setView('detail') }} />
-          ) : (
-            <div className="warehouse-empty">
-              <p>{t('仓库空空如也 —— 先去大厅抽一包？', 'The vault is empty — draw a pack in the Lobby first?')}</p>
-              <button className="primary-btn" onClick={() => { sfx.swoosh(); setView('home') }}>{t('去大厅抽卡', 'Go Draw in Lobby')}</button>
+            {/* 仓库 = 精灵 + 背包 + 商店：都在「我的东西」这一页里，不用在顶栏抢位置 */}
+            <div className="vault-tabs" role="tablist">
+              {[
+                { id: 'pets', label: t('精灵', 'Sprites') },
+                { id: 'bag', label: t('背包', 'Pack') },
+                { id: 'shop', label: t('商店', 'Shop') },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  role="tab"
+                  aria-selected={invTab === tab.id}
+                  className={`vault-tab${invTab === tab.id ? ' sel' : ''}`}
+                  onClick={() => {
+                    sfx.blip()
+                    setInvTab(tab.id)
+                    if (tab.id !== 'pets') loadInv()
+                  }}
+                >
+                  {tab.label}
+                  {tab.id === 'shop' && inv && (inv.balances?.stardust ?? 0) > 0 && (
+                    <i className="vault-dot" aria-hidden="true" />
+                  )}
+                </button>
+              ))}
             </div>
+            {invMsg && <p className="inv-msg">{invMsg}</p>}
+          </section>
+
+          {invTab === 'pets' && (
+            collection.length > 0 ? (
+              <Collection list={collection} onPick={(p) => { setPet(p); setView('detail') }} />
+            ) : (
+              <div className="warehouse-empty">
+                <p>{t('仓库空空如也 —— 先去大厅抽一包？', 'The vault is empty — draw a pack in the Lobby first?')}</p>
+                <button className="primary-btn" onClick={() => { sfx.swoosh(); setView('home') }}>{t('去大厅抽卡', 'Go Draw in Lobby')}</button>
+              </div>
+            )
           )}
+          {invTab === 'bag' && <Inventory data={inv} busy={invBusy} />}
+          {invTab === 'shop' && <Shop data={inv} busy={invBusy} onExchange={handleExchange} />}
         </main>
       )}
+
+      {view === 'quest' && <Quest onGo={(v) => { sfx.swoosh(); setView(v) }} />}
 
       {view === 'scan' && (advanced && llmConfig.deepAudit !== false ? (
         <AuditStage events={auditEvents} onSkip={handleSkipAudit} />
@@ -1476,12 +1653,37 @@ export default function App() {
             <button className="ghost-btn" onClick={reset}>{t('再抽一只', 'Draw Another')}</button>
           </div>
           {revalError && <p className="error reval-error">! {revalError}</p>}
+          {/* 背包里的消耗品：用在这只精灵身上（羁绊 / 经验 / 净化词条） */}
+          {inv && (() => {
+            const usable = (inv.items || []).filter((i) => i.kind === 'consumable' && (inv.balances?.[i.key] || 0) > 0)
+            if (!usable.length) return null
+            return (
+              <div className="pet-items">
+                <h4>{t('用道具', 'Use items')}</h4>
+                <div className="pet-items-row">
+                  {usable.map((item) => (
+                    <div key={item.key} className="pet-item">
+                      <span className="inv-icon" style={{ color: item.color }} aria-hidden="true">{item.icon}</span>
+                      <span className="pet-item-name">{item.name}</span>
+                      <span className="pet-item-count">×{inv.balances[item.key]}</span>
+                      <button className="mini-btn" disabled={invBusy} onClick={() => useItemOnPet(pet, item.key)}>
+                        {t('使用', 'Use')}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {invMsg && <p className="inv-msg">{invMsg}</p>}
+              </div>
+            )
+          })()}
           <GrowPanel
             pet={pet}
             onUpdate={(next) => {
-              setPet(next)
-              setCollection(upsertPet(loadCollection(), next))
-              markDirty(next)
+              // 投喂 / 训练会改等级：走同一条刷新，六维与战力跟着动
+              const patched = refreshPet(next)
+              setPet(patched)
+              setCollection(upsertPet(loadCollection(), patched))
+              markDirty(patched)
             }}
           />
           <Collection list={collection} onPick={(p) => setPet(p)} />

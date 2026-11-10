@@ -6,7 +6,7 @@
 // 本地只做三件机械的事：枚举查表（把 key 变成带颜色/名称的对象）、展示换算
 // （grade / maxHp / 进化阶段 / 解锁态）、以及补上渲染必需的固定字段。
 
-import { ELEMENTS, SPECIES, QUALITIES, expForLevel, hashSeed, stageFromLevel } from './engine.js'
+import { ELEMENTS, SPECIES, QUALITIES, combatPowerOf, expForLevel, hashSeed, stageFromLevel } from './engine.js'
 import { STAT_NAMES, foundationTier, traitHints, traitSummary, xpMultiplier } from './traits.js'
 import { parseRepoInput } from './scan.js'
 
@@ -114,6 +114,14 @@ export function buildPetFromEvaluation(ev, {
     exp,
     expToNext: Math.round(exp * mult),
     maxHp: hp * 10,
+    // 六维是 0–100 的评分：归一化上限写死，血条按 0–1000 算
+    statCap: 100,
+    hpCap: 1000,
+    // 战力必须由「模型给的六维 + 模型给的等级」算，否则会和卡面数字对不上
+    combatPower: combatPowerOf(stats, level),
+    // AI 卡的六维不是引擎公式产出的，清掉引擎派生字段，别让升级重算把它冲掉
+    ivs: null,
+    baseStats: null,
     status: 'active',
     bond: 0,
     fedAt: 0,

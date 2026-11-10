@@ -189,7 +189,20 @@ async def detect(api_key: str, *, provider: str | None = None, custom: dict[str,
                 headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
             )
             models = _probe(resp)
-        except httpx.HTTPError:
+        except httpx.HTTPError as exc:
+            # 地址打错时 /models 只会抛 ConnectError，旧逻辑把它吞成「未验证但绑定成功」，
+            # 用户要等到连接测试才看到「连不上模型接口」。域名根本解析不出来就直接判死。
+            if isinstance(exc, httpx.ConnectError) and any(
+                w in str(exc).lower() for w in (
+                    "nodename nor servname", "name or service not known",
+                    "temporary failure in name resolution", "getaddrinfo failed",
+                )
+            ):
+                host = urlparse(base).hostname or base
+                raise LLMError(
+                    f"域名 {host} 解析不了，Base URL 写错了",
+                    "检查拼写：-cn 与 .cn 不能混用，末尾一般要带 /v1",
+                ) from None
             models = []
         if not models and not given_model:
             raise LLMError("自定义端点没有返回模型列表", "确认地址以 /v1 结尾、服务已启动，或直接填模型名跳过探测")

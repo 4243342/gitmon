@@ -7,6 +7,7 @@ import '../advanced.css'
 export default function AdvancedPanel({
   config, onConfigChange, hint, onHintChange, onClearKey, busy,
   bindState = 'idle', bindError = '', gate = null, pingTesting = false, onBind, onClose,
+  advanced = false, onDisable,
 }) {
   const { t: tf } = useI18n()
   const [showCustom, setShowCustom] = useState(false)
@@ -35,6 +36,7 @@ export default function AdvancedPanel({
     <section className="llm-panel" aria-label={tf('高级模式：模型评测配置', 'Advanced mode: model evaluation settings')}>
       <header className="llm-head">
         <span className="llm-badge">{tf('AI高级版', 'AI Pro')}</span>
+        {advanced && <span className="llm-on">{tf('高级模式已开启', 'Advanced on')}</span>}
         {onClose && (
           <button type="button" className="llm-close" onClick={onClose} aria-label={tf('关闭', 'Close')}>✕</button>
         )}
@@ -157,9 +159,16 @@ export default function AdvancedPanel({
         </div>
       </details>
 
-      {keyReady && (
+      {(keyReady || advanced) && (
         <div className="llm-foot">
-          <button type="button" className="llm-clear" onClick={onClearKey} disabled={busy}>{tf('清除密钥', 'Clear key')}</button>
+          {keyReady && (
+            <button type="button" className="llm-clear" onClick={onClearKey} disabled={busy}>{tf('清除密钥', 'Clear key')}</button>
+          )}
+          {advanced && onDisable && (
+            <button type="button" className="llm-disable" onClick={onDisable} disabled={busy}>
+              {tf('退出高级模式', 'Turn off Advanced')}
+            </button>
+          )}
         </div>
       )}
     </section>

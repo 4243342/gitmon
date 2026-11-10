@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { sfx } from '../sfx.js'
 import { bgm } from '../bgm.js'
+import {
+  tts, getTtsConfig, setTtsEnabled, setTtsEngine, setTtsRate, setTtsVolume, setTtsAutoFirst,
+} from '../tts.js'
 import { useI18n } from '../i18n.js'
 import AdvancedPanel from './AdvancedPanel.jsx'
 
@@ -54,6 +57,28 @@ export default function Settings({
   const [vol, setVol] = useState(() => Math.round(sfx.volume * 100))
   const [fast, setFast] = useState(readFast)
   const { t, lang, setLang } = useI18n()
+  const [voiceCfg, setVoiceCfg] = useState(() => getTtsConfig())
+  const [voiceMsg, setVoiceMsg] = useState('')
+
+  // 每次改完重读模块里的配置，避免 UI 与 localStorage 两份状态打架
+  const patchVoice = (apply) => {
+    apply()
+    setVoiceCfg(getTtsConfig())
+  }
+
+  const tryVoice = async (who) => {
+    setVoiceMsg('')
+    tts.unlock()
+    try {
+      await tts.preview(who)
+      const left = tts.degraded
+      if (left) {
+        setVoiceMsg(t('在线音源不可用，这次用的是系统朗读', 'Online voice unavailable — played the system voice'))
+      }
+    } catch (err) {
+      setVoiceMsg(err?.message || t('试听失败', 'Preview failed'))
+    }
+  }
 
   const changeVolume = (v) => {
     setVol(v)
@@ -138,6 +163,120 @@ export default function Settings({
                 <button className="mini-btn" onClick={() => sfx.attack({ physical: true, element: 'normal', power: 95 })}>{t('出招', 'Attack')}</button>
                 <button className="mini-btn" onClick={() => sfx.hit({ crit: true, value: 60 })}>{t('暴击', 'Crit')}</button>
               </div>
+            </div>
+          )}
+
+          {tab === 'audio' && (
+            <div className="set-block anim-rise">
+              <h2 className="set-block-title">{t('语音朗读', 'Voice')} <em>TTS</em></h2>
+              <Row
+                label={t('台词朗读', 'Read lines aloud')}
+                hint={t('剧情模式里逐句念出台词；关掉则只显示文字', 'Speak story lines one by one; off means text only')}
+              >
+                <Toggle
+                  on={voiceCfg.enabled}
+                  ariaLabel={t('语音朗读开关', 'Toggle voice')}
+                  onClick={() => patchVoice(() => setTtsEnabled(!voiceCfg.enabled))}
+                />
+              </Row>
+              <Row
+                label={t('音源', 'Voice source')}
+                hint={voiceCfg.engine === 'local'
+                  ? t('本地模型（Kokoro 中文）：纯 CPU 离线合成，免 key 免联网，四个角色四个嗓子',
+                    'Local model (Kokoro zh): offline CPU synthesis, no key, four distinct voices')
+                  : voiceCfg.engine === 'cloud'
+                    ? t('用已绑定模型端点的 /audio/speech 合成，音色最好，按字符计费',
+                      'Synthesised by your bound endpoint (/audio/speech), best quality, billed per character')
+                    : voiceCfg.engine === 'edge'
+                      ? t('edge-tts：免 key，需要后端装了这个可选依赖', 'edge-tts: no key needed, requires the optional backend package')
+                      : t('浏览器系统朗读：零成本兜底，各角色只有音高差异',
+                        'Browser speech: free fallback, characters differ only by pitch')}
+              >
+                <div className="lb-seg">
+                  {['local', 'cloud', 'edge', 'system'].map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      className={voiceCfg.engine === key ? 'active' : ''}
+                      onClick={() => { sfx.tick(); patchVoice(() => setTtsEngine(key)) }}
+                    >
+                      {key === 'local' ? t('本地', 'Local')
+                        : key === 'cloud' ? t('在线', 'Online')
+                          : key === 'edge' ? 'edge' : t('系统', 'System')}
+                    </button>
+                  ))}
+                </div>
+              </Row>
+              <Row
+                label={t('进场自动念第一句', 'Speak the first line on entry')}
+                hint={t('进入新一屏时自动开口；不想要就关掉，只在你点击时念',
+                  'Start talking when a scene opens; turn off to speak only on click')}
+              >
+                <Toggle
+                  on={voiceCfg.autoFirst}
+                  ariaLabel={t('自动朗读开关', 'Toggle auto-speak')}
+                  onClick={() => patchVoice(() => setTtsAutoFirst(!voiceCfg.autoFirst))}
+                />
+              </Row>
+              <Row label={t('语速', 'Speed')} hint={`${voiceCfg.rate.toFixed(2)}×`}>
+                <input
+                  className="px-range"
+                  type="range"
+                  min="60"
+                  max="160"
+                  step="5"
+                  value={Math.round(voiceCfg.rate * 100)}
+                  style={{ '--fill': `${((voiceCfg.rate - 0.6) / 1.0) * 100}%` }}
+                  onChange={(e) => patchVoice(() => setTtsRate(Number(e.target.value) / 100))}
+                  aria-label={t('语音语速', 'Voice speed')}
+                />
+              </Row>
+              <Row label={t('语音音量', 'Voice volume')} hint={`${Math.round(voiceCfg.volume * 100)}%（独立于音乐）`}>
+                <input
+                  className="px-range"
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={Math.round(voiceCfg.volume * 100)}
+                  style={{ '--fill': `${voiceCfg.volume * 100}%` }}
+                  onChange={(e) => patchVoice(() => setTtsVolume(Number(e.target.value) / 100))}
+                  aria-label={t('语音音量', 'Voice volume')}
+                />
+              </Row>
+              <div className="set-test">
+                <span className="opt-hint">{t('试听：', 'Test:')}</span>
+                {tts.roles.map((who) => (
+                  <button key={who} className="mini-btn" onClick={() => tryVoice(who)}>
+                    {who === 'narrator' ? t('旁白', 'Narrator')
+                      : who === 'pet' ? t('主角', 'Hero')
+                        : who === 'scout' ? t('引路人', 'Guide') : t('宿敌', 'Rival')}
+                  </button>
+                ))}
+              </div>
+              {voiceMsg && <p className="opt-hint">{voiceMsg}</p>}
+              {voiceCfg.degraded && (
+                <p className="set-note">
+                  {voiceCfg.degraded === 'nomodel'
+                    ? t('后端没找到本地语音模型，已在本次会话改用系统朗读。见 docs/TTS.md 的安装说明。',
+                      'The backend could not find the local voice model — this session falls back to the system voice.')
+                    : voiceCfg.degraded === 'unsupported'
+                      ? t('当前模型端点没有 /audio/speech，已在本次会话改用系统朗读。',
+                        'Your endpoint has no /audio/speech — this session falls back to the system voice.')
+                      : voiceCfg.degraded === 'unstable'
+                        ? t('在线语音连续失败，已在本次会话改用系统朗读。',
+                          'Online voice kept failing — this session falls back to the system voice.')
+                        : t('没有可用的模型密钥，已在本次会话改用系统朗读。',
+                          'No model key available — this session falls back to the system voice.')}
+                </p>
+              )}
+              <p className="set-note">
+                {voiceCfg.engine === 'local'
+                  ? t('台词只在本机合成，不出网也不落任何第三方；模型只在第一次用时加载。',
+                    'Lines are synthesised on this machine — nothing leaves it. The model loads once.')
+                  : t('台词文本会发送给你配置的语音服务；密钥只存在当前标签页内存里，不落盘。',
+                    'Line text is sent to your configured voice service; the key stays in this tab’s memory.')}
+              </p>
             </div>
           )}
 

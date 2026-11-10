@@ -6,6 +6,7 @@ API 层只负责参数校验与序列化，所有业务动作都收在这里。
 from __future__ import annotations
 
 import hashlib
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -464,6 +465,16 @@ def remove(pet_id: str) -> None:
             raise PetNotFound()
         conn.execute("DELETE FROM pets WHERE id=?", (pet_id,))
         conn.execute("DELETE FROM growth_log WHERE pet_id=?", (pet_id,))
+        # 精灵没了，以它为主角的剧情线就没法推进了（设计 §8）：
+        # 当场结案，别留一条「桌宠还锁着、主角却不存在」的空壳线。
+        # pet_key 的口径与 story.start 一致："{platform}-{full_name}"
+        pet_key = f"{pet.get('platform') or 'github'}-{pet.get('full_name') or ''}"
+        now = time.time()
+        conn.execute(
+            "UPDATE story_runs SET status='abandoned', closed_at=?, updated_at=? "
+            "WHERE pet_key=? AND owner_key=? AND status='active'",
+            (now, now, pet_key, pet.get("owner_key") or "public"),
+        )
 
 
 def leaderboard(limit: int = 20) -> dict[str, Any]:

@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import json
+import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from . import story
+from . import story, story_packs
 from .api import owner_key, session_token
 
 router = APIRouter(prefix="/api/story", tags=["story"])
@@ -39,16 +44,31 @@ class BossCheckRequest(BaseModel):
     platform: str = Field(default="github", max_length=20)
 
 
+class ResearchIn(BaseModel):
+    """选对手阶段的调研结果：编剧模型必须拿到，否则剧本只能是通用模板。"""
+    track: str = Field(default="", max_length=60)
+    rationale: str = Field(default="", max_length=400)
+    queries: list[str] = Field(default_factory=list, max_length=8)
+    selection_source: str = Field(default="", max_length=30)
+    rivals: list[dict[str, Any]] = Field(default_factory=list, max_length=4)
+
+
 class ScriptsRequest(BaseModel):
     pet: dict[str, Any]
     boss: dict[str, Any]
+    research: ResearchIn | None = None
     llm: LLMIn = Field(default_factory=LLMIn)
+    # auto = 让模型写；system = 只要内置剧本包，绝不调用模型
+    mode: str = Field(default="auto", max_length=12)
+    # 用哪个剧本包（斗码苍穹等）。留空用 default 兜底包
+    pack: str = Field(default="", max_length=40)
 
 
 class CustomScriptRequest(BaseModel):
     pet: dict[str, Any]
     boss: dict[str, Any]
     input: str = Field(min_length=1, max_length=200)
+    research: ResearchIn | None = None
     llm: LLMIn = Field(default_factory=LLMIn)
 
 
@@ -116,19 +136,99 @@ async def preview(req: PreviewRequest, user: str = Depends(owner_key),
     )
 
 
-@router.post("/boss/check", summary="自选 Boss 校验")
+def _ndjson(payload: dict[str, Any]) -> bytes:
+    return (json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+@router.post("/preview/stream", summary="选 Boss 预演（NDJSON 阶段流）")
+async def preview_stream(req: PreviewRequest, user: str = Depends(owner_key),
+                         token: str = Depends(github_token)) -> StreamingResponse:
+    """和 /preview 同一套逻辑，但把真实阶段实时推给前端。
+
+    这一屏要连跑「模型定检索条件 → GitHub 检索 → 模型挑对手 → 抓三张仓库卡」，
+    慢的时候几十秒。没有阶段回报时前端只能显示一行静态文字，看起来就是卡死。
+    事件格式（NDJSON，一行一个 JSON）：
+      {"type":"stage","key":"search","detail":"...","elapsed":1.2}
+      {"type":"ping","elapsed":8.4}                      # 阶段内长耗时的心跳
+      {"type":"result","data":{...}}
+      {"type":"error","error":"...","hint":"...","status":502}
+    """
+    started = time.time()
+
+    async def gen():
+        queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
+
+        async def on_stage(key: str, detail: str = "") -> None:
+            await queue.put((key, detail))
+
+        task = asyncio.create_task(story.preview(
+            req.pet, req.llm.model_dump(), seed=story._seed(req.seed),
+            token=token or "", refresh=req.refresh, on_stage=on_stage,
+        ))
+        try:
+            while not (task.done() and queue.empty()):
+                try:
+                    key, detail = await asyncio.wait_for(queue.get(), timeout=1.5)
+                except asyncio.TimeoutError:
+                    # 心跳：让前端知道连接还活着、已经等了多少秒
+                    yield _ndjson({"type": "ping", "elapsed": round(time.time() - started, 1)})
+                    continue
+                yield _ndjson({
+                    "type": "stage", "key": key, "detail": detail,
+                    "elapsed": round(time.time() - started, 1),
+                })
+
+            try:
+                data = await task
+            except story.StoryError as exc:
+                yield _ndjson({
+                    "type": "error", "error": exc.message, "hint": exc.hint,
+                    "status": exc.status_code,
+                })
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # 兜底：别让前端只看到断流
+                yield _ndjson({
+                    "type": "error", "error": "预演失败",
+                    "hint": f"{type(exc).__name__}: {exc}"[:160], "status": 500,
+                })
+            else:
+                yield _ndjson({"type": "result", "data": data})
+        finally:
+            if not task.done():
+                task.cancel()
+                with contextlib.suppress(BaseException):
+                    await task
+
+    return StreamingResponse(
+        gen(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/boss/check", summary="自选最终对手校验")
 def boss_check(req: BossCheckRequest, token: str = Depends(github_token)) -> dict[str, Any]:
     return story.boss_card(req.full_name, token or "", platform=req.platform, reason="你的自选方向")
 
 
-@router.post("/scripts", summary="Boss 选定后生成 3 个剧本方案（不落库）")
+@router.get("/packs", summary="系统剧本包清单")
+def packs() -> dict[str, Any]:
+    """列出可用的剧本包（03 步「系统剧本」来源里给玩家挑的那几个）。"""
+    return {"items": story_packs.list_packs()}
+
+
+@router.post("/scripts", summary="Boss 选定后给出 3 个剧本方案（mode=auto 模型 / system 内置包）")
 async def scripts(req: ScriptsRequest) -> dict[str, Any]:
-    return await story.scripts(req.pet, req.boss, req.llm.model_dump())
+    research = req.research.model_dump() if req.research else None
+    return await story.scripts(req.pet, req.boss, req.llm.model_dump(),
+                               research=research, mode=req.mode, pack=req.pack)
 
 
 @router.post("/scripts/custom", summary="自选剧本 / 小说桥接")
 async def custom_script(req: CustomScriptRequest) -> dict[str, Any]:
-    return await story.custom_script(req.pet, req.boss, req.input, req.llm.model_dump())
+    research = req.research.model_dump() if req.research else None
+    return await story.custom_script(req.pet, req.boss, req.input, req.llm.model_dump(), research=research)
 
 
 @router.post("/start", summary="建线（C1：已有 active 返回 409）")

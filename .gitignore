@@ -8,6 +8,8 @@ dist
 backend/.venv
 backend/data
 backend/.env
+# 本地语音模型（400MB 级，不入库；见 docs/TTS.md 的下载说明）
+backend/models/
 __pycache__
 *.pyc
 .pytest_cache

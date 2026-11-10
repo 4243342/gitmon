@@ -23,7 +23,8 @@ const REST_VARS = {
 }
 
 // 精灵卡片：标准集换式卡比例 63:88；倾斜/全息材质全部由 pokemon-cards-css 接管。
-export default function PetCard({ pet, revealed = false }) {
+// readOnly：别人的卡（剧情模式的对手）——不提供换形象 / 拖图 / 模型钢印，只展示。
+export default function PetCard({ pet, revealed = false, readOnly = false }) {
   const { t: tf } = useI18n()
   const rootRef = useRef(null)
   const contentRef = useRef(null)
@@ -220,21 +221,23 @@ export default function PetCard({ pet, revealed = false }) {
 
                 <div
                   className={`sprite-frame ${dragOver ? 'drag-over' : ''}`}
-                  onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-                  onDragLeave={() => setDragOver(false)}
-                  onDrop={(e) => { e.preventDefault(); setDragOver(false); acceptFile(e.dataTransfer.files?.[0]) }}
+                  onDragOver={readOnly ? undefined : (e) => { e.preventDefault(); setDragOver(true) }}
+                  onDragLeave={readOnly ? undefined : () => setDragOver(false)}
+                  onDrop={readOnly ? undefined : (e) => { e.preventDefault(); setDragOver(false); acceptFile(e.dataTransfer.files?.[0]) }}
                 >
                   <div className="sprite-aura" />
                   <PixelSprite pet={pet} size={132} />
-                  <ModelSeal pet={pet} />
-                  <div className="sprite-tools">
-                    {hasCustomSprite(pet) && (
-                      <button className="sprite-tool" title={tf('恢复默认立绘', 'Restore default art')} onClick={() => clearCustomSprite(pet)}>{tf('还原', 'Reset')}</button>
-                    )}
-                    <button className="sprite-tool" title={tf('上传自定义形象，也可以直接把图片拖到这里', 'Upload a custom sprite, or drop an image here')} onClick={() => fileRef.current?.click()}>
-                      {tf('换形象', 'Change Sprite')}
-                    </button>
-                  </div>
+                  {!readOnly && <ModelSeal pet={pet} />}
+                  {!readOnly && (
+                    <div className="sprite-tools">
+                      {hasCustomSprite(pet) && (
+                        <button className="sprite-tool" title={tf('恢复默认立绘', 'Restore default art')} onClick={() => clearCustomSprite(pet)}>{tf('还原', 'Reset')}</button>
+                      )}
+                      <button className="sprite-tool" title={tf('上传自定义形象，也可以直接把图片拖到这里', 'Upload a custom sprite, or drop an image here')} onClick={() => fileRef.current?.click()}>
+                        {tf('换形象', 'Change Sprite')}
+                      </button>
+                    </div>
+                  )}
                   <input
                     ref={fileRef}
                     type="file"
@@ -247,7 +250,7 @@ export default function PetCard({ pet, revealed = false }) {
                 <div className="card-row">
                   <span className="lv">Lv.{pet.level}</span>
                   <div className="hp-bar">
-                    <div className="hp-fill" style={{ width: `${Math.min(100, ((pet.maxHp || 0) / (pet.statCap || 100)) * 100)}%` }} />
+                    <div className="hp-fill" style={{ width: `${Math.min(100, ((pet.maxHp || 0) / (pet.hpCap || pet.statCap || 100)) * 100)}%` }} />
                   </div>
                   <span className="hp-num">HP {pet.maxHp}</span>
                 </div>

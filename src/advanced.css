@@ -179,6 +179,28 @@
   cursor: pointer;
 }
 .llm-clear:hover { border-color: #f5c542; color: #f5c542; }
+/* 高级模式已开启：面板里给一个可见状态，退出改由显式按钮负责（入口按钮不再一点即关） */
+.llm-on {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(120, 220, 150, .35);
+  background: rgba(120, 220, 150, .12);
+  color: #8fe0a8;
+  font-size: 11px;
+}
+.llm-disable {
+  flex: none;
+  margin-left: 8px;
+  padding: 4px 9px;
+  border: 1px solid rgba(240, 130, 130, .35);
+  border-radius: 6px;
+  background: transparent;
+  color: #e09797;
+  font-size: 11px;
+  cursor: pointer;
+}
+.llm-disable:hover { border-color: #f07a7a; color: #f07a7a; }
 .llm-anchor {
   margin: 8px 0 0;
   font-size: 11px; line-height: 1.5;

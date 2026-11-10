@@ -296,6 +296,60 @@ function gradeOfRatio(ratio) {
   return 'D'
 }
 
+// 战力(CP)：攻防特攻特防速度之和 + 60% 血量，再乘等级系数（0.5 起，随等级线性上升）。
+// 这是**唯一实现**——规则引擎卡与 AI 评测卡（六维是 0–100 评分）共用同一口径，
+// 卡面上的「战力」永远由同屏显示的六维与等级算出来，不会出现 Lv.18 配 14964 这种数字。
+// stats 可以是 [{name,value}] 也可以是纯数值数组（末位视为 HP）。
+export function combatPowerOf(stats, level) {
+  const list = (stats || []).filter(Boolean)
+  if (!list.length) return 0
+  const val = (s) => Math.max(0, Math.round(Number(s && typeof s === 'object' ? s.value : s) || 0))
+  const hpItem = list.find((s) => s && typeof s === 'object' && s.name === 'HP')
+  const hp = hpItem ? val(hpItem) : val(list[list.length - 1])
+  const total = list.reduce((a, s) => a + val(s), 0)
+  const offense = total - hp + Math.round(hp * 0.6)
+  const lv = Math.max(1, Math.min(999, Number(level) || 1))
+  return Math.floor(offense * (0.5 + lv / 200))
+}
+
+// 六维尺度：AI 评测卡的六维是 0–100 的评分，规则引擎卡是随等级放大的绝对数值。
+// 两者归一化上限不同（评分卡：六维 /100、HP /1000），否则血条会永远满格或永远 20%。
+export function statScaleOf(stats) {
+  const values = (stats || []).map((s) => Number(s && typeof s === 'object' ? s.value : s) || 0)
+  if (!values.length) return 'absolute'
+  return Math.max(...values) <= 100 ? 'score' : 'absolute'
+}
+
+// 由「当前六维 + 当前等级」派生出的展示字段：战力 / 归一化上限。
+// 任何改了 stats 或 level 的地方都应该用它刷新，别让派生值随旧卡残留。
+export function derivedFieldsOf(pet, level = pet?.level) {
+  const stats = pet?.stats || []
+  if (!stats.length) return {}
+  const lv = Math.max(1, Math.min(999, Number(level) || 1))
+  const scored = statScaleOf(stats) === 'score'
+  const hpCap = scored ? 1000 : statCapAtLevel(lv, true)
+  return {
+    combatPower: combatPowerOf(stats, lv),
+    statCap: scored ? 100 : hpCap,
+    hpCap,
+  }
+}
+
+// 读档归一化：修掉历史上「AI 评测覆盖了六维与等级，却把规则引擎按高等级算出的
+// combatPower / statCap / ivs 留在卡里」的宠物。幂等，对正常宠物是空操作。
+export function normalizePet(pet) {
+  if (!pet || !Array.isArray(pet.stats) || !pet.stats.length) return pet
+  const derived = derivedFieldsOf(pet)
+  const next = { ...pet, ...derived }
+  // AI 评测卡的六维由模型给（评分制），个体值来自另一次规则引擎扫描，
+  // 留着会让「升级重算」用引擎公式把模型给的六维冲掉。
+  if (pet.aiEvaluated && statScaleOf(pet.stats) === 'score') {
+    next.ivs = null
+    next.baseStats = null
+  }
+  return next
+}
+
 // 核心：种族值 + 个体值 + 等级 → 六维 + 最大HP + 战力(CP)
 // traits 仅以「百分比」修正（词条在设计文档 §6.4 里本就是相对强弱），保证任何等级下都有意义。
 export function computeStats({ speciesKey, elementKey, qualityKey, ivs, level, traits = [] }) {
@@ -312,9 +366,7 @@ export function computeStats({ speciesKey, elementKey, qualityKey, ivs, level, t
     traits,
   )
   const maxHp = withTraits.find((s) => s.name === 'HP').value
-  // 战力：攻防特攻特防速度之和 + 60% 血量，再乘等级系数（0.5 起，随等级线性上升）
-  const offense = withTraits.reduce((a, s) => a + s.value, 0) - maxHp + Math.round(maxHp * 0.6)
-  const combatPower = Math.floor(offense * (0.5 + lv / 200))
+  const combatPower = combatPowerOf(withTraits, lv)
   const statCap = statCapAtLevel(lv, true)
   const stats = withTraits.map((s) => {
     const cap = statCapAtLevel(lv, s.name === 'HP')

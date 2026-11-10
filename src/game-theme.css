@@ -160,6 +160,12 @@ body::after {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: none; }
 }
+/* 同一个分组页里有两块内容（声音 / 语音朗读）时拉开距离，别粘成一坨 */
+.set-block + .set-block {
+  margin-top: 26px;
+  padding-top: 22px;
+  border-top: 2px solid rgba(150, 170, 205, .18);
+}
 .set-block-title {
   display: flex; align-items: baseline; gap: 10px;
   margin: 0 0 6px; font-family: var(--font-pixel); font-size: 15px;

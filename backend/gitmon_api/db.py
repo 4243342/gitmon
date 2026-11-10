@@ -115,7 +115,9 @@ CREATE TABLE IF NOT EXISTS story_runs (
     pet_name         TEXT NOT NULL DEFAULT '',
     script_title     TEXT NOT NULL,
     script_brief     TEXT NOT NULL DEFAULT '',
+    script_beats     TEXT NOT NULL DEFAULT '[]',
     script_source    TEXT NOT NULL DEFAULT 'ai',
+    script_pack      TEXT NOT NULL DEFAULT 'default',
     track            TEXT NOT NULL DEFAULT '',
     boss             TEXT NOT NULL DEFAULT '{}',
     rationale        TEXT NOT NULL DEFAULT '',
@@ -162,6 +164,31 @@ CREATE TABLE IF NOT EXISTS story_endings (
     unlocked_at REAL NOT NULL,
     UNIQUE (owner_key, ending_id)
 );
+
+-- 背包：物品余额（货币与道具共用一张表，item_key 相同即叠加）
+CREATE TABLE IF NOT EXISTS inventory_items (
+    owner_key  TEXT NOT NULL,
+    item_key   TEXT NOT NULL,
+    count      INTEGER NOT NULL DEFAULT 0,
+    updated_at REAL NOT NULL,
+    PRIMARY KEY (owner_key, item_key)
+);
+
+-- 背包：流水。source_key 保证同一笔奖励只发一次；offer_key 用于统计限购次数。
+CREATE TABLE IF NOT EXISTS inventory_ledger (
+    id         TEXT PRIMARY KEY,
+    owner_key  TEXT NOT NULL,
+    item_key   TEXT NOT NULL,
+    delta      INTEGER NOT NULL,
+    reason     TEXT NOT NULL DEFAULT '',
+    source_key TEXT NOT NULL DEFAULT '',
+    offer_key  TEXT NOT NULL DEFAULT '',
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ledger_owner ON inventory_ledger(owner_key, created_at DESC);
+-- 部分唯一索引：只对带 source_key 的流水生效（空 source_key 表示不限次的手动流水）
+CREATE UNIQUE INDEX IF NOT EXISTS ux_ledger_source
+    ON inventory_ledger(owner_key, source_key, item_key) WHERE source_key <> '';
 """
 
 
@@ -179,6 +206,12 @@ _ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("battles", "INTEGER NOT NULL DEFAULT 0"),
         ("wins", "INTEGER NOT NULL DEFAULT 0"),
         ("client_state", "TEXT NOT NULL DEFAULT '{}'"),
+    ),
+    # 剧本三拍：正片每一屏的台词都要照它写
+    # 剧本包：决定正片跑哪条路线（斗码苍穹等），老数据按 default 兜底
+    "story_runs": (
+        ("script_beats", "TEXT NOT NULL DEFAULT '[]'"),
+        ("script_pack", "TEXT NOT NULL DEFAULT 'default'"),
     ),
     # Gitee OAuth 的 access_token 只有 1 天，refresh_token 必须一起存下来
     "users": (("refresh_cipher", "TEXT NOT NULL DEFAULT ''"),),

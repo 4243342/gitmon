@@ -539,7 +539,7 @@ export async function exportShareCard(pet) {
   const hpW = RIGHT - hpX - 62 * S
   const hpGrad = ctx.createLinearGradient(hpX, 0, hpX + hpW, 0)
   hpGrad.addColorStop(0, '#35c07d'); hpGrad.addColorStop(1, '#8cf0bf')
-  segBar(ctx, hpX, rowY + 1 * S, hpW, 8 * S, (pet.maxHp || 0) / (pet.statCap || 100), hpGrad)
+  segBar(ctx, hpX, rowY + 1 * S, hpW, 8 * S, (pet.maxHp || 0) / (pet.hpCap || pet.statCap || 100), hpGrad)
   ctx.fillStyle = '#8e9ab1'
   ctx.font = `${7.5 * S}px ${AR}`
   ctx.textAlign = 'right'

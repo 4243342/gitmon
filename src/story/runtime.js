@@ -1,20 +1,38 @@
 // 剧情运行时：inkjs 执行离线路线，模型只负责填台词。
 //
 // 关键分工（docs/STORY.md §4.2-F/G）：
-//   · 结构（场景 / 选项 / 变量 / 跳转 / 结局）来自 story.ink，发布前定稿
-//   · 台词是 {say("key")} 占位符，进入场景时由调用方预取；取不到就用 lines.json 的 fallback
+//   · 结构（场景 / 选项 / 变量 / 跳转 / 结局）来自剧本包的 story.ink，发布前定稿
+//   · 台词是 {say("key")} 占位符，进入场景时由调用方预取；取不到就用该包 lines.json 的 fallback
+//
+// 剧本包（pack）：一个包 = 一条完整路线 + 一套角色 + 一套台词兜底 + 一份世界观设定。
+// 运行时按 pack id 装载，default 是兜底包（AI 生成 / 自定义剧本走它）。
 //
 // 两遍渲染：
 //   ① 先跑一遍只收集标签（# scene / # battle / # keys），拿到本屏需要哪些台词
 //   ② 预取台词后 LoadJson 回滚到进入前，再跑一遍，用真台词渲染
 // 这也是 inkjs 存档 / 回滚能力的直接复用（state.ToJson / LoadJson）。
 import { Story } from 'inkjs'
-import { STORY_JSON, CHARACTERS, LINES } from './story-data.js'
+import { PACKS, DEFAULT_PACK } from './packs.js'
+
+export { PACKS, DEFAULT_PACK }
 
 const MARK = '\u0001'
 const KNOWN_VARS = ['chapter', 'chapter_count', 'trust', 'deaths', 'route', 'ending_id']
 
-export { CHARACTERS, LINES }
+// 兜底包的角色表 / 台词表：老调用方（StoryMode 之外）仍按原样 import
+export const CHARACTERS = PACKS[DEFAULT_PACK].characters
+export const LINES = PACKS[DEFAULT_PACK].lines
+
+/** 取一个剧本包；找不到就用 default 兜底，绝不让正片因为一个写错的 id 整个挂掉 */
+export function getPack(packId) {
+  const id = String(packId || '').trim()
+  return PACKS[id] || PACKS[DEFAULT_PACK]
+}
+
+/** 包里的结局标题表（id → 中文标题）；缺了就用 id 兜底 */
+export function endingTitles(packId) {
+  return getPack(packId).meta?.endings || {}
+}
 
 export function speakerOf(key) {
   return String(key || '').split('.')[0] || 'narrator'
@@ -42,17 +60,22 @@ function parseTags(tags = []) {
 }
 
 export class StoryRuntime {
-  constructor({ vars = {}, texts = {} } = {}) {
+  constructor({ vars = {}, texts = {}, pack = DEFAULT_PACK } = {}) {
     this.texts = { ...texts }
     this.battleGoto = null
-    this.story = new Story(STORY_JSON)
+    // 剧本包：路线 / 角色 / 台词兜底都来自同一个包，不能混用
+    this.pack = getPack(pack)
+    this.packId = this.pack.id
+    this.characters = this.pack.characters
+    this.lines = this.pack.lines
+    this.story = new Story(this.pack.story)
     // lookaheadSafe=true：say 是纯查表，允许 ink 在预读阶段重复调用
     this.story.BindExternalFunction('say', (key) => this.render(key), true)
     for (const [name, value] of Object.entries(vars)) this.setVar(name, value)
   }
 
   render(key) {
-    const text = this.texts[key] || LINES[key] || '……'
+    const text = this.texts[key] || this.lines[key] || '……'
     return `${MARK}${key}${MARK}${text}`
   }
 
@@ -175,6 +198,11 @@ export class StoryRuntime {
       endingId: String(this.vars.ending_id || ''),
       vars: this.vars,
       textSource,
+      // 剧本包相关：角色表 / 背景地点牌 / 结局标题都随包走，界面必须按这个渲染
+      packId: this.packId,
+      characters: this.characters,
+      bgLabels: this.pack.meta?.bgs || {},
+      endingTitles: this.pack.meta?.endings || {},
       // 本屏开始前的 ink 快照：存档 / 回滚都从这里恢复，才能重新渲染同一屏
       stateIn: before,
     }

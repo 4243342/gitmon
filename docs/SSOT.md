@@ -14,6 +14,11 @@
 - 战斗编队、开过的卡包、静音、训练打卡等轻 UI 状态
 - 战斗过程与对手快照（rivals 生成即用即弃）
 
+**背包余额与流水同样以服务端为唯一真相源**（表 `inventory_items` / `inventory_ledger`）。
+前端每次打开仓库页或精灵详情页都重新拉 `/api/inventory`，不做本地镜像、不缓存：
+两边各存一份账迟早会对不上，而玩家对不上账是零容忍的。
+localStorage 里**不允许**出现余额副本。
+
 ## 2. 身份（owner_key 归属）
 
 解析优先级（`api.py::owner_key`）：
@@ -71,6 +76,39 @@
 按 `created_at DESC`。启动拉取用 `limit=200`。
 
 `/api/hatch`、`/api/pets/{id}`、leaderboard 等现有接口不变。
+
+### `GET /api/inventory`（新增，背包快照）
+
+响应：`{"currency": "stardust", "items": [...目录], "balances": {item_key: count}, "offers": [...货架], "ledger": [...流水]}`
+
+- `items` / `offers` 是商品目录（服务端常量），`balances` 是该 owner 的持有量。
+- `ledger` 为最近流水，按时间倒序，每行 `{item_key, delta, reason, created_at, offer_key}`。
+- `delta > 0` 是收入，`delta < 0` 是支出。
+
+### `GET /api/shop`（新增，货架）
+
+响应：`{"currency", "items", "offers": [...{"key","item_key","price","limit","sort","bought"}], "balances"}`。
+`bought` 是该 owner 已兑次数（限购判定用）。
+
+### `POST /api/shop/exchange`（新增，兑换）
+
+请求：`{"offer_key": "bond_charm", "request_id": "<客户端生成>"}`
+
+- **`request_id` 是幂等键**：同一个 id 重复提交只扣一次款，第二次返回 `{"duplicate": true}`。
+  客户端在重试时必须复用同一个 id（`App.jsx::handleExchange` 用 `buyReqIds` ref 记住）。
+- 扣款与发货在**同一个事务**里完成，余额不可能变负。
+- 余额不足 / 买满限购 → `400 {"error": ..., "hint": ...}`。
+
+### `POST /api/inventory/grant`（新增，发奖）
+
+请求：`{"item_key", "count", "source_key", "reason"}`
+
+- `source_key` 是幂等键：同一个 `source_key` 重复发放只发一次（`ux_ledger_source` 唯一索引）。
+  战斗结算用 `battle:{ts}:{seq}`、剧情结算用 `story:{ts}:{seq}`，重放不会重复发奖。
+
+### `POST /api/inventory/spend`（新增，消耗）
+
+请求：`{"item_key", "count", "reason"}`。持有量不足 → `400`。
 
 ## 5. 同步协议
 

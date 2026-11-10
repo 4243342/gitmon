@@ -249,6 +249,7 @@ def repo_card(platform: str, owner: str, repo: str, token: str = Depends(session
 # ---------------------------------------------------------------- 错误处理
 
 def install_error_handlers(app) -> None:
+    from .inventory import InventoryError
     from .story import StoryError
 
     @app.exception_handler(ScanError)
@@ -265,6 +266,13 @@ def install_error_handlers(app) -> None:
     @app.exception_handler(StoryError)
     async def _story_error(request: Request, exc: StoryError) -> JSONResponse:
         return JSONResponse(status_code=exc.status_code, content={"error": exc.message, "hint": exc.hint})
+
+    @app.exception_handler(InventoryError)
+    async def _inventory_error(request: Request, exc: InventoryError) -> JSONResponse:
+        return JSONResponse(
+            status_code=getattr(exc, "status_code", 400),
+            content={"error": exc.message, "hint": exc.hint},
+        )
 
     @app.exception_handler(InvalidRepo)
     async def _invalid_repo(request: Request, exc: InvalidRepo) -> JSONResponse:
