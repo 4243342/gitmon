@@ -15,18 +15,24 @@
     "name": "药老",
     "role": "guide",
     "color": "#6ee7b7",
-    "defaultSprite": "scout_neutral"
+    "defaultSprite": "scout_neutral",
+    "art": "scout.png",
+    "face": "scout.png"
   },
   "soul": {
     "name": "魂殿",
     "role": "support",
     "color": "#c084fc",
-    "defaultSprite": "boss_neutral"
+    "defaultSprite": "boss_neutral",
+    "art": "soul.png",
+    "face": "soul.png"
   },
   "boss": {
     "name": "云岚宗",
     "role": "boss",
     "color": "#f87171",
-    "defaultSprite": "boss_neutral"
+    "defaultSprite": "boss_neutral",
+    "art": "boss.png",
+    "face": "boss.png"
   }
 }

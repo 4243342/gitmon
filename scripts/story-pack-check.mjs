@@ -275,16 +275,24 @@ try {
   await page.reload({ waitUntil: 'networkidle2' })
   await sleep(1500)
 
-  // 登录门槛：游客态可能已经存在（后端认得这个设备），两种情况都要能往下走
+  // 登录门槛：登录页有三个入口，得都认。
+  //   · 「游客进入」   —— 没有任何登录态时才有
+  //   · 「直接进入」   —— 后端认得这台机器的 gh 登录态时，用它替代游客按钮
+  //   · 已经进了大厅   —— 游客态残留，直接往下走
+  // 只认「游客进入」会在第二种情况下卡死（按钮压根不渲染，断言还假通过）。
   const guest = await page.evaluate(() => {
-    const g = Array.from(document.querySelectorAll('button')).find((b) => /游客进入/.test(b.textContent || ''))
-    if (g) { g.click(); return 'clicked' }
+    const btns = Array.from(document.querySelectorAll('button'))
+    const g = btns.find((b) => /游客进入/.test(b.textContent || ''))
+    if (g) { g.click(); return 'guest' }
+    const d = btns.find((b) => /直接进入/.test(b.textContent || ''))
+    if (d) { d.click(); return 'device' }
     return 'already'
   })
   check('通过登录门槛', Boolean(guest), guest)
-  // 登录是异步的（要打后端）：轮询等「进入剧情模式」按钮出现
+  // 登录是异步的（要打后端；「直接进入」还要跑一次 gh 登录态探测，可能慢）：
+  // 轮询等「进入剧情模式」按钮出现
   let found = false
-  for (let i = 0; i < 30; i += 1) {
+  for (let i = 0; i < 60; i += 1) {
     await sleep(500)
     found = await page.evaluate(() => Array.from(document.querySelectorAll('button, [role="button"], a'))
       .some((n) => /进入剧情模式/.test(n.textContent || '')))
@@ -447,6 +455,94 @@ try {
   check('重进后仍是三年之约的骨架', /三年|约期|名碑|除名通知|立约/.test(afterReload.text), afterReload.text.slice(0, 80))
 
   check('页面没有 JS 报错', errors.length === 0, errors.slice(0, 2).join(' | '))
+
+  console.log('\n[art] 角色立绘按包加载')
+  // 序章只有主角和旁白（都没立绘），得推进到成长章 —— 那里药老登场。
+  // 先点掉序章的选项，进成长章看立绘层。
+  // 一路推进到「有 NPC 登场」的那一屏（成长章 · 药老）。
+  // 不能一路点到杂兵战 —— 战斗屏是另一个视图，没有立绘层。
+  // 每一步都先看有没有 NPC chip，有就停。
+  let reachedNpc = false
+  for (let i = 0; i < 12; i += 1) {
+    const state = await page.evaluate(() => ({
+      hasNpc: Array.from(document.querySelectorAll('.story-chip'))
+        .some((n) => /药老|魂殿|云岚宗/.test(n.textContent || '')),
+      inBattle: Boolean(document.querySelector('.story-battle')),
+    }))
+    if (state.hasNpc) { reachedNpc = true; break }
+    // 已经进了战斗就退回来：走「先撤」那条路能回到剧情
+    if (state.inBattle) {
+      await page.evaluate(() => {
+        const b = Array.from(document.querySelectorAll('button')).find((x) => /先撤/.test(x.textContent || ''))
+        if (b) b.click()
+      })
+      await sleep(1500)
+      continue
+    }
+    await page.evaluate(() => {
+      const opt = document.querySelector('.story-choices button')
+      if (opt) { opt.click(); return }
+      document.querySelector('.story-dialog')?.click()
+    })
+    await sleep(1600)
+  }
+  check('推进到有 NPC 的场景', reachedNpc)
+
+  const dbgArt = await page.evaluate(() => ({
+    chips: Array.from(document.querySelectorAll('.story-chip')).map((n) => n.textContent.trim()),
+    choices: Array.from(document.querySelectorAll('.story-choices button')).map((n) => n.textContent.trim()),
+    hasFigures: Boolean(document.querySelector('.story-stage-figures')),
+    figureCount: document.querySelectorAll('.story-figure').length,
+    battle: Boolean(document.querySelector('.story-battle')),
+    sceneText: document.querySelector('.story-dialog p')?.textContent?.slice(0, 50) || '',
+    artProbe: (() => {
+      // 直接问管道：这个包有哪些立绘
+      return Array.from(document.querySelectorAll('.story-stage img')).map((n) => n.getAttribute('src')?.slice(0, 50))
+    })(),
+  }))
+  console.log('  dbg-art:', JSON.stringify(dbgArt))
+
+  const artState = await page.evaluate(() => {
+    const sec = document.querySelector('.story-stage')
+    if (!sec) return { present: false }
+    const figs = Array.from(sec.querySelectorAll('.story-figure'))
+    return {
+      present: true,
+      figures: figs.map((f) => {
+        const img = f.querySelector('img')
+        return {
+          cls: f.className,
+          src: img?.getAttribute('src') || null,
+          // naturalWidth > 0 才说明图片真的解码出来了（不是 404 也不是空 src）
+          loaded: Boolean(img && img.complete && img.naturalWidth > 0),
+          w: img?.naturalWidth || 0,
+          h: img?.naturalHeight || 0,
+        }
+      }),
+      chipFaces: Array.from(sec.querySelectorAll('.story-chip-face')).map((n) => ({
+        loaded: Boolean(n.complete && n.naturalWidth > 0),
+        w: n.naturalWidth || 0,
+      })),
+      speakerFace: (() => {
+        const n = sec.querySelector('.story-speaker-face')
+        return n ? { loaded: Boolean(n.complete && n.naturalWidth > 0), w: n.naturalWidth || 0 } : null
+      })(),
+      chips: Array.from(sec.querySelectorAll('.story-chip')).map((n) => n.textContent.trim()),
+    }
+  })
+  check('推进到有立绘角色的场景', artState.present && artState.figures.length > 0,
+    JSON.stringify(artState).slice(0, 200))
+  if (artState.present && artState.figures.length) {
+    check('立绘图真的加载出来了',
+      artState.figures.every((f) => f.loaded),
+      JSON.stringify(artState.figures))
+    check('立绘来自包内素材',
+      artState.figures.every((f) => /scout|soul|boss|pet/.test(f.src || '')),
+      JSON.stringify(artState.figures.map((f) => f.src)))
+    check('角色牌里有头像', artState.chipFaces.length > 0, JSON.stringify(artState.chipFaces))
+    check('头像真的加载出来了', artState.chipFaces.every((f) => f.loaded), JSON.stringify(artState.chipFaces))
+  }
+
 } catch (err) {
   failures += 1
   console.log(`  ✗ 脚本异常 — ${err?.message || err}`)

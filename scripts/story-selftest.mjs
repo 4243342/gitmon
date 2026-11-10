@@ -273,5 +273,42 @@ console.log('\n[story] 斗码苍穹只留《三年之约》一案')
   eq('通用包仍是三张方案', PACKS.default.meta.variants.length, 3)
 }
 
+console.log('\n[story] 斗码苍穹的角色立绘声明')
+{
+  // 立绘加载走 import.meta.glob（Vite 独有），Node 下测不了 glob 本身；
+  // 但真正的风险是「声明了却没有文件」—— 那会让界面静默少一个人。
+  // 所以这里断言声明和 art/ 目录里的文件严格对得上。
+  const fs = await import('node:fs')
+  const path = await import('node:path')
+  const { fileURLToPath } = await import('node:url')
+  const packsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/story/packs')
+
+  const douma = PACKS.douma
+  const artDir = path.join(packsDir, 'douma', 'art')
+  const declared = []
+  for (const [who, ch] of Object.entries(douma.characters)) {
+    for (const slot of ['art', 'face']) {
+      if (ch[slot]) declared.push({ who, slot, file: ch[slot] })
+    }
+  }
+  check('有角色声明了立绘', declared.length > 0, `${declared.length} 条`)
+
+  const missing = declared.filter((d) => !fs.existsSync(path.join(artDir, d.file)))
+  eq('声明的立绘文件都存在', missing.map((d) => `${d.who}.${d.slot}`).join(','), '')
+
+  // 反向：art/ 里的每个文件都该被某个角色用上，否则是放错了名字的孤儿
+  const onDisk = fs.existsSync(artDir) ? fs.readdirSync(artDir).filter((f) => /\.(png|webp|jpg|jpeg)$/.test(f)) : []
+  const used = new Set(declared.map((d) => d.file))
+  const orphans = onDisk.filter((f) => !used.has(f))
+  eq('art/ 下没有没人用的孤儿文件', orphans.join(','), '')
+
+  // 主角沿用玩家自己的仓库精灵，不该被包立绘顶掉
+  check('主角不声明包立绘', !douma.characters.pet.art, douma.characters.pet.art || '')
+  // 通用包没有立绘目录，界面要能回落到「色块 + 名字」
+  check('通用包没声明立绘',
+    !Object.values(PACKS.default.characters).some((c) => c.art || c.face),
+    '通用包不该有立绘')
+}
+
 console.log(`\n${failures ? `✗ ${failures} 项失败` : '✓ 全部通过'}\n`)
 process.exit(failures ? 1 : 0)

@@ -111,6 +111,23 @@ for (const id of packIds) {
     fail(`剧本包 ${id} 的 meta.variants 为空：系统剧本至少要有一个方案`)
   }
 
+  // 角色立绘：声明了 art / face 就必须真有那张图，否则界面上会静默少一个人
+  const artDir = resolve(dir, 'art')
+  const missingArt = []
+  for (const [who, ch] of Object.entries(characters)) {
+    for (const slot of ['art', 'face']) {
+      const file = ch[slot]
+      if (!file) continue
+      const hit = ['png', 'webp', 'jpg', 'jpeg']
+        .map((ext) => resolve(artDir, file.replace(/\.(png|webp|jpg|jpeg)$/, `.${ext}`)))
+        .find((p) => existsSync(p))
+      if (!hit) missingArt.push(`${who}.${slot} → art/${file}`)
+    }
+  }
+  if (missingArt.length) {
+    fail(`剧本包 ${id} 的角色声明了立绘但文件不存在：\n  - ${missingArt.join('\n  - ')}`)
+  }
+
   packs[id] = {
     id,
     meta,

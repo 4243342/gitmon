@@ -10,6 +10,7 @@ import PixelSprite from './PixelSprite.jsx'
 import PetCard from './PetCard.jsx'
 import StoryProgress from './StoryProgress.jsx'
 import { CHARACTERS, createStoryRuntime } from '../story/runtime.js'
+import { packArtUrl, packFaceUrl } from '../story/packArt.js'
 import { storyApi } from '../story/api.js'
 import { createProgressWriter, replayDirty, dropDirty } from '../story/progressQueue.js'
 import '../story.css'
@@ -1095,6 +1096,20 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
   const routeLabel = packRouteLabel
     || (scene?.vars?.route === 'insider' ? t('内应线', 'Insider') : t('独行线', 'Solo'))
 
+  // 角色立绘也随包走：src/story/packs/<包id>/art/<文件名>
+  // 没有素材时 packArtUrl 返回 null，界面自动回落到「色块 + 名字」的文字 chip。
+  const packId = scene?.packId
+  const artOf = (who) => {
+    if (!packId) return null
+    const ch = castMap[who]
+    // 立绘按角色表里声明的文件名找；没声明就退回同名文件（art/scout.png ↔ scout）
+    return packArtUrl(packId, ch?.art ? ch.art.replace(/\.(png|webp|jpg|jpeg)$/i, '') : who)
+  }
+  const faceOf = (who) => {
+    if (!packId) return null
+    return packFaceUrl(packId, who, castMap[who])
+  }
+
   // 语音只跟随点击推进，不反过来驱动节奏（docs/TTS.md T3）
   const speakLine = (line) => {
     if (!line) return
@@ -1477,8 +1492,10 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
             {(scene.cast || []).map((who) => {
               const char = castMap[who] || castMap.narrator
               const active = currentLine?.who === who
+              const face = faceOf(who)
               return (
                 <span key={who} className={`story-chip${active ? ' active' : ''}`} style={{ '--chip': char.color }}>
+                  {face ? <img className="story-chip-face" src={face} alt="" /> : null}
                   {char.name}
                 </span>
               )
@@ -1486,6 +1503,27 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
             {scene.textSource === 'fallback' && <span className="story-source-note">{t('台词兜底', 'fallback text')}</span>}
             <span className="story-stage-place">{t(bgLabel[0], bgLabel[1])}</span>
           </div>
+
+          {/* 角色立绘：谁在说话谁亮起，其余压暗。没有素材时整层不出现 */}
+          {scene.cast?.some((who) => artOf(who)) && (
+            <div className="story-stage-figures" aria-hidden="true">
+              {scene.cast.map((who) => {
+                const art = artOf(who)
+                if (!art) return null
+                const char = castMap[who] || castMap.narrator
+                const active = currentLine?.who === who
+                return (
+                  <figure
+                    key={who}
+                    className={`story-figure${active ? ' active' : ''}`}
+                    style={{ '--chip': char.color }}
+                  >
+                    <img src={art} alt="" />
+                  </figure>
+                )
+              })}
+            </div>
+          )}
 
           {scene.battle ? (
             <div className="story-battle">
@@ -1528,6 +1566,7 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
               )}
               <div className="story-dialog" onClick={nextLine}>
                 <span className="story-speaker" style={{ color: castMap[currentLine?.who]?.color || '#ffcb05' }}>
+                  {faceOf(currentLine?.who) ? <img className="story-speaker-face" src={faceOf(currentLine.who)} alt="" /> : null}
                   {castMap[currentLine?.who]?.name || t('旁白', 'Narrator')}
                 </span>
                 <p>{currentLine?.text || t('……', '…')}</p>

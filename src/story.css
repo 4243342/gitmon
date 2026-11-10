@@ -1236,6 +1236,87 @@
   opacity: .55;
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%);
   transition: opacity .2s ease, box-shadow .2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 角色牌里的头像：有立绘才画，没有就还是纯文字 */
+.story-chip-face {
+  width: 18px;
+  height: 18px;
+  object-fit: cover;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--chip) 16%, rgba(6, 10, 19, .8));
+  flex: 0 0 auto;
+}
+
+/* ---------- 角色立绘层 ---------- */
+
+/* 立绘站在舞台中区：绝对定位，压在背景之上、对话框之下。
+   没有立绘素材时整层不渲染，舞台回到原来只有主角像素精灵的样子。 */
+.story-stage-figures {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4%;
+  padding: 0 6% 132px;
+}
+
+.story-figure {
+  margin: 0;
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: 100%;
+  max-height: 260px;
+  opacity: .3;
+  filter: grayscale(.55) brightness(.72);
+  transform: translateY(6px) scale(.94);
+  transition: opacity .28s ease, filter .28s ease, transform .28s ease;
+}
+
+.story-figure img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: 100%;
+  object-fit: contain;
+  object-position: bottom center;
+  filter: drop-shadow(0 12px 0 rgba(0, 0, 0, .42));
+}
+
+/* 正在说话的那个：亮起来、往前站一点 */
+.story-figure.active {
+  opacity: 1;
+  filter: grayscale(0) brightness(1.06);
+  transform: translateY(0) scale(1.06);
+}
+
+.story-figure.active::after {
+  content: '';
+  position: absolute;
+  translate: 0 4px;
+  width: 96px;
+  height: 14px;
+  background: radial-gradient(50% 50% at 50% 50%, color-mix(in srgb, var(--chip) 42%, transparent), transparent 72%);
+  pointer-events: none;
+}
+
+/* 说话人铭牌上的小头像 */
+.story-speaker-face {
+  width: 17px;
+  height: 17px;
+  object-fit: cover;
+  border-radius: 50%;
+  background: #070b14;
+  flex: 0 0 auto;
 }
 
 .story-chip.active {
@@ -1305,6 +1386,9 @@
   background: #070b14;
   border: 2px solid currentColor;
   box-shadow: 3px 3px 0 rgba(0, 0, 0, .5);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
 }
 
 .story-dialog p {

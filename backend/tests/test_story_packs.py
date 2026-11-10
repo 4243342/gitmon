@@ -85,6 +85,19 @@ def test_douma_has_only_the_three_year_vow_card() -> None:
     assert not any("名碑" in t for t in titles)
 
 
+def test_douma_characters_declare_their_portraits() -> None:
+    """角色立绘按包声明：药老 / 魂殿 / 云岚宗各有自己的图，主角沿用玩家自己的精灵。"""
+    chars = story_packs.get_characters("douma")
+    assert chars["scout"]["art"] == "scout.png"
+    assert chars["soul"]["art"] == "soul.png"
+    assert chars["boss"]["art"] == "boss.png"
+    # 主角在舞台上画的是玩家自己的仓库精灵，不能被包立绘顶掉
+    assert "art" not in chars["pet"]
+    # 通用包没有立绘：界面回落到「色块 + 名字」
+    default_chars = story_packs.get_characters("default")
+    assert not any(c.get("art") or c.get("face") for c in default_chars.values())
+
+
 def test_two_packs_give_different_scripts() -> None:
     douma = story_packs.pack_scripts("douma", "demo/pet", "torvalds/linux")
     default = story_packs.pack_scripts("default", "demo/pet", "torvalds/linux")

@@ -158,6 +158,24 @@ def has_pack(pack_id: str | None) -> bool:
     return str(pack_id or "").strip() in _registry()
 
 
+def get_characters(pack_id: str | None) -> dict[str, Any]:
+    """取一个包的角色表（characters.json）。
+
+    角色表是包内容的一部分，和 meta.json 同源同目录。立绘声明（art / face）
+    也在里面 —— 界面按这个决定要不要画角色的图。
+    目录不存在时（打包部署只带 dist/）返回空表，功能不挂。
+    """
+    key = str(pack_id or "").strip()
+    if key not in _registry():
+        key = DEFAULT_PACK
+    path = _PACKS_DIR / key / "characters.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def resolve_pack_id(pack_id: str | None) -> str:
     """把请求里的 pack id 收口成一个真实存在的包 id。
 
