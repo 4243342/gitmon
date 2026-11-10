@@ -104,6 +104,11 @@ class Settings:
     sprite_style: str = "rich"
     # 单次扫描最多分析的文件条目，防止超大 monorepo 拖垮判定
     max_tree_entries: int = 20000
+    # 活动任务「给项目仓库点一颗星」的目标仓库。
+    # 只有一个固定目标（就是本项目自己的仓库），玩家没有得挑 ——
+    # 挑目标会让「我要不要点这个」变成「有没有别的可选」，反而稀释了任务的号召力。
+    # 格式 owner/repo（默认 GitHub）；改成 gitee/owner/repo 可以指向 Gitee 上的同名仓库。
+    quest_target: str = "4243342/gitmon"
 
     @property
     def db_path(self) -> Path:
@@ -160,6 +165,7 @@ def load_settings() -> Settings:
         static_dir=static_dir,
         sprite_style=(_env("GITMON_SPRITE_STYLE") or "rich").lower(),
         max_tree_entries=_env_int("GITMON_MAX_TREE_ENTRIES", 20000),
+        quest_target=_env("GITMON_QUEST_TARGET") or "4243342/gitmon",
     )
     settings.ensure_dirs()
     return settings

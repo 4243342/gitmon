@@ -36,7 +36,8 @@ def platform_tokens(
 
 class IssueRequest(BaseModel):
     goal_key: str = Field(default="star", min_length=1, max_length=40)
-    target: str = Field(min_length=3, max_length=200, description="目标仓库，如 github-owner/repo")
+    # 目标固定：前端带上只是校验用，留空也行（后端按配置的目标走）
+    target: str = Field(default="", max_length=200, description="目标仓库，如 github-owner/repo")
 
 
 class VerifyRequest(BaseModel):

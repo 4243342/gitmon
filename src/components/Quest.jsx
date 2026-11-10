@@ -1,9 +1,10 @@
 // 任务模式 · 活动任务板
 //
-// 当前上线的活动任务只有一个：给社区里别人的仓库点一颗星。
+// 当前上线的活动任务只有一个：给本项目自己的仓库点一颗星。
+// 目标固定，没有得挑 —— 活动的号召力来自「就是这一个」。
 //
 // 玩法三步（和剧情模式最大的不同在这里）：
-//   ① 领取 —— 锁定一个目标仓库，后端记下它此刻的星数作为基线
+//   ① 领取 —— 锁定任务，后端记下目标仓库此刻的星数作为基线
 //   ② 去 GitHub 点 ★ —— 玩家自己去点，前端不代劳
 //   ③ 复审 —— 后端重新拉一次星数比对，涨了才算数
 //
@@ -51,7 +52,6 @@ export default function Quest({ onGo, onReward }) {
   const [busy, setBusy] = useState('')      // 正在处理的按钮标识
   const [msg, setMsg] = useState(null)      // { kind: 'ok' | 'err', text }
   const [openId, setOpenId] = useState('')  // 展开证据的任务
-  const [showAll, setShowAll] = useState(false) // 候选目标是否全部展开
   // 刚复审完的任务：后端把它移出「进行中」了（status 变 passed），
   // 但玩家得看见这张卡 —— 奖励到账、证据都在上面。不留一份的话，
   // 点完「我点好了」卡片就凭空消失，只剩一条消息条。
@@ -81,14 +81,14 @@ export default function Quest({ onGo, onReward }) {
     }
   }
 
-  const doIssue = (goal, target) => guard(`issue:${target.petKey}`, async () => {
-    const res = await issueQuest(goal.key, `${target.platform}-${target.fullName}`)
+  const doIssue = (goal, target) => guard(`issue:${target?.petKey || goal.key}`, async () => {
+    const res = await issueQuest(goal.key, target ? `${target.platform}-${target.fullName}` : '')
     sfx.reveal('R')
     setMsg({
       kind: 'ok',
       text: tf(
-        `任务已领取：${target.fullName}。去点个 ★，回来点「我点好了」。`,
-        `Task claimed: ${target.fullName}. Go star it, then come back and hit "I starred it".`,
+        `任务已领取：${target?.fullName || ''}。去点个 ★，回来点「我点好了」。`,
+        `Task claimed: ${target?.fullName || ''}. Go star it, then come back and hit "I starred it".`,
       ),
     })
     setOpenId(res.run?.id || '')
@@ -136,11 +136,11 @@ export default function Quest({ onGo, onReward }) {
   const dailyLeft = Math.max(0, (quota.dailyLimit || 0) - (quota.issuedToday || 0))
   const slotLeft = Math.max(0, (quota.slotsLimit || 0) - (quota.slotsUsed || 0))
   const runs = goal.runs || []
-  const targets = goal.targets || []
+  // 目标固定，只有一个
+  const target = goal.target || null
+  // 已经领过（还在进行中）就不能再领 —— 目标唯一，重复领没有意义
+  const claimed = Boolean(target) && runs.some((r) => r.petKey === target.petKey)
   const stats = history?.stats || {}
-  // 候选池可能有几十个：一屏铺开太长，先给 12 个，剩下的按需展开。
-  // 不用 slice 硬截断到固定条数 —— 那样会把还热着的仓库藏起来。
-  const shown = showAll ? targets : targets.slice(0, 12)
   // 进行中的任务 + 本次会话里刚复审完的任务（后端会把通过的移出「进行中」）
   const allRuns = [...runs]
   for (const id of Object.keys(finished)) {
@@ -172,6 +172,74 @@ export default function Quest({ onGo, onReward }) {
 
       {msg && <p className={`quest-msg ${msg.kind}`}>{msg.text}</p>}
 
+      {/* ---------- 任务目标（固定一个） ---------- */}
+      <section className="quest-panel">
+        <h4 className="quest-h">
+          {tf('任务目标', 'Quest target')}
+          <em>{tf('本项目的仓库', 'this project’s repo')}</em>
+        </h4>
+
+        {!target ? (
+          <p className="inv-empty">
+            {tf(
+              '活动任务的目标还没配置好 —— 稍后再来看看。',
+              'The quest target is not configured yet — check back later.',
+            )}
+          </p>
+        ) : (
+          <div className="quest-target is-fixed">
+            <div className="quest-target-main">
+              <span className="quest-repo">{target.fullName}</span>
+              <span className="quest-badge">{platformLabel(target.platform)}</span>
+              {typeof target.stars === 'number' && (
+                <span className="quest-stars">★ {target.stars}</span>
+              )}
+            </div>
+            <p className="quest-desc">
+              {tf(
+                '给这个仓库点一颗 ★ —— 你的这颗星会直接算进社区认可分。',
+                'Star this repo — your star counts straight into the community score.',
+              )}
+            </p>
+            <div className="quest-target-foot">
+              {/* 「去点 ★」是这次活动真正要玩家做的动作 —— 用主按钮（.quest-btn 默认样式）；
+                  「领取」只是记录基线，用 ghost 退后一步。 */}
+              <a
+                className="quest-btn"
+                href={target.htmlUrl}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => sfx.tick()}
+              >
+                {tf('去点 ★', 'Go star it')}
+              </a>
+              <button
+                className="quest-btn ghost"
+                disabled={
+                  busy === `issue:${target.petKey}` ||
+                  claimed ||
+                  dailyLeft <= 0 ||
+                  slotLeft <= 0
+                }
+                onClick={() => doIssue(goal, target)}
+              >
+                {claimed
+                  ? tf('已领取', 'Claimed')
+                  : busy === `issue:${target.petKey}`
+                    ? tf('领取中…', 'Claiming…')
+                    : tf('领取', 'Claim')}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {dailyLeft <= 0 && (
+          <p className="quest-note">
+            {tf('今天的额度用完了 —— 明天再来。', 'Daily quota used up — come back tomorrow.')}
+          </p>
+        )}
+      </section>
+
       {/* ---------- 我手上的任务 ---------- */}
       <section className="quest-panel">
         <h4 className="quest-h">
@@ -182,8 +250,8 @@ export default function Quest({ onGo, onReward }) {
         {allRuns.length === 0 ? (
           <p className="inv-empty">
             {tf(
-              '还没有领任务 —— 下面挑一个社区里别人的仓库，给它点一颗星。',
-              'No quest yet — pick someone else’s repo below and star it.',
+              '还没有领任务 —— 上面就是这次活动的目标，给它点一颗星。',
+              'No quest yet — the target is above, give it a star.',
             )}
           </p>
         ) : (
@@ -286,86 +354,6 @@ export default function Quest({ onGo, onReward }) {
               )
             })}
           </ul>
-        )}
-      </section>
-
-      {/* ---------- 候选目标 ---------- */}
-      <section className="quest-panel">
-        <h4 className="quest-h">
-          {tf('可以点星的目标', 'Repos you can star')}
-          <em>{tf('社区里别人的精灵仓库', 'other players’ sprite repos')}</em>
-        </h4>
-
-        {targets.length === 0 ? (
-          <p className="inv-empty">
-            {tf(
-              '现在没有可选目标 —— 社区里还没有别人孵化过的仓库。等一等，或者去大厅抽一包先。',
-              'No targets right now — nobody else has hatched a repo yet. Draw a pack to get started.',
-            )}
-            <button className="mini-btn" onClick={() => onGo?.('home')}>
-              {tf('去大厅抽卡', 'Go draw')}
-            </button>
-          </p>
-        ) : (
-          <ul className="quest-targets">
-            {shown.map((target) => {
-              const claimed = runs.some((r) => r.petKey === target.petKey)
-              const disabled = busy === `issue:${target.petKey}` || claimed || dailyLeft <= 0 || slotLeft <= 0
-              return (
-                <li key={target.petKey} className="quest-target">
-                  <div className="quest-target-main">
-                    <span className="quest-repo">{target.fullName}</span>
-                    <span className="quest-badge">{platformLabel(target.platform)}</span>
-                    {typeof target.stars === 'number' && (
-                      <span className="quest-stars">★ {target.stars}</span>
-                    )}
-                  </div>
-                  {target.description && <p className="quest-desc">{target.description}</p>}
-                  <div className="quest-target-foot">
-                    <span className="quest-hatchers">
-                      {tf(`${target.hatchers} 人孵化过`, `hatched by ${target.hatchers}`)}
-                    </span>
-                    <a
-                      className="quest-btn ghost"
-                      href={target.htmlUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={() => sfx.tick()}
-                    >
-                      {tf('看一眼', 'Peek')}
-                    </a>
-                    <button
-                      className="quest-btn"
-                      disabled={disabled}
-                      onClick={() => doIssue(goal, target)}
-                    >
-                      {claimed
-                        ? tf('已领取', 'Claimed')
-                        : busy === `issue:${target.petKey}`
-                          ? tf('领取中…', 'Claiming…')
-                          : tf('领取', 'Claim')}
-                    </button>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-
-        {targets.length > 12 && (
-          <p className="quest-note">
-            <button className="mini-btn" onClick={() => { sfx.tick(); setShowAll((v) => !v) }}>
-              {showAll
-                ? tf('收起', 'Show less')
-                : tf(`展开其余 ${targets.length - 12} 个目标`, `Show ${targets.length - 12} more`)}
-            </button>
-          </p>
-        )}
-
-        {dailyLeft <= 0 && (
-          <p className="quest-note">
-            {tf('今天的额度用完了 —— 明天再来。', 'Daily quota used up — come back tomorrow.')}
-          </p>
         )}
       </section>
 

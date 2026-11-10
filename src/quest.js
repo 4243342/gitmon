@@ -69,8 +69,11 @@ export function fetchQuestBoard() {
 /**
  * 领取任务。target 用任务板给的原样字符串（形如 github-owner/repo），
  * 后端据此认平台 —— 别在前端拆 owner/repo，拆错了平台就对不上。
+ *
+ * 目标其实是固定的（后端配置里那一个仓库），带上 target 只是让后端能校验
+ * 「前端没拿错」。传空串也行。
  */
-export function issueQuest(goalKey, target) {
+export function issueQuest(goalKey, target = '') {
   return request('/api/quest/issue', {
     method: 'POST',
     body: { goal_key: goalKey, target },

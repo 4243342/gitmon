@@ -151,7 +151,6 @@
 
 /* ---------- 我手上的任务 ---------- */
 .quest-runs,
-.quest-targets,
 .quest-history,
 .quest-evidence {
   list-style: none;
@@ -257,11 +256,19 @@
 .quest-ev-time { opacity: .7; }
 .quest-ev-attr { color: var(--dim); opacity: .85; }
 
-/* ---------- 候选目标 ---------- */
-.quest-target {
-  padding: 12px 14px;
-  background: rgba(10, 16, 30, .55);
-  border: 2px solid var(--px-line);
+/* ---------- 任务目标（固定一个） ---------- */
+/* 目标唯一，所以这张卡要压得住 —— 描边更亮、底色更实，
+   跟下面「我手上的任务」的列表项拉开层次。 */
+.quest-target.is-fixed {
+  padding: 16px 18px;
+  background: rgba(14, 22, 40, .78);
+  border: 2px solid rgba(255, 203, 5, .34);
+  box-shadow: inset 0 0 0 1px rgba(255, 203, 5, .08);
+}
+
+.quest-target.is-fixed .quest-repo {
+  font-size: 17px;
+  letter-spacing: .01em;
 }
 
 .quest-target-main {
@@ -294,13 +301,6 @@
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 11px;
-}
-
-.quest-hatchers {
-  font-size: 11px;
-  color: var(--dim);
-  opacity: .8;
-  margin-right: auto;
 }
 
 /* ---------- 历史 ---------- */

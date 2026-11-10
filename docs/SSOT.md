@@ -117,27 +117,34 @@ localStorage 里**不允许**出现余额副本。
 
 #### `GET /api/quest/board`
 
-响应：`{"goals": [{key, title, brief, accept[], verifyLevel, reward, quota, targets[], runs[]}], "time"}`
+响应：`{"goals": [{key, title, brief, accept[], verifyLevel, reward, quota, target, runs[]}], "time"}`
 
 - `quota`：`{dailyLimit, issuedToday, slotsLimit, slotsUsed, cooldownDays}`。
   `issuedToday` 按**本地自然日**统计（服务端用 `time.mktime` 算当日纪元秒区间，
   不在 SQL 里写 `date(..., 'localtime')` —— 见 §7 附注）。
-- `targets[]`：候选目标（社区里别人孵化过的仓库），字段
-  `{petKey, platform, fullName, owner, repo, htmlUrl, description, quality, hatchers, stars}`。
+- `target`：**固定的目标**（活动任务只认配置里的那一个仓库），
+  字段 `{petKey, platform, fullName, owner, repo, htmlUrl, stars, fixed}`。
   `stars` 取自快照缓存，**仅供展示**，不参与判定。
+  注意是**单对象**，不是数组 —— 目标固定，没有得挑。
 - `runs[]`：该 owner 还没复审完的任务实例（`status='fixing'`）。
 
 #### `POST /api/quest/issue`
 
 请求：`{"goal_key": "star", "target": "github-owner/repo"}`
 
-- `target` 用 `<platform>-<full_name>` 口径（平台段在第一个短横线之前），
-  也接受 `owner/repo` 与完整仓库地址。**前端不要自己拆 owner/repo**，拆错平台就对不上。
+- `target` **可留空**（后端按配置的目标走）；传了但跟配置不一致 → `409`，
+  不静默替换（静默忽略会让人以为领到了别的仓库）。
+- 目标来自环境变量 `GITMON_QUEST_TARGET`（默认 `4243342/gitmon`），
+  格式 `owner/repo`（GitHub）或 `gitee/owner/repo`（Gitee）。
 - 领取时后端**现拉一次**目标仓库的星数作为基线（`payload.starsBefore`），
   不用 6 小时快照缓存 —— 缓存里的星数是旧的，拿它当基线会误判。
 - 拒绝条件（都返回 `{"error", "hint"}`）：
-  - `409` 目标不在候选池内 / 同一仓库处于冷却期（30 天）
-  - `429` 今日额度用尽（3 个/天）/ 手上已压 3 个没复审的任务
+  - `409` 目标与配置不符 / 冷却期内（30 天）/ 手上还有没复审完的任务
+  - `429` 今日额度用尽（1 个/天）
+
+  判定顺序是**额度 → 冷却 → 未复审**：冷却期比额度长，
+  反过来会让额度那条永远触发不到，规则成了死代码。
+  两条条件同时成立时先报冷却（更根本，玩家才知道要等多久）。
 
 #### `POST /api/quest/verify`
 
