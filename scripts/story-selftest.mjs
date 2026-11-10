@@ -249,12 +249,28 @@ console.log('\n[story] 斗码苍穹的主线是「三年之约」')
   const douma = PACKS.douma
   check('世界观里写的是三年之约', douma.meta.world.includes('三年之约'), douma.meta.world.slice(0, 40))
   check('世界观里有名碑', douma.meta.world.includes('名碑'), douma.meta.world.slice(0, 40))
-  check('三张方案卡都属三年之约',
-    douma.meta.variants.every((v) => v.title.includes('约') || v.title.includes('焚决') || v.title.includes('名碑')),
+  check('方案卡属三年之约',
+    douma.meta.variants.every((v) => v.title.includes('约')),
     douma.meta.variants.map((v) => v.title).join(' | '))
   check('方案卡 beats 提到名碑或规矩',
     douma.meta.variants.some((v) => v.beats.some((b) => b.includes('碑') || b.includes('规矩'))),
     'beats 没提到')
+}
+
+console.log('\n[story] 斗码苍穹只留《三年之约》一案')
+{
+  // 主线只有一条，方案卡也就只有一张：另外两个角度（《焚决》《名碑》）已删
+  const douma = PACKS.douma
+  eq('斗码苍穹只有一张方案卡', douma.meta.variants.length, 1)
+  eq('留下的是《三年之约》', douma.meta.variants[0].title, '《三年之约：{boss}》')
+  check('删掉的《焚决》没有残留',
+    !douma.meta.variants.some((v) => v.title.includes('焚决')),
+    douma.meta.variants.map((v) => v.title).join(' | '))
+  check('删掉的《名碑》没有残留',
+    !douma.meta.variants.some((v) => v.title.includes('名碑')),
+    douma.meta.variants.map((v) => v.title).join(' | '))
+  // 通用包不受影响：它仍是三张通用模板（AI / 自定义剧本走它）
+  eq('通用包仍是三张方案', PACKS.default.meta.variants.length, 3)
 }
 
 console.log(`\n${failures ? `✗ ${failures} 项失败` : '✓ 全部通过'}\n`)

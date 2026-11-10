@@ -354,9 +354,13 @@ try {
       title: n.querySelector('b')?.textContent || '',
       pack: n.querySelector('.story-script-pack')?.textContent || '',
     })))
-  check('出了三张方案卡', cards.length === 3, String(cards.length))
+  check('出了一张方案卡', cards.length === 1, String(cards.length))
   check('方案卡带包铭牌', cards.some((c) => c.pack.includes('斗码苍穹')), JSON.stringify(cards.map((c) => c.pack)))
   check('方案是玄幻语汇', cards.some((c) => /宗门|魂殿|山门|斗破|约|焚决|名碑/.test(c.title)), JSON.stringify(cards.map((c) => c.title)))
+  // 只留《三年之约》一案：另外两个角度不能出现在界面上
+  check('留下的是《三年之约》', cards.some((c) => c.title.includes('三年之约')), JSON.stringify(cards.map((c) => c.title)))
+  check('《焚决》没有残留', !cards.some((c) => c.title.includes('焚决')), JSON.stringify(cards.map((c) => c.title)))
+  check('《名碑》没有残留', !cards.some((c) => c.title.includes('名碑')), JSON.stringify(cards.map((c) => c.title)))
 
   console.log('\n[pack] 建线后正片跑的是同一个包')
   await page.evaluate(() => {

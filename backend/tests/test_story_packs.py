@@ -32,7 +32,9 @@ def test_pack_meta_exposes_what_the_ui_needs() -> None:
     douma = story_packs.get_pack("douma")
     assert douma["title"] == "斗码苍穹"
     assert douma["world"] and douma["style"]
-    assert len(douma["variants"]) == 3
+    # 斗码苍穹只提供一个方案：主线就一条，三年之约
+    assert len(douma["variants"]) == 1
+    assert douma["variants"][0]["title"] == "《三年之约：{boss}》"
     # 结局标题按包隔离：斗码苍穹的四个结局 id 与通用包完全不同
     assert set(douma["endings"]) == {"ending_flame", "ending_withered", "ending_lone", "ending_steady"}
     assert set(story_packs.get_pack("default")["endings"]) == {
@@ -62,7 +64,8 @@ def test_clean_pack_id_strips_injection() -> None:
 def test_system_scripts_come_from_the_requested_pack() -> None:
     """mode=system + pack=douma 必须给回斗码苍穹的方案，不能是通用模板。"""
     items = story_packs.pack_scripts("douma", "demo/pet", "torvalds/linux")
-    assert len(items) == 3
+    # 斗码苍穹只有一张方案卡：三年之约
+    assert len(items) == 1
     assert all(item["pack"] == "douma" for item in items)
     # 占位符必须被真实项目名替换掉，不能把 {pet} 原样端到界面上
     joined = json.dumps(items, ensure_ascii=False)
@@ -70,6 +73,16 @@ def test_system_scripts_come_from_the_requested_pack() -> None:
     assert "demo/pet" in joined
     # 斗码苍穹的方案要带玄幻语汇
     assert any("宗门" in item["title"] or "魂殿" in item["title"] or "约" in item["title"] for item in items)
+
+
+def test_douma_has_only_the_three_year_vow_card() -> None:
+    """斗码苍穹只留《三年之约》一案 —— 另外两个角度（《焚决》《名碑》）已经删掉。"""
+    items = story_packs.pack_scripts("douma", "demo/pet", "torvalds/linux")
+    titles = [item["title"] for item in items]
+    assert titles == ["《三年之约：torvalds/linux》"]
+    # 删掉的那两个角度不能以任何形式残留
+    assert not any("焚决" in t for t in titles)
+    assert not any("名碑" in t for t in titles)
 
 
 def test_two_packs_give_different_scripts() -> None:
@@ -88,7 +101,7 @@ def test_scripts_endpoint_forwards_the_pack() -> None:
     ))
     assert data["source"] == "system"
     assert data["pack"] == "douma"
-    assert len(data["scripts"]) == 3
+    assert len(data["scripts"]) == 1
     assert all(item["pack"] == "douma" for item in data["scripts"])
     # 方案标题要和斗码苍穹包对得上
     titles = " ".join(item["title"] for item in data["scripts"])

@@ -973,6 +973,12 @@
   gap: 14px;
 }
 
+/* 只有一个方案时（斗码苍穹只留《三年之约》一案）别让卡片撑满整行，
+   那会把一行文字拉得太长，读起来很难受。给它一个上限宽度。 */
+.story-script-grid > .story-script:only-child {
+  max-width: 460px;
+}
+
 .story-script {
   --tier: var(--st-line);
   position: relative;

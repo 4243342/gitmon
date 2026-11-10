@@ -564,6 +564,10 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
   )
   const packTitle = (packId) => packs.find((p) => p.id === packId)?.title || packId || ''
 
+  // 系统剧本的方案数按包走：斗码苍穹只留《三年之约》一案，通用包有三套。
+  // 写死「三套模板」会对只提供一案的包说谎。
+  const systemPackCount = currentPack?.variant_count || 0
+
   // CP 条按本轮候选里的最高战力归一，让三张对手卡的压迫感一眼可比
   const maxBossCp = useMemo(() => {
     const list = (preview?.bosses || []).map((b) => Number(b.cp) || 0)
@@ -1303,7 +1307,9 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
                 id: 'system',
                 tag: 'SYSTEM',
                 name: t('系统剧本', 'System scripts'),
-                desc: t('内置三套模板，立刻出卡，不调模型、不花钱', 'Three built-in templates. Instant, no model, no cost.'),
+                desc: systemPackCount === 1
+                  ? t('内置一套模板，立刻出卡，不调模型、不花钱', 'One built-in template. Instant, no model, no cost.')
+                  : t('内置三套模板，立刻出卡，不调模型、不花钱', 'Three built-in templates. Instant, no model, no cost.'),
                 icon: '▤',
               },
               {
