@@ -165,6 +165,29 @@ CREATE TABLE IF NOT EXISTS story_endings (
     UNIQUE (owner_key, ending_id)
 );
 
+-- 任务模式：一次任务实例（领取 → 复审 → 发奖）。列定义见 docs/QUEST.md §7。
+-- payload 存出题时的事实快照（含基线值），evidence 存每次复审的证据链。
+CREATE TABLE IF NOT EXISTS quest_runs (
+    id           TEXT PRIMARY KEY,
+    owner_key    TEXT NOT NULL,
+    pet_key      TEXT NOT NULL,
+    goal_key     TEXT NOT NULL,
+    verify_level TEXT NOT NULL DEFAULT 'L1',
+    payload      TEXT NOT NULL DEFAULT '{}',
+    issued_at    REAL NOT NULL,
+    attempts     INTEGER NOT NULL DEFAULT 0,
+    status       TEXT NOT NULL DEFAULT 'fixing',
+    evidence     TEXT NOT NULL DEFAULT '[]',
+    reward       TEXT NOT NULL DEFAULT '{}',
+    verify_at    REAL
+);
+-- 同一个仓库 + 同一种任务，一天只能领一次（硬约束，不靠前端按钮）。
+-- 注意：issued_at 是 REAL 时间戳，SQLite 的 date() 不认 UNIX 纪元秒，
+-- 必须带 'unixepoch' 修饰符，否则表达式恒为 NULL、唯一索引形同虚设。
+CREATE UNIQUE INDEX IF NOT EXISTS ux_quest_goal
+    ON quest_runs(owner_key, pet_key, goal_key, date(issued_at, 'unixepoch'));
+CREATE INDEX IF NOT EXISTS idx_quest_owner ON quest_runs(owner_key, issued_at DESC);
+
 -- 背包：物品余额（货币与道具共用一张表，item_key 相同即叠加）
 CREATE TABLE IF NOT EXISTS inventory_items (
     owner_key  TEXT NOT NULL,
