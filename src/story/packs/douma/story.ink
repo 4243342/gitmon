@@ -11,6 +11,12 @@
 // 结构约定与默认包一致（运行时按标签解析）：
 //   # scene: <id> / # bg: <key> / # cast: a,b / # keys: a,b
 //   # battle: minion|boss / # win: <knot> / # lose: <knot> / # ending
+//   # stage: <阶段键>  这一屏用哪个阶段的角色形象（对应 characters.json 的 stages）
+//
+// 阶段约定（见同目录 STORY.md §3）：
+//   主角是阶段化角色 —— 早期是人形态（蓝发男），云岚宗前期是白发青衣的女修。
+//   三年之约这条主线里始终是「早期 / 前期」，所以每屏都声明 early；
+//   写后期剧情时把 stage 改成 late，角色表里加 stages.late 即可，路线不用动。
 //
 // 变量契约与运行时 KNOWN_VARS 对齐：chapter / chapter_count / trust / deaths / route / ending_id
 //   trust = 三年里愿意认主角这一套、肯替他站台的分量（公开复现攒出来的）
@@ -27,11 +33,38 @@ VAR pet_name = "主角"
 VAR boss_name = "宿敌"
 VAR ending_id = ""
 
--> prologue
+// 开章：旁白独占屏幕中央，成品音频 + 逐字显现。
+// 这一屏不是对话，是「片头解说」—— 所以走 # opening 标签，
+// 界面渲染成居中的解说字幕而不是底部对话框。
+-> opening
+
+=== opening ===
+# scene: opening
+# stage: early
+# bg: void
+# cast: narrator
+# keys: narrator.opening
+# opening: opening.mp3
+{say("narrator.opening")}
++ [继续]
+    -> awaken
+
+// 过场：主角由卡片形象变成光团 → 画面变暗 → 醒来变成人形态。
+// 这一屏没有台词，走 # transform 标签 —— 界面渲染成一段动画，
+// 动画播完自动进正片。素材由 meta.transforms.awaken 声明。
+=== awaken ===
+# scene: awaken
+# stage: early
+# bg: void
+# cast: pet
+# transform: awaken
++ [醒来]
+    -> prologue
 
 // 序章：约期已到，把当年的除名通知连同战书一起寄回去
 === prologue ===
 # scene: prologue
+# stage: early
 # bg: dawn
 # cast: pet,narrator
 # keys: narrator.hook,pet.oath
@@ -53,6 +86,7 @@ VAR ending_id = ""
 // 药老与焚决：不是秘籍，是半卷口诀 —— 要炼成，得有人照着复现一遍
 === growth_gate ===
 # scene: growth_gate
+# stage: early
 # bg: alley
 # cast: pet,scout
 # keys: scout.hook,scout.offer
@@ -74,6 +108,7 @@ VAR ending_id = ""
 // 魂殿：专抄作业的组织。它们越抄，看懂焚决的人就越多
 === soul_scene ===
 # scene: soul_gate
+# stage: early
 # bg: alley
 # cast: pet,soul,scout
 # keys: soul.taunt,scout.warn,pet.resolve
@@ -103,6 +138,7 @@ VAR ending_id = ""
     ~ trust -= 1
 }
 # scene: gate_lose
+# stage: early
 # bg: alchemy
 # cast: pet,scout
 # keys: scout.lose
@@ -125,6 +161,7 @@ VAR ending_id = ""
 
 === finale_insider ===
 # scene: finale_insider
+# stage: early
 # bg: sect
 # cast: pet,scout
 # keys: scout.ally
@@ -134,6 +171,7 @@ VAR ending_id = ""
 
 === finale_solo ===
 # scene: finale_solo
+# stage: early
 # bg: sect
 # cast: pet,narrator
 # keys: narrator.solo
@@ -144,6 +182,7 @@ VAR ending_id = ""
 // 立约：名碑就在阶前，规矩由谁定，看这一战
 === vow_scene ===
 # scene: vow_scene
+# stage: early
 # bg: sect
 # cast: pet,boss
 # keys: boss.hook,boss.challenge
@@ -167,6 +206,7 @@ VAR ending_id = ""
 === boss_lose ===
 ~ deaths += 1
 # scene: boss_lose
+# stage: early
 # bg: sect
 # cast: pet,boss
 # keys: boss.glory
@@ -198,6 +238,7 @@ VAR ending_id = ""
 
 === ending ===
 # scene: ending
+# stage: early
 # ending
 # bg: dawn
 # cast: pet,narrator

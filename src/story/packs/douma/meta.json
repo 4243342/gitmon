@@ -20,6 +20,14 @@
     "insider": "有人作证线",
     "solo": "独自赴约线"
   },
+  "transforms": {
+    "awaken": {
+      "label": "苏醒",
+      "orb": "orb-cyan.gif",
+      "hero": "hero_early.png",
+      "caption": "三年之约到期那一日，山门之外——他睁开了眼。"
+    }
+  },
   "variants": [
     {
       "title": "《三年之约：{boss}》",

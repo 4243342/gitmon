@@ -1103,6 +1103,207 @@
   letter-spacing: .3px;
 }
 
+/* ---------- 开章解说屏 ---------- */
+
+/* 片头解说：旁白独占整屏，文字居中，不是对话。
+   背景用深黑压掉场景色，让解说文字成为唯一的视觉焦点。 */
+.story-opening {
+  position: relative;
+  min-height: 460px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 26px;
+  padding: 40px 8%;
+  background: radial-gradient(120% 100% at 50% 45%, #0e1424 0%, #05070e 62%, #020307 100%);
+  border: 2px solid var(--st-line);
+  clip-path: var(--st-clip);
+  cursor: pointer;
+  overflow: hidden;
+  isolation: isolate;
+  filter: drop-shadow(6px 6px 0 rgba(0, 0, 0, .5));
+}
+
+/* 四角细框：把整屏收成一张「片头卡」 */
+.story-opening-frame {
+  position: absolute;
+  inset: 18px;
+  z-index: 0;
+  pointer-events: none;
+  border: 1px solid rgba(255, 203, 5, .16);
+  clip-path: polygon(
+    0 0, 34px 0, 34px 1px, 1px 1px, 1px 34px, 0 34px,
+    0 100%, 34px 100%, 34px calc(100% - 1px), 1px calc(100% - 1px), 1px calc(100% - 34px), 0 calc(100% - 34px),
+    100% 100%, calc(100% - 34px) 100%, calc(100% - 34px) calc(100% - 1px), calc(100% - 1px) calc(100% - 1px), calc(100% - 1px) calc(100% - 34px), 100% calc(100% - 34px),
+    100% 0, calc(100% - 34px) 0, calc(100% - 34px) 1px, calc(100% - 1px) 1px, calc(100% - 1px) 34px, 100% 34px
+  );
+}
+
+/* 解说文字：居中、大字、字距放开，像纪录片字幕。
+   字体用 FusionPixel（项目的像素中文字体）—— 全局美学是像素风，
+   片头解说也保持一致；但字号要够大，点阵字小了会糊。 */
+.story-opening-text {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  max-width: 20em;
+  font-family: var(--font-pixel);
+  font-size: clamp(28px, 4.4vw, 52px);
+  line-height: 2.05;
+  letter-spacing: .16em;
+  text-align: center;
+  color: #f2f6ff;
+  text-shadow: 0 0 30px rgba(255, 203, 5, .22), 0 3px 0 rgba(0, 0, 0, .6);
+  text-wrap: balance;
+}
+
+/* 每个字一个 span：逐字显现时单独动 */
+.story-open-char {
+  display: inline-block;
+  white-space: pre;
+  will-change: opacity, transform, filter;
+}
+
+/* 提示：只在念完之后出现 */
+.story-opening-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 34px;
+  z-index: 1;
+  text-align: center;
+  font-family: var(--font-arcade, monospace);
+  font-size: 10px;
+  letter-spacing: .22em;
+  color: rgba(255, 203, 5, .62);
+  animation: story-caret 1.4s steps(2) infinite;
+}
+
+/* ---------- 变身过场 ---------- */
+
+/* 过场：卡片形象 → 光团 → 变暗 → 醒来变成人形态。
+   这一屏没有对话，是一段纯动画。
+   做成全屏固定覆盖层：「画面变暗」压的是整个视口 —— 如果只压页面里的一块，
+   变暗就只是「一块地方暗了」，不是「意识断了」。 */
+.story-tf {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 26px;
+  padding: 40px 8%;
+  background: radial-gradient(120% 100% at 50% 45%, #0e1424 0%, #05070e 62%, #020307 100%);
+  cursor: pointer;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* 压暗层：GSAP 把 opacity 从 0 推到 1 —— 「意识断了」的那一下。
+   层序在舞台层之下 —— 「黑暗里亮出人形」意味着人形要压在黑暗上面，
+   要是压暗层盖住舞台，人形态就永远看不见了。 */
+.story-tf-dark {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: #02030a;
+  opacity: 0;
+}
+
+/* 白闪层：光团炸开的那一下，在最上面 */
+.story-tf-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background: #fff;
+  opacity: 0;
+}
+
+/* 三个元素共用的舞台层：卡片 / 光团 / 立绘叠在一起。
+   z-index 高于压暗层，所以人形态能在黑幕里亮出来。 */
+.story-tf-stage {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 420px;
+  height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ① 卡片形象：玩家的仓库精灵 */
+.story-tf-card {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  will-change: opacity, transform, filter;
+}
+
+/* ② 光团：脉动动画（orb-cyan.gif 本身就带搏动，这里只控制显隐与缩放）
+   居中用 inset:0 + margin:auto —— 不能用 transform 做居中，
+   transform 留给 GSAP 的 scale 动画（两者会互相覆盖）。 */
+.story-tf-orb {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 190px;
+  height: 190px;
+  object-fit: contain;
+  will-change: opacity, transform;
+  filter: drop-shadow(0 0 26px rgba(120, 220, 255, .55));
+}
+
+/* ④ 人形态：从黑暗里亮出来。bottom 留一点余量，让立绘像是站在地上 */
+.story-tf-hero {
+  position: absolute;
+  inset: 0 0 -6px 0;
+  margin: auto;
+  max-height: 300px;
+  max-width: 100%;
+  object-fit: contain;
+  will-change: opacity, transform;
+  filter: drop-shadow(0 0 22px rgba(120, 220, 255, .35));
+}
+
+/* 过场字幕：立绘稳定后才出（GSAP 控制 opacity） */
+.story-tf-caption {
+  position: relative;
+  z-index: 5;
+  margin: 0;
+  max-width: 22em;
+  font-family: var(--font-pixel);
+  font-size: clamp(15px, 2vw, 20px);
+  line-height: 1.9;
+  letter-spacing: .1em;
+  text-align: center;
+  color: #dfe8f8;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, .7);
+  opacity: 0;
+}
+
+/* 提示：动画播完才出现 */
+.story-tf-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 30px;
+  z-index: 5;
+  text-align: center;
+  font-family: var(--font-arcade, monospace);
+  font-size: 10px;
+  letter-spacing: .22em;
+  color: rgba(255, 203, 5, .62);
+  animation: story-caret 1.4s steps(2) infinite;
+}
+
 /* ---------- 舞台 ---------- */
 
 .story-stage {
@@ -1155,6 +1356,8 @@
 .story-bg-alley { background: radial-gradient(100% 85% at 50% 0%, #1d2b23 0%, #101a17 55%, #060a09 100%); }
 .story-bg-alchemy { background: radial-gradient(110% 90% at 50% 0%, #3d2a14 0%, #201709 52%, #0b0704 100%); }
 .story-bg-sect { background: radial-gradient(115% 95% at 50% 0%, #43305c 0%, #241a33 50%, #0a0810 100%); }
+/* 开章解说屏：压到近黑，让解说文字成为唯一焦点 */
+.story-bg-void { background: radial-gradient(120% 100% at 50% 45%, #0e1424 0%, #05070e 62%, #020307 100%); }
 
 .story-stage > * { position: relative; z-index: 1; }
 

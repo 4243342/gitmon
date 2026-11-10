@@ -193,6 +193,30 @@ page.on('request', (req) => {
     })
     return
   }
+  if (method === 'GET' && /\/api\/auth\/(me|providers)/.test(url)) {
+    // 认证也 mock 掉：不 mock 的话每跑一次测试都要打后端几十个请求，
+    // 很快撞上 120 次/分钟的全局限流，测试结果随机失败（看着像代码坏了）。
+    // 剧本包的接口（/api/story/packs、/api/story/scripts）仍然走真实后端。
+    if (/providers/.test(url)) {
+      req.respond({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ github: true, gitee: true }),
+      })
+      return
+    }
+    req.respond({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        authenticated: false, online: true,
+        quota: { limit: 60, remaining: 60, resetAt: 0 },
+      }),
+    })
+    return
+  }
+  if (method === 'POST' && /\/api\/tts\/warm$/.test(url)) {
+    req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) })
+    return
+  }
   if (method === 'POST' && /\/api\/story\/start$/.test(url)) {
     // 建线要真模型密钥 + GitHub 扫描，这里造一条已建好的线。
     // script_pack 来自请求里的 script.pack —— 与真实后端同一个约定。
@@ -370,12 +394,73 @@ try {
   check('《焚决》没有残留', !cards.some((c) => c.title.includes('焚决')), JSON.stringify(cards.map((c) => c.title)))
   check('《名碑》没有残留', !cards.some((c) => c.title.includes('名碑')), JSON.stringify(cards.map((c) => c.title)))
 
-  console.log('\n[pack] 建线后正片跑的是同一个包')
+  console.log('\n[open] 开章解说屏')
   await page.evaluate(() => {
     const btn = Array.from(document.querySelectorAll('button')).find((b) => /建线|出发/.test(b.textContent || ''))
     if (btn) btn.click()
   })
-  await sleep(3000)
+  await sleep(2500)
+
+  // 建线后第一屏是开章解说：旁白独占屏幕中央，成品配音 + 逐字显现
+  const opening = await page.evaluate(() => {
+    const el = document.querySelector('.story-opening')
+    if (!el) return { present: false, hasStage: Boolean(document.querySelector('.story-stage')) }
+    const chars = Array.from(el.querySelectorAll('.story-open-char'))
+    const lit = chars.filter((c) => Number(getComputedStyle(c).opacity) > 0.5)
+    const text = el.querySelector('.story-opening-text')
+    const tr = text?.getBoundingClientRect()
+    const er = el.getBoundingClientRect()
+    return {
+      present: true,
+      total: chars.length,
+      lit: lit.length,
+      text: text?.textContent || '',
+      fontSize: text ? getComputedStyle(text).fontSize : '',
+      // 垂直居中：文字中心离容器中心的偏移（像素，越小越居中）
+      vOffset: tr && er ? Math.round((tr.y + tr.height / 2) - (er.y + er.height / 2)) : null,
+    }
+  })
+  check('进的是开章解说屏（不是正片舞台）', opening.present && !opening.hasStage,
+    JSON.stringify(opening).slice(0, 160))
+  if (opening.present) {
+    check('开章文字讲的是码气世界', /码气/.test(opening.text), opening.text.slice(0, 40))
+    // 偏移用 ?? 而不是 ||：偏移正好是 0（完全居中）时，|| 会把它当成「没测到」而短路成 999
+    check('开章文字已居中', Math.abs(opening.vOffset ?? 999) < 40, `偏移 ${opening.vOffset}px`)
+    check('开章字号够大（≥28px）', parseFloat(opening.fontSize) >= 28, opening.fontSize)
+    // 逐字显现：刚进屏时不该已经全亮
+    check('开章是逐字显现（没一次性全亮）', opening.lit < opening.total,
+      `${opening.lit}/${opening.total}`)
+    // 音频：包内 mp3 要真的能取到。
+    // 探测方式读组件挂在 DOM 上的 data-audio-src ——
+    // Audio 对象不把 src 暴露出来，performance 条目又可能因为缓存而不重复记录。
+    const audio = await page.evaluate(() => {
+      const el = document.querySelector('.story-opening')
+      if (!el) return null
+      return { src: el.getAttribute('data-audio-src') || null }
+    })
+    check('开章有音频源', Boolean(audio?.src), JSON.stringify(audio))
+    // 音频真的能取到（不是 404）
+    if (audio?.src) {
+      const ok = await page.evaluate(async (u) => {
+        const r = await fetch(u).catch(() => null)
+        return Boolean(r && r.ok)
+      }, audio.src)
+      check('开章音频能取到', ok, audio.src)
+    }
+  }
+
+  console.log('\n[pack] 开章之后经过场进正片')
+  // 点开章屏 → 跳过它，进变身过场
+  await page.evaluate(() => document.querySelector('.story-opening')?.click())
+  await sleep(1200)
+
+  // 开章之后先进过场（变身动画），过场播完才进正片。
+  // 这一段的详细断言在 scripts/story-transform-check.mjs 里。
+  const transformSeen = await page.evaluate(() => Boolean(document.querySelector('.story-tf')))
+  check('开章之后进过场屏', transformSeen, '没找到 .story-tf')
+
+  // 过场约 7 秒，等它播完自动进正片
+  await sleep(9000)
 
   const stage = await page.evaluate(() => {
     const sec = document.querySelector('.story-stage')
@@ -387,7 +472,7 @@ try {
       text: sec.querySelector('.story-dialog p')?.textContent || '',
     }
   })
-  check('进入正片舞台', Boolean(stage), '没找到 .story-stage')
+  check('开章之后进入正片舞台', Boolean(stage), '没找到 .story-stage')
   if (stage) {
     check('背景是包内的（山门之外）', stage.place.includes('山门之外'), stage.place)
     check('角色是包内的（药老 / 主角）',
@@ -417,6 +502,25 @@ try {
   }
   check('重进后再次进入剧情模式', Boolean(reEnter), reEnter || '没找到入口')
   await sleep(3500)
+
+  // 读档路径：mock 返回的 ink_state 是空的，运行时从头开始 ——
+  // 所以要先过开章与过场两屏才到正片。
+  // （这跟第一次进线的路径一样：开章 → 过场 → 序章）
+  const resumePath = await page.evaluate(() => ({
+    opening: Boolean(document.querySelector('.story-opening')),
+    transform: Boolean(document.querySelector('.story-tf')),
+    stage: Boolean(document.querySelector('.story-stage')),
+  }))
+  check('重进后仍在同一个包里（开章 / 过场 / 正片三选一）',
+    resumePath.opening || resumePath.transform || resumePath.stage,
+    JSON.stringify(resumePath))
+
+  // 走到正片：跳过开章 → 等过场播完
+  if (resumePath.opening) {
+    await page.evaluate(() => document.querySelector('.story-opening')?.click())
+    await sleep(1200)
+  }
+  await sleep(9000)
   const dbg = await page.evaluate(() => {
     const raw = localStorage.getItem('gitmon:collection:v2')
     let parsed = []
@@ -486,10 +590,15 @@ try {
     })
     await sleep(1600)
   }
+  // 循环退出后可能正好停在 NPC 登场的那一屏（最后一次点击才进去的），
+  // 所以循环外再查一次 —— 否则 reachedNpc 会漏判
+  if (!reachedNpc) {
+    reachedNpc = await page.evaluate(() => Array.from(document.querySelectorAll('.story-chip'))
+      .some((n) => /药老|魂殿|云岚宗/.test(n.textContent || '')))
+  }
   check('推进到有 NPC 的场景', reachedNpc)
 
-  const dbgArt = await page.evaluate(() => ({
-    chips: Array.from(document.querySelectorAll('.story-chip')).map((n) => n.textContent.trim()),
+  const dbgArt = await page.evaluate(() => ({    chips: Array.from(document.querySelectorAll('.story-chip')).map((n) => n.textContent.trim()),
     choices: Array.from(document.querySelectorAll('.story-choices button')).map((n) => n.textContent.trim()),
     hasFigures: Boolean(document.querySelector('.story-stage-figures')),
     figureCount: document.querySelectorAll('.story-figure').length,
@@ -536,8 +645,11 @@ try {
     check('立绘图真的加载出来了',
       artState.figures.every((f) => f.loaded),
       JSON.stringify(artState.figures))
+    // 立绘必须来自包内的 art/ 目录。
+    // 不能按文件名里的角色关键词判定 —— 阶段化立绘的文件名是
+    // <角色>_<阶段>.png（hero_early / boss_early），跟旧的无阶段命名不一样。
     check('立绘来自包内素材',
-      artState.figures.every((f) => /scout|soul|boss|pet/.test(f.src || '')),
+      artState.figures.every((f) => /\/packs\/douma\/art\//.test(f.src || '')),
       JSON.stringify(artState.figures.map((f) => f.src)))
     check('角色牌里有头像', artState.chipFaces.length > 0, JSON.stringify(artState.chipFaces))
     check('头像真的加载出来了', artState.chipFaces.every((f) => f.loaded), JSON.stringify(artState.chipFaces))

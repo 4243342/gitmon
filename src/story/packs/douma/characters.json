@@ -3,7 +3,13 @@
     "name": "主角",
     "role": "protagonist",
     "color": "#ffcb05",
-    "defaultSprite": "pet_determined"
+    "defaultSprite": "pet_determined",
+    "stages": {
+      "early": {
+        "art": "hero_early.png",
+        "face": "hero_early_face.png"
+      }
+    }
   },
   "narrator": {
     "name": "旁白",
@@ -32,7 +38,11 @@
     "role": "boss",
     "color": "#f87171",
     "defaultSprite": "boss_neutral",
-    "art": "boss.png",
-    "face": "boss.png"
+    "stages": {
+      "early": {
+        "art": "boss_early.png",
+        "face": "boss_early_face.png"
+      }
+    }
   }
 }

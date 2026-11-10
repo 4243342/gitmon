@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../i18n.js'
-import { ELEMENTS, QUALITIES, SPECIES, hashSeed, stageFromLevel, statCapAtLevel } from '../engine.js'
+import { ELEMENTS, QUALITIES, SPECIES, combatPowerOf, hashSeed, stageFromLevel, statCapAtLevel } from '../engine.js'
 import { createBattle, battleTurn, chooseAutoAction } from '../battle.js'
 import { rivalPets, sameTypePool, scaleRival } from '../rivals.js'
 import { sfx } from '../sfx.js'
@@ -9,8 +9,12 @@ import { tts, getTtsConfig, setTtsEnabled, unlockTts } from '../tts.js'
 import PixelSprite from './PixelSprite.jsx'
 import PetCard from './PetCard.jsx'
 import StoryProgress from './StoryProgress.jsx'
+import StoryOpening from './StoryOpening.jsx'
+import StoryTransform from './StoryTransform.jsx'
 import { CHARACTERS, createStoryRuntime } from '../story/runtime.js'
-import { packArtUrl, packFaceUrl } from '../story/packArt.js'
+import { packArtUrl, packFaceUrl, packStageArtUrl } from '../story/packArt.js'
+import { packAudioUrl } from '../story/packAudio.js'
+import { packFxUrl } from '../story/packFx.js'
 import { storyApi } from '../story/api.js'
 import { createProgressWriter, replayDirty, dropDirty } from '../story/progressQueue.js'
 import '../story.css'
@@ -62,6 +66,29 @@ const CARD_DIMS = [
 // 与 engine.js computeStats 同一套阈值：按本等级理论上限归一化后分档
 const gradeOfRatio = (ratio) => (ratio >= 0.9 ? 'S' : ratio >= 0.72 ? 'A' : ratio >= 0.5 ? 'B' : ratio >= 0.3 ? 'C' : 'D')
 
+// 后端 verdict 的六维是 0–100 评分制（engine.py stats_for clamp 到 5..100，词条层再夹回一次），
+// 玩家卡是随等级放大的绝对制（computeStats 的宝可梦公式）。直接拿评分值去画绝对制的卡，
+// 六维条会缩成细丝、雷达缩成一个点，顶部 HP（评分×10 的 hack）与六维 HP 行（评分原值）
+// 差 10 倍，评级也全部沉到 D。这里统一换算成「该等级的绝对制」：
+// score/100 × 该属性的等级上限 —— 评分 100 即该等级满属性，卡面 / 雷达 / 战斗与玩家同标度。
+// 旧数据若已是绝对制（>100）则原样保留，只按绝对制补评级。
+function verdictToBattleStats(verdict, level) {
+  const raw = (Array.isArray(verdict?.stats) ? verdict.stats : [])
+    .map((s) => ({ name: String(s?.name || ''), value: Number(s?.value) || 0 }))
+    .filter((s) => s.name)
+  if (!raw.length) return { stats: [], maxHp: 0 }
+  const scored = Math.max(...raw.map((s) => s.value)) <= 100
+  const stats = raw.map((s) => {
+    const cap = statCapAtLevel(level, s.name === 'HP')
+    const value = scored ? Math.round((s.value / 100) * cap) : Math.round(s.value)
+    return { name: s.name, value, grade: gradeOfRatio(cap > 0 ? value / cap : 0) }
+  })
+  const maxHp = scored
+    ? (stats.find((s) => s.name === 'HP')?.value || 0)
+    : (Number(verdict?.hp) || stats.find((s) => s.name === 'HP')?.value || 0)
+  return { stats, maxHp }
+}
+
 // 把 preview 里的一只对手还原成完整 pet：选对手界面直接渲染成整张角色卡。
 // 六维 / 技能 / 根基 / 词条全部来自后端同一张 boss_card，和真正开打的那只一致；
 // 这里只做查表（key → 对象）和展示换算（评级 / 解锁态），不重新评测。
@@ -76,11 +103,8 @@ function bossPetFromCard(boss, isEn = false) {
   const species = SPECIES[v.species_key] || SPECIES[speciesKeys[(h >>> 3) % speciesKeys.length]] || SPECIES.beast
   const quality = QUALITIES[v.quality] || QUALITIES[boss?.tier] || QUALITIES.N
   const level = Number(v.level) || Number(boss?.level) || 1
-  const stats = (Array.isArray(v.stats) ? v.stats : []).map((s) => {
-    const value = Number(s.value) || 0
-    const cap = statCapAtLevel(level, s.name === 'HP')
-    return { name: s.name, value, grade: s.grade || gradeOfRatio(cap > 0 ? value / cap : 0) }
-  })
+  // 评分制 verdict → 该等级绝对制：六维 / HP / 战力全部与玩家卡同口径
+  const { stats, maxHp } = verdictToBattleStats(v, level)
   const skills = (Array.isArray(v.skills) ? v.skills : []).map((skill, i) => (
     typeof skill === 'string'
       ? { name: skill, unlockLevel: UNLOCK_LEVELS[i] || 1, unlocked: level >= (UNLOCK_LEVELS[i] || 1), element }
@@ -94,8 +118,8 @@ function bossPetFromCard(boss, isEn = false) {
     stars: Number(boss?.stars) || 0,
     level,
     evolutionStage: Number(v.evolution_stage) || stageFromLevel(level),
-    combatPower: Number(boss?.cp) || 0,
-    maxHp: Number(v.hp) || stats.find((s) => s.name === 'HP')?.value || 0,
+    combatPower: combatPowerOf(stats, level),
+    maxHp,
     statCap: statCapAtLevel(level, true),
     stats,
     skills,
@@ -124,20 +148,23 @@ function bossPetFromRun(run) {
   const secondary = v.element_secondary ? ELEMENTS[v.element_secondary] : null
   const species = SPECIES[v.species_key] || SPECIES.element
   const quality = QUALITIES[v.quality] || QUALITIES.N
+  const level = Number(v.level) || Number(b.level) || 1
+  // 与选卡界面同一套换算：评分制 verdict → 绝对制，保证「选到的」和「开打的」数值一致
+  const { stats, maxHp } = verdictToBattleStats(v, level)
   const skills = (v.skills || []).map((skill, i) => (
     typeof skill === 'string'
-      ? { name: skill, unlockLevel: UNLOCK_LEVELS[i] || 1, unlocked: (Number(v.level) || 1) >= (UNLOCK_LEVELS[i] || 1) }
+      ? { name: skill, unlockLevel: UNLOCK_LEVELS[i] || 1, unlocked: level >= (UNLOCK_LEVELS[i] || 1) }
       : skill
   ))
   return {
     fullName: b.full_name,
     repo: shortName(b.full_name),
     platform: b.platform || 'github',
-    level: Number(v.level) || Number(b.level) || 1,
-    stats: v.stats || [],
+    level,
+    stats,
     skills,
-    maxHp: Number(v.hp) || 0,
-    combatPower: Number(b.cp) || 0,
+    maxHp,
+    combatPower: combatPowerOf(stats, level),
     element,
     elementSecondary: secondary,
     species,
@@ -276,9 +303,28 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
   useEffect(() => { petRef.current = pet }, [pet])
   useEffect(() => { sceneRef.current = scene }, [scene])
 
+  // 台词来源：这一屏的台词从哪来
+  //
+  // 系统剧本（source=system）**不接 AI 生成**：剧本包里的 lines.json 就是定稿，
+  // 每一句都已按包的世界观写好。让模型再改一遍只会把它改回通用赛博腔 ——
+  // 那是「选了系统剧本却没看到系统剧本」。所以系统剧本直接跳过 fetchTexts，
+  // 运行时会自然落到包内 lines.json 的兜底文案。
+  //
+  // AI 剧本 / 自定义剧本才走模型：那里的台词本来就是「现写」的。
+  const isSystemScript = useCallback(() => {
+    const r = runRef.current
+    if (!r) return false
+    // script_source 在建线时落库：system=包内方案，ai/mixed=模型现写，manual=自定义底本
+    return r.script_source === 'system'
+  }, [])
+
   const makeFetcher = useCallback(() => async ({ sceneId, keys, vars }) => {
     const cfg = llmConfig
     const r = runRef.current
+    // 系统剧本：直接交回包内定稿，一次模型调用都不花。
+    // 返回 { texts:{}, source:'script' } 而不是 null —— runtime 靠 source
+    // 区分「模型写的」和「剧本定稿」，界面上的标记才能说对。
+    if (isSystemScript()) return { texts: {}, source: 'script' }
     if (!cfg?.apiKey || !keys?.length) return null
     return storyApi.text({
       sceneId,
@@ -293,10 +339,12 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
         script_beats: r?.script_beats || [],
         // 剧本包：后端按包注入世界观与文风，缓存键也按包隔离
         pack: r?.script_pack || runPackRef.current || 'default',
+        // 台词来源：system=系统剧本（后端据此拒绝调模型，用包内 lines.json 定稿）
+        script_source: r?.script_source || '',
       },
       config: cfg,
     })
-  }, [llmConfig])
+  }, [llmConfig, isSystemScript])
 
   // 语言切换后，闭包里的回调也要读到最新的 t
   const tRef = useRef(t)
@@ -371,7 +419,9 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
     // 换屏先掐掉上一屏的语音；先开口念第一句，再预取后面的
     // （本地是 CPU 串行合成，预取抢在前面只会把开口时间往后拖）
     tts.stop()
-    if (lines.length) {
+    // 开章解说屏自带成品配音：不让 TTS 再念一遍，否则两路声音叠在一起
+    const isOpening = Boolean(next.opening)
+    if (lines.length && !isOpening) {
       const auto = getTtsConfig().autoFirst && !next.battle
       const opening = auto
         ? tts.speak({ who: lines[0].who, text: lines[0].text, key: lines[0].key })
@@ -936,6 +986,24 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
     }
   }
 
+  // 开章念完 → 走它的选项进正片
+  const advanceOpening = useCallback(async () => {
+    const runtime = runtimeRef.current
+    if (!runtime || advancingRef.current) return
+    const list = runtime.choices
+    if (!list.length) return
+    await choose(list[0].index)
+  }, [])
+
+  // 过场播完 → 走它的选项进正片（和开章同一个套路）
+  const advanceTransform = useCallback(async () => {
+    const runtime = runtimeRef.current
+    if (!runtime || advancingRef.current) return
+    const list = runtime.choices
+    if (!list.length) return
+    await choose(list[0].index)
+  }, [])
+
   // —— 战斗 ——
   const battleEnemy = useMemo(() => {
     if (!scene?.battle) return null
@@ -1098,17 +1166,42 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
 
   // 角色立绘也随包走：src/story/packs/<包id>/art/<文件名>
   // 没有素材时 packArtUrl 返回 null，界面自动回落到「色块 + 名字」的文字 chip。
+  //
+  // 阶段（stage）：同一角色在不同剧情阶段是不同形象。当前屏用哪个阶段由 ink 的
+  // # stage: 标签决定（runtime 已解析进 scene.stage），角色表里用 stages 声明
+  // 「哪个阶段用哪张图」。角色没声明这个阶段就退回无阶段的图。
   const packId = scene?.packId
+  const stage = scene?.stage || ''
   const artOf = (who) => {
     if (!packId) return null
     const ch = castMap[who]
+    if (!ch) return null
+    // 阶段化角色走 packStageArtUrl（阶段形象优先）
+    if (ch.stages) return packStageArtUrl(packId, who, ch, stage)
     // 立绘按角色表里声明的文件名找；没声明就退回同名文件（art/scout.png ↔ scout）
-    return packArtUrl(packId, ch?.art ? ch.art.replace(/\.(png|webp|jpg|jpeg)$/i, '') : who)
+    return packArtUrl(packId, ch.art ? ch.art.replace(/\.(png|webp|jpg|jpeg)$/i, '') : who)
   }
   const faceOf = (who) => {
     if (!packId) return null
-    return packFaceUrl(packId, who, castMap[who])
+    return packFaceUrl(packId, who, castMap[who], stage)
   }
+
+  // 开章解说屏：包内音频 + 这一屏的台词
+  const openingAudio = scene?.opening ? packAudioUrl(packId, scene.opening) : null
+  const openingText = scene?.opening ? (lines[0]?.text || '') : ''
+
+  // 变身过场：素材全部随包走。
+  //   orb  → fx/ 目录（特效：脉动光团）
+  //   hero → art/ 目录（立绘：人形态）
+  const transformSpec = scene?.transformSpec || null
+  const transformOrb = transformSpec?.orb ? packFxUrl(packId, transformSpec.orb) : null
+  const transformHero = transformSpec?.hero
+    ? packArtUrl(packId, transformSpec.hero.replace(/\.(png|webp|jpg|jpeg)$/i, ''))
+    : null
+  // 卡片形象用玩家自己的仓库精灵（人形态立绘在这之前还不存在）
+  const transformSprite = (pet?.element && pet?.species)
+    ? <PixelSprite pet={pet} size={148} animate={false} />
+    : null
 
   // 语音只跟随点击推进，不反过来驱动节奏（docs/TTS.md T3）
   const speakLine = (line) => {
@@ -1482,8 +1575,28 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
         </section>
       )}
 
+      {/* 开章解说屏：旁白独占屏幕中央，不是对话 */}
+      {view === 'play' && scene?.opening && (
+        <StoryOpening
+          text={openingText}
+          audioUrl={openingAudio}
+          onDone={() => advanceOpening()}
+        />
+      )}
+
+      {/* 变身过场：卡片形象 → 光团 → 变暗 → 醒来变成人形态 */}
+      {view === 'play' && scene?.transform && (
+        <StoryTransform
+          sprite={transformSprite}
+          orbUrl={transformOrb}
+          heroUrl={transformHero}
+          caption={transformSpec?.caption || ''}
+          onDone={() => advanceTransform()}
+        />
+      )}
+
       {/* 场景 / 战斗 */}
-      {view === 'play' && scene && (
+      {view === 'play' && scene && !scene.opening && !scene.transform && (
         <section className={`story-stage story-bg-${scene.bg || 'dawn'}`}>
           <span className="story-stage-chapter" aria-hidden="true">
             {`CH.${String(Math.min((scene.vars?.chapter || 0) + 1, 99)).padStart(2, '0')}`}
@@ -1500,7 +1613,13 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
                 </span>
               )
             })}
-            {scene.textSource === 'fallback' && <span className="story-source-note">{t('台词兜底', 'fallback text')}</span>}
+            {/* 台词来源标记：系统剧本下包内 lines.json 是定稿，不是「兜底」 */}
+            {scene.textSource === 'script' && (
+              <span className="story-source-note">{t('剧本定稿', 'script final')}</span>
+            )}
+            {scene.textSource === 'fallback' && (
+              <span className="story-source-note">{t('台词兜底', 'fallback text')}</span>
+            )}
             <span className="story-stage-place">{t(bgLabel[0], bgLabel[1])}</span>
           </div>
 

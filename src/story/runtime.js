@@ -39,7 +39,7 @@ export function speakerOf(key) {
 }
 
 function parseTags(tags = []) {
-  const meta = { scene: '', bg: '', cast: [], keys: [], battle: '', win: '', lose: '', ending: false, tags }
+  const meta = { scene: '', bg: '', cast: [], keys: [], battle: '', win: '', lose: '', opening: '', ending: false, stage: '', transform: '', tags }
   for (const raw of tags) {
     const tag = String(raw || '').trim()
     const [head, ...rest] = tag.split(':')
@@ -52,6 +52,12 @@ function parseTags(tags = []) {
       case 'battle': meta.battle = value; break
       case 'win': meta.win = value; break
       case 'lose': meta.lose = value; break
+      // 开章解说屏：值是包内音频文件名（相对 packs/<id>/audio/）
+      case 'opening': meta.opening = value; break
+      // 角色阶段：这一屏用哪个阶段的形象（如 early）。角色表里没声明这个阶段就退回无阶段的图
+      case 'stage': meta.stage = value; break
+      // 过场：值是过场键（对应 meta.transforms 里的一个条目）
+      case 'transform': meta.transform = value; break
       case 'ending': meta.ending = true; break
       default: break
     }
@@ -165,6 +171,11 @@ export class StoryRuntime {
     const atChoice = this.story.currentChoices.length > 0
 
     // 台词只替换展示文本，不碰 ink 状态（结构早已定稿，模型改不了路线）
+    //
+    // textSource 有三种，界面上的标记要跟着变：
+    //   llm     模型现写的
+    //   script  剧本包 lines.json 的定稿（系统剧本走这条）
+    //   fallback 该屏压根没台词可取（异常 / 空屏）
     let textSource = 'fallback'
     if (view.keys.length && typeof fetchTexts === 'function') {
       try {
@@ -175,10 +186,11 @@ export class StoryRuntime {
             const fresh = this.texts[line.key]
             if (fresh) line.text = fresh
           }
-          textSource = got.source === 'llm' ? 'llm' : 'fallback'
+          if (got.source === 'llm') textSource = 'llm'
+          else if (got.source === 'script') textSource = 'script'
         }
       } catch {
-        // 模型超时 / 断网：整屏退回 fallback，不让玩家等
+        // 模型超时 / 断网：整屏退回包内定稿，不让玩家等
         textSource = 'fallback'
       }
     }
@@ -193,6 +205,13 @@ export class StoryRuntime {
       lines: real.lines,
       choices: this.choices,
       battle: view.battle,
+      // 开章解说屏：有值就是包内音频文件名（相对 packs/<id>/audio/）
+      opening: view.opening,
+      // 角色阶段：这一屏该用哪个阶段的形象（角色表 stages 里声明的键）
+      stage: view.stage,
+      // 过场：这一屏是过场动画（对应 meta.transforms 里的一个条目）
+      transform: view.transform,
+      transformSpec: view.transform ? (this.pack.meta?.transforms || {})[view.transform] || null : null,
       ending: view.ending,
       ended: !view.battle && (view.ending || (!atChoice && !this.story.canContinue)),
       endingId: String(this.vars.ending_id || ''),

@@ -9,6 +9,8 @@
     "preview": "vite preview",
     "test:battle": "node scripts/battle-selftest.mjs",
     "test:story": "node scripts/story-build.mjs && node scripts/story-selftest.mjs",
+    "test:story:browser": "node scripts/story-pack-check.mjs",
+    "test:story:transform": "node scripts/story-transform-check.mjs",
     "story:build": "node scripts/story-build.mjs",
     "art:prompts": "node scripts/art-prompts.mjs",
     "art:check": "node scripts/art-check.mjs",

@@ -86,16 +86,42 @@ def test_douma_has_only_the_three_year_vow_card() -> None:
 
 
 def test_douma_characters_declare_their_portraits() -> None:
-    """角色立绘按包声明：药老 / 魂殿 / 云岚宗各有自己的图，主角沿用玩家自己的精灵。"""
+    """角色立绘按包声明：药老 / 魂殿各有自己的图，云岚宗与主角按阶段取图。"""
     chars = story_packs.get_characters("douma")
     assert chars["scout"]["art"] == "scout.png"
     assert chars["soul"]["art"] == "soul.png"
-    assert chars["boss"]["art"] == "boss.png"
-    # 主角在舞台上画的是玩家自己的仓库精灵，不能被包立绘顶掉
+    # 云岚宗只有「前期阶段」形象：前期是个白发姑娘，后期才现出宗主真身
+    assert "art" not in chars["boss"]
+    assert chars["boss"]["stages"]["early"]["art"] == "boss_early.png"
+    assert chars["boss"]["stages"]["early"]["face"] == "boss_early_face.png"
+    # 主角也是阶段化角色：早期形象是他的人形态（蓝发男）
     assert "art" not in chars["pet"]
-    # 通用包没有立绘：界面回落到「色块 + 名字」
+    assert chars["pet"]["stages"]["early"]["art"] == "hero_early.png"
+    assert chars["pet"]["stages"]["early"]["face"] == "hero_early_face.png"
+
+
+def test_default_pack_declares_its_own_portraits() -> None:
+    """通用包（仓可梦）带自己的精灵立绘 —— 不能被斗码苍穹的立绘顶掉。"""
     default_chars = story_packs.get_characters("default")
-    assert not any(c.get("art") or c.get("face") for c in default_chars.values())
+    assert default_chars["pet"]["art"] == "bb1.webp"
+    assert default_chars["scout"]["art"] == "bb4.webp"
+    # boss 用剧情里选中的那只，不配静态立绘
+    assert "art" not in default_chars["boss"]
+    # 两个包的立绘互不相干
+    douma_chars = story_packs.get_characters("douma")
+    assert douma_chars["scout"]["art"] != default_chars["scout"]["art"]
+
+
+def test_douma_staged_portraits_exist_on_disk() -> None:
+    """阶段立绘 / 头像的文件必须真的在包里 —— 声明了却缺文件，界面会画出一片空白。"""
+    from pathlib import Path
+
+    root = Path(story_packs._PACKS_DIR) / "douma" / "art"
+    for who, entry in story_packs.get_characters("douma").items():
+        stages = entry.get("stages") or {}
+        for stage, files in stages.items():
+            for slot, name in files.items():
+                assert (root / name).is_file(), f"{who}.{stage}.{slot} -> {name} 不存在"
 
 
 def test_two_packs_give_different_scripts() -> None:
@@ -130,7 +156,8 @@ def test_unknown_pack_in_request_falls_back_to_default() -> None:
         pack="no-such-pack",
     ))
     assert data["pack"] == "default"
-    assert len(data["scripts"]) == 3
+    # 兜底包（仓可梦占位）目前只有一张方案卡
+    assert len(data["scripts"]) == 1
     # 兜底后每条方案也要标 default，不能还挂着那个不存在的包名
     assert all(item["pack"] == "default" for item in data["scripts"])
 
@@ -196,6 +223,81 @@ def test_text_cache_is_separated_by_pack(monkeypatch) -> None:
     asyncio.run(story.generate_text(context={"pack": "default"}, **common))
     # 两次都要真的调模型：缓存键里带了包 id
     assert len(calls) == 2
+
+
+# ------------------------------------------------------------------ 系统剧本不接 AI 生成
+
+def test_system_script_never_calls_the_model(monkeypatch) -> None:
+    """系统剧本（source=system）的每一句都已定稿，一次模型调用都不能有。"""
+    calls: list[dict] = []
+
+    async def fake_chat(*_args, **_k) -> str:
+        calls.append({})
+        return json.dumps({"lines": {"narrator.hook": "模型写的台词。"}}, ensure_ascii=False)
+
+    monkeypatch.setattr(story.llm_mod, "chat_completion", fake_chat)
+    out = asyncio.run(story.generate_text(
+        scene_id="prologue",
+        keys=["narrator.hook"],
+        vars_={},
+        context={"script_source": "system", "pack": "douma"},
+        llm_in=LLM,
+    ))
+    # 一次模型都没调
+    assert calls == []
+    # 也不返回任何模型写的台词（前端会退回包内 lines.json）
+    assert out["texts"] == {}
+    # source 标成 script，界面据此显示「剧本定稿」而不是「台词兜底」
+    assert out["source"] == "script"
+
+
+def test_system_script_guard_ignores_the_text_cache(monkeypatch) -> None:
+    """系统剧本不能命中 AI 剧本时期留下的旧缓存 —— 那会把模型写的台词端上来。"""
+    monkeypatch.setattr(story, "_TEXT_CACHE", {}, raising=False)
+    calls: list[dict] = []
+
+    async def fake_chat(*_args, **_k) -> str:
+        calls.append({})
+        return json.dumps({"lines": {"narrator.hook": "模型写的台词。"}}, ensure_ascii=False)
+
+    monkeypatch.setattr(story.llm_mod, "chat_completion", fake_chat)
+    common = {
+        "scene_id": "prologue",
+        "keys": ["narrator.hook"],
+        "vars_": {},
+        "llm_in": LLM,
+    }
+    # 先用 AI 剧本跑一次，把台词写进缓存
+    asyncio.run(story.generate_text(context={"pack": "douma"}, **common))
+    assert len(calls) == 1
+    # 再用系统剧本跑同一个场景：即使缓存里有东西，也不能返回它
+    out = asyncio.run(story.generate_text(context={"script_source": "system", "pack": "douma"}, **common))
+    assert out["texts"] == {}
+    assert out["source"] == "script"
+    # 模型依然只被调了一次（第二次没调）
+    assert len(calls) == 1
+
+
+def test_ai_script_still_uses_the_model(monkeypatch) -> None:
+    """AI 剧本照旧走模型 —— 系统剧本的改动不能把 AI 剧本的台词也掐了。"""
+    calls: list[dict] = []
+
+    async def fake_chat(*_args, **_k) -> str:
+        calls.append({})
+        return json.dumps({"lines": {"narrator.hook": "山门之外，风起。"}}, ensure_ascii=False)
+
+    monkeypatch.setattr(story.llm_mod, "chat_completion", fake_chat)
+    monkeypatch.setattr(story, "_TEXT_CACHE", {}, raising=False)
+    out = asyncio.run(story.generate_text(
+        scene_id="prologue",
+        keys=["narrator.hook"],
+        vars_={},
+        context={"script_source": "ai", "pack": "douma"},
+        llm_in=LLM,
+    ))
+    assert len(calls) == 1
+    assert out["texts"]["narrator.hook"] == "山门之外，风起。"
+    assert out["source"] == "llm"
 
 
 # ------------------------------------------------------------------ pack 落库

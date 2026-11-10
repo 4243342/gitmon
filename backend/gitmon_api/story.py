@@ -1363,6 +1363,15 @@ def _text_cache_key(scene_id: str, keys: list[str], vars_: dict[str, Any], model
 
 async def generate_text(*, scene_id: str, keys: list[str], vars_: dict[str, Any], context: dict[str, Any],
                         llm_in: dict[str, Any] | None) -> dict[str, Any]:
+    # 系统剧本不接 AI 生成台词。
+    # 系统剧本（source=system）的每一句都已经在剧本包的 lines.json 里定稿，
+    # 模型再写一遍只会把斗气语汇改回通用赛博腔 —— 选了系统剧本却看不到系统剧本。
+    # 这里后端也守一道：万一前端漏判，绝不为系统剧本花一次模型调用。
+    #
+    # 这道守卫必须放在最前面（缓存查询之前）：否则系统剧本会命中
+    # 之前 AI 剧本时期留下的旧缓存，把模型写的台词又端上来。
+    if str(context.get("script_source") or "").strip().lower() == "system":
+        return {"texts": {}, "source": "script", "cached": False}
     keys = [str(k)[:60] for k in (keys or []) if str(k).strip()][:6]
     if not keys:
         return {"texts": {}, "source": "fallback", "cached": False}

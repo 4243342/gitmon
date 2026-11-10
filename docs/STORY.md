@@ -278,14 +278,16 @@ src/story/packs/<id>/
   ├── story.ink        # 路线
   ├── lines.json       # 台词兜底
   ├── characters.json  # 角色表
-  └── meta.json        # 标题 / 标签 / 世界观 / 文风 / bgs / endings / routes / variants
+  ├── meta.json        # 标题 / 标签 / 世界观 / 文风 / bgs / endings / routes / variants
+  ├── art/             # 角色立绘（可选；声明了就必须真有图）
+  └── roster.json      # 随包图鉴数据（可选；仓可梦包放口袋宝贝全量精灵）
 ```
 
 #### 已有两个包
 
 | 包 id | 名称 | 定位 |
 |---|---|---|
-| `default` | 通用远征 | 兜底包。AI 生成与自定义剧本走它；老存档也走它 |
+| `default` | 仓可梦 | 兜底包。AI 生成与自定义剧本走它；老存档也走它。口袋宝贝整包已移植：383 只精灵立绘 + `roster.json` 图鉴随包走，主角/引路人挂精灵立绘，Boss 用剧情选中的那只 |
 | `douma` | 斗码苍穹 | 第一条专属包。斗破苍穹骨架 + 三年之约主线：项目即宗门，star 是香火，fork 是分家，release 是境界 |
 
 `default` 不是「没人要的包」，它是**兼容层**：所有非系统剧本的路径都落到它，
@@ -321,8 +323,12 @@ src/story/packs/<id>/
 > 它的三个角度（《三年之约》/《焚决》/《名碑》）本来讲的是同一条线的不同侧面，
 > 拆成三张卡只会让玩家以为能选三条路线，实际正片一模一样。
 >
-> 通用包（`default`）仍是三张模板——它是 AI / 自定义剧本的兜底路线，
-> 那条线上「三案」是有意义的（不同切入点，不同难度）。
+> 通用包（`default`）现在是「仓可梦」包——它是 AI / 自定义剧本的兜底路线，
+> 通用远征的三张模板已删，先只放一张占位卡，主线内容待定稿。
+> 口袋宝贝已整包移植进来：`roster.json` 收全量 383 只精灵（五行 / 六维 / 成长率 / 进化链 / 图鉴文案），
+> `art/` 下 `bb<id>.webp` 立绘 + `bb<id>_face.webp` 头像（由原素材 GIF 转动态 WebP）。
+> 角色立绘只挂精灵图（主角=金波姆、引路人=黄金鸟），**Boss 不配静态立绘**——
+> 它走剧情里选中的那只仓库精灵。素材来源与许可见 `THIRD-PARTY.md`。
 >
 > 方案卡数量按包走，界面不能写死「三套模板」：`/api/story/packs` 的 `variant_count`
 > 告诉前端这个包有几张，系统剧本那张卡的描述按它显示。
@@ -741,6 +747,58 @@ CREATE TABLE story_saves (
 46. `mode=system` + `pack=douma` 只返回一张方案卡（《三年之约：{boss}》），界面上不出现《焚决》《名碑》
 47. 方案卡数量按包走：`/api/story/packs` 的 `variant_count` 是真实卡数，界面描述按它显示，
     不能对只有一案的包说「内置三套模板」
+48. 系统剧本（`script_source=system`）的每一屏台词都不调模型：前端 `isSystemScript()` 直接返回
+    `source:'script'`，后端 `generate_text` 也守一道（且守卫在缓存查询之前，避免命中 AI 时期的旧缓存）；
+    界面上的来源标记显示「剧本定稿」而不是「台词兜底」
+49. 阶段化角色（`characters.json` 的 `stages`）按 ink 的 `# stage:` 标签取图；
+    ink 用了角色表没声明的阶段时，`npm run story:build` 直接报错
+50. 过场（ink 的 `# transform:`）的素材必须在包里：`meta.transforms.<key>.orb` 走 `fx/`，
+    `.hero` 走 `art/`；缺文件时构建报错，不会出现「过场一片黑」
+
+## 10.5 三年之约主线的三块特殊机制
+
+「斗码苍穹」这条主线（剧本内容见 `src/story/packs/douma/STORY.md`）比通用包多三样东西。
+
+### 10.5.1 开章解说屏
+
+开章不是对话，是**片头解说**：旁白独占屏幕中央，成品配音 `audio/opening.mp3`，
+逐字显现（GSAP stagger 按音频时长摊平，每个字的出现点正好落在音频结束前）。
+
+- ink 侧：`# opening: opening.mp3`，这一屏没有底部对话框
+- 组件：`src/components/StoryOpening.jsx`
+- 玩家点画面可跳过（字全亮 + 音频快进）
+
+### 10.5.2 角色阶段（stage）
+
+同一个角色在不同剧情阶段是不同形象。斗码苍穹里主角先是人形态（蓝发男），
+云岚宗前期是白发青衣的女修，后期才现出宗主真身。
+
+```
+characters.json:
+  "boss": { "stages": { "early": { "art": "boss_early.png", "face": "boss_early_face.png" } } }
+
+story.ink:
+  === vow_scene ===
+  # stage: early
+```
+
+- 阶段由 ink 声明（`# stage:`），因为「这一屏用哪个阶段的形象」是剧本的事，不是界面的事
+- 阶段化角色**顶层不写 `art` / `face`** —— 没有阶段信息时界面退回无阶段的图
+- 文件名必须带阶段后缀（`<角色>_<阶段>.png` / `<角色>_<阶段>_face.png`）
+- 加载器：`src/story/packArt.js` 的 `packStageArtUrl` / 带 `stage` 的 `packFaceUrl`
+
+### 10.5.3 变身过场
+
+开章之后、正片之前有一段过场：**卡片形象 → 光团 → 画面变暗 → 醒来变成人形态**。
+
+- ink 侧：`# transform: awaken`，这一屏没有台词
+- 素材侧：`meta.transforms.awaken = { orb, hero, caption }`；orb 在 `fx/`，hero 在 `art/`
+- 组件：`src/components/StoryTransform.jsx`，GSAP 时间轴四段
+- **用 portal 挂到 body 上**：剧情模式容器一带 CSS 带 transform / filter，
+  会把 `position: fixed` 的定位基准从视口改成那个容器，过场被压成一小块
+- **根元素类名要用独立前缀**（`story-tf-phase-*`）：直接拼 phase 值会和子元素类名
+  （`story-tf-card` 等）撞车，把根元素的 `position: fixed` 覆盖成 `absolute`
+- **压暗层在舞台层之下**：z-index 反了的话，「黑暗里亮出人形」就永远看不见
 
 ## 11. 开源组件选型：能直接套的都套
 
@@ -794,6 +852,7 @@ inkjs 与 ajv 均为 MIT，可商用。**依赖已安装并锁定**（`package.j
 | `npm run test:story` | 路线自检：场景进入、选项、变量、战斗分支、动态章节数、存档回滚、多结局、**多包隔离**（两个包的路线 / 结局 / 角色表互不串） |
 | `cd backend && .venv/bin/python -m pytest tests/ -q` | 后端：包注册表、系统剧本读包、世界观注入、缓存键按包隔离、pack 落库、结局标题按包取 |
 | `node scripts/story-pack-check.mjs` | 浏览器端：包选择器 → 方案卡 → 建线 → 正片渲染 → **重新进页面续跑不串包**（需前后端已启动） |
+| `node scripts/story-transform-check.mjs` | 浏览器端：开章 → **变身过场四段顺序**（卡片 → 光团 → 变暗 → 人形态）→ 自动进正片；含过场层的布局与层序断言 |
 
 ## 12. 未决问题
 

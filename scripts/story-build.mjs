@@ -114,18 +114,86 @@ for (const id of packIds) {
   // 角色立绘：声明了 art / face 就必须真有那张图，否则界面上会静默少一个人
   const artDir = resolve(dir, 'art')
   const missingArt = []
+  const artHit = (file) => ['png', 'webp', 'jpg', 'jpeg']
+    .map((ext) => resolve(artDir, file.replace(/\.(png|webp|jpg|jpeg)$/, `.${ext}`)))
+    .find((p) => existsSync(p))
   for (const [who, ch] of Object.entries(characters)) {
     for (const slot of ['art', 'face']) {
       const file = ch[slot]
       if (!file) continue
-      const hit = ['png', 'webp', 'jpg', 'jpeg']
-        .map((ext) => resolve(artDir, file.replace(/\.(png|webp|jpg|jpeg)$/, `.${ext}`)))
-        .find((p) => existsSync(p))
-      if (!hit) missingArt.push(`${who}.${slot} → art/${file}`)
+      if (!artHit(file)) missingArt.push(`${who}.${slot} → art/${file}`)
+    }
+    // 阶段形象：stages.<stage>.art / .face 同样必须真有那张图。
+    // 阶段化角色（云岚宗前期、主角人形态早期）只在这里声明图，
+    // 不声明的话界面会一路退回「色块 + 名字」。
+    for (const [stage, files] of Object.entries(ch.stages || {})) {
+      for (const slot of ['art', 'face']) {
+        const file = files[slot]
+        if (!file) continue
+        if (!artHit(file)) missingArt.push(`${who}.${stage}.${slot} → art/${file}`)
+      }
     }
   }
   if (missingArt.length) {
     fail(`剧本包 ${id} 的角色声明了立绘但文件不存在：\n  - ${missingArt.join('\n  - ')}`)
+  }
+
+  // 阶段标签：ink 里写了 # stage: xxx，角色表里就至少有一个角色声明了这个阶段。
+  // 否则这一屏的角色会静默用错形象（玩家看不出哪里错，只是图不对）。
+  const stageTags = [...new Set([...ink.matchAll(/^\s*#\s*stage:\s*(\S+)/gm)].map((m) => m[1]))]
+  const declaredStages = new Set(
+    Object.values(characters).flatMap((ch) => Object.keys(ch.stages || {})),
+  )
+  const unknownStages = stageTags.filter((s) => !declaredStages.has(s))
+  if (unknownStages.length) {
+    fail(`剧本包 ${id} 的 ink 用了角色表里没声明的阶段：\n  - ${unknownStages.join(', ')}（已声明：${[...declaredStages].join(', ') || '无'}）`)
+  }
+
+  // 开章音频：ink 里写了 # opening: xxx.mp3 就必须真有那个文件
+  const audioDir = resolve(dir, 'audio')
+  const openingFiles = [...new Set([...ink.matchAll(/^\s*#\s*opening:\s*(\S+)/gm)].map((m) => m[1]))]
+  const missingAudio = []
+  for (const file of openingFiles) {
+    const hit = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac']
+      .map((ext) => resolve(audioDir, file.replace(/\.(mp3|wav|ogg|m4a|aac|flac)$/, `.${ext}`)))
+      .find((p) => existsSync(p))
+    if (!hit) missingAudio.push(file)
+  }
+  if (missingAudio.length) {
+    fail(`剧本包 ${id} 的开章声明了音频但文件不存在：\n  - ${missingAudio.join('\n  - ')}`)
+  }
+
+  // 过场：ink 里写了 # transform: xxx，meta.transforms 里就得有这一项，
+  // 而且它引用的素材（fx/ 的特效、art/ 的立绘）必须真的在包里。
+  // 少一样的表现是「过场屏一片黑」—— 不报错，但玩家只看到黑屏。
+  const fxDir = resolve(dir, 'fx')
+  const transforms = meta.transforms || {}
+  const transformTags = [...new Set([...ink.matchAll(/^\s*#\s*transform:\s*(\S+)/gm)].map((m) => m[1]))]
+  const unknownTransforms = transformTags.filter((t) => !transforms[t])
+  if (unknownTransforms.length) {
+    fail(`剧本包 ${id} 的 ink 用了 meta.transforms 里没声明的过场：\n  - ${unknownTransforms.join(', ')}（已声明：${Object.keys(transforms).join(', ') || '无'}）`)
+  }
+  const missingFx = []
+  const missingHero = []
+  for (const [key, spec] of Object.entries(transforms)) {
+    if (spec.orb) {
+      const hit = ['gif', 'png', 'webp', 'jpg', 'jpeg', 'svg']
+        .map((ext) => resolve(fxDir, spec.orb.replace(/\.\w+$/, `.${ext}`)))
+        .find((p) => existsSync(p))
+      if (!hit) missingFx.push(`${key}.orb → fx/${spec.orb}`)
+    }
+    if (spec.hero) {
+      const hit = ['png', 'webp', 'jpg', 'jpeg']
+        .map((ext) => resolve(artDir, spec.hero.replace(/\.(png|webp|jpg|jpeg)$/, `.${ext}`)))
+        .find((p) => existsSync(p))
+      if (!hit) missingHero.push(`${key}.hero → art/${spec.hero}`)
+    }
+  }
+  if (missingFx.length) {
+    fail(`剧本包 ${id} 的过场声明了特效但文件不存在：\n  - ${missingFx.join('\n  - ')}`)
+  }
+  if (missingHero.length) {
+    fail(`剧本包 ${id} 的过场声明了立绘但文件不存在：\n  - ${missingHero.join('\n  - ')}`)
   }
 
   packs[id] = {

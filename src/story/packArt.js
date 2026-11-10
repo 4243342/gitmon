@@ -7,10 +7,20 @@
 // 命名约定（art/ 目录下的文件名）：
 //   packs/douma/art/scout.png    药老的立绘
 //   packs/douma/art/soul.png     魂殿的立绘
-//   packs/douma/art/boss.png     云岚宗的立绘
-//   packs/douma/art/pet.png      主角的立绘
+//   packs/douma/art/boss_early.png  云岚宗的「前期阶段」立绘
+//   packs/douma/art/hero_early.png   主角人形态的「前期阶段」立绘
 // 头像另给一张就叫 scout_face.png，在 characters.json 里用 face 字段指过去。
 // 没放素材时返回 null，界面自动回落到「色块 + 名字」的文字 chip。
+//
+// 阶段（stage）怎么表达：
+//   同一个角色在不同剧情阶段是不同形象（三年之约里主角先是人形、
+//   云岚宗先是一个姑娘后来才现出宗主真身）。所以文件名带阶段后缀：
+//     <角色>_<阶段>.png   阶段立绘
+//     <角色>_<阶段>_face.png  阶段头像
+//   characters.json 里用 stages 字段声明「哪个阶段用哪张图」：
+//     "stages": { "early": { "art": "boss_early.png", "face": "boss_early_face.png" } }
+//   没声明 stages 的角色就只有一个形象，art/face 直接给文件名。
+//   阶段由剧情推进（变量）决定，见 packArtUrl 的 stage 参数。
 //
 // 为什么单独一个模块（而不是塞进 runtime.js）：
 //   runtime.js 会被 scripts/story-selftest.mjs 用 Node 直接 import，
@@ -57,9 +67,10 @@ function stem(file) {
  * 取一个包内角色的立绘地址。
  * @param {string} packId 剧本包 id
  * @param {string} who 角色键（characters.json 里的键，如 scout / soul / boss）
+ * @param {string} [stage] 阶段键（如 early）。角色没声明这个阶段时退回无阶段的图
  * @returns {string|null} 图片地址；没有素材时返回 null
  */
-export function packArtUrl(packId, who) {
+export function packArtUrl(packId, who, stage) {
   const bag = PACK_ART[packId]
   if (!bag) return null
   return bag[who] || null
@@ -70,12 +81,39 @@ export function packArtUrl(packId, who) {
  * @param {string} packId 剧本包 id
  * @param {string} who 角色键
  * @param {object} char characters.json 里这个角色的条目
+ * @param {string} [stage] 阶段键
  */
-export function packFaceUrl(packId, who, char) {
+export function packFaceUrl(packId, who, char, stage) {
   const bag = PACK_ART[packId]
   if (!bag) return null
+  // 阶段形象优先：角色在这个阶段有自己的头像就用它
+  const stageEntry = stage ? char?.stages?.[stage] : null
+  if (stageEntry) {
+    const staged = stageEntry.face ? bag[stem(stageEntry.face)] : null
+    if (staged) return staged
+    const stagedArt = stageEntry.art ? bag[stem(stageEntry.art)] : null
+    if (stagedArt) return stagedArt
+  }
   const face = char?.face ? bag[stem(char.face)] : null
   if (face) return face
+  return bag[stem(char?.art)] || bag[who] || null
+}
+
+/**
+ * 取一个角色在某个阶段的**立绘**地址（阶段形象优先）。
+ * @param {string} packId 剧本包 id
+ * @param {string} who 角色键
+ * @param {object} char characters.json 里这个角色的条目
+ * @param {string} [stage] 阶段键
+ */
+export function packStageArtUrl(packId, who, char, stage) {
+  const bag = PACK_ART[packId]
+  if (!bag) return null
+  const stageEntry = stage ? char?.stages?.[stage] : null
+  if (stageEntry) {
+    const staged = stageEntry.art ? bag[stem(stageEntry.art)] : null
+    if (staged) return staged
+  }
   return bag[stem(char?.art)] || bag[who] || null
 }
 

@@ -108,7 +108,8 @@ def test_system_mode_never_calls_the_model(monkeypatch) -> None:
     data = _scripts(LLM, RESEARCH, mode="system")
     assert data["source"] == "system"
     assert data["mode"] == "system"
-    assert len(data["scripts"]) == 3
+    # 兜底包（仓可梦占位）目前只有一张方案卡
+    assert len(data["scripts"]) == 1
     # 模板得照实标记，界面上才能和 AI 产出区分
     assert all(item["fallback"] for item in data["scripts"])
     assert all(item["title"] for item in data["scripts"])

@@ -14,7 +14,19 @@
           "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
           "defaultSprite": { "type": "string", "minLength": 1, "maxLength": 40 },
           "art": { "type": "string", "minLength": 1, "maxLength": 60, "pattern": "^[A-Za-z0-9_-]+\\.(png|webp|jpg|jpeg)$" },
-          "face": { "type": "string", "minLength": 1, "maxLength": 60, "pattern": "^[A-Za-z0-9_-]+\\.(png|webp|jpg|jpeg)$" }
+          "face": { "type": "string", "minLength": 1, "maxLength": 60, "pattern": "^[A-Za-z0-9_-]+\\.(png|webp|jpg|jpeg)$" },
+          "stages": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": ["art"],
+              "additionalProperties": false,
+              "properties": {
+                "art": { "type": "string", "minLength": 1, "maxLength": 60, "pattern": "^[A-Za-z0-9_-]+\\.(png|webp|jpg|jpeg)$" },
+                "face": { "type": "string", "minLength": 1, "maxLength": 60, "pattern": "^[A-Za-z0-9_-]+\\.(png|webp|jpg|jpeg)$" }
+              }
+            }
+          }
         }
       }
     },

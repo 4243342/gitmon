@@ -146,7 +146,28 @@ console.log('\n[story] 剧本包装载')
   const douma = createStoryRuntime({ vars: { chapter_count: 3 }, pack: 'douma' })
   eq('斗码苍穹装的是它自己', douma.packId, 'douma')
   const scene = await douma.enter()
-  eq('斗码苍穹首屏也是序章', scene.sceneId, 'prologue')
+  // 首屏是开章解说（不是序章）：旁白独占屏幕中央 + 成品配音
+  eq('斗码苍穹首屏是开章', scene.sceneId, 'opening')
+  eq('开章声明了音频', scene.opening, 'opening.mp3')
+  eq('开章背景是 void', scene.bg, 'void')
+  check('开章只有旁白在说话', scene.cast.join(',') === 'narrator', scene.cast.join(','))
+  check('开章台词是世界观开场白',
+    /码气/.test(scene.lines[0]?.text || ''),
+    scene.lines[0]?.text?.slice(0, 30) || '')
+  // 走完开章先进过场（变身动画），过场之后才是序章
+  douma.choose(0)
+  const transformScene = await douma.enter()
+  eq('开章之后进过场', transformScene.sceneId, 'awaken')
+  eq('过场声明了过场键', transformScene.transform, 'awaken')
+  check('过场有素材规格', Boolean(transformScene.transformSpec?.orb && transformScene.transformSpec?.hero),
+    JSON.stringify(transformScene.transformSpec || {}))
+  check('过场没有台词', transformScene.lines.length === 0, transformScene.lines.length)
+  check('过场有推进选项', transformScene.choices.length > 0, String(transformScene.choices.length))
+  douma.choose(0)
+  const after = await douma.enter()
+  eq('过场之后进序章', after.sceneId, 'prologue')
+  check('序章没有音频声明', !after.opening, String(after.opening))
+  check('序章没有过场声明', !after.transform, String(after.transform))
   check('角色表来自包内', Boolean(scene.characters?.scout), Object.keys(scene.characters || {}).join(','))
   check('背景牌来自包内', Boolean(scene.bgLabels?.alley), Object.keys(scene.bgLabels || {}).join(','))
   check('结局标题来自包内', Boolean(scene.endingTitles?.ending_flame), Object.keys(scene.endingTitles || {}).join(','))
@@ -269,8 +290,11 @@ console.log('\n[story] 斗码苍穹只留《三年之约》一案')
   check('删掉的《名碑》没有残留',
     !douma.meta.variants.some((v) => v.title.includes('名碑')),
     douma.meta.variants.map((v) => v.title).join(' | '))
-  // 通用包不受影响：它仍是三张通用模板（AI / 自定义剧本走它）
-  eq('通用包仍是三张方案', PACKS.default.meta.variants.length, 3)
+  // 通用包换成「仓可梦」占位：先只放一张占位卡，主线待定稿（AI / 自定义剧本仍走它兜底）
+  eq('通用包只留一张占位方案', PACKS.default.meta.variants.length, 1)
+  check('占位方案已标明占位',
+    PACKS.default.meta.variants[0].title.includes('占位'),
+    PACKS.default.meta.variants[0].title)
 }
 
 console.log('\n[story] 斗码苍穹的角色立绘声明')
@@ -285,10 +309,17 @@ console.log('\n[story] 斗码苍穹的角色立绘声明')
 
   const douma = PACKS.douma
   const artDir = path.join(packsDir, 'douma', 'art')
+  // 声明有两个来源：角色的顶层 art/face，以及 stages 里各阶段的 art/face。
+  // 阶段化角色（云岚宗前期、主角人形态早期）只有 stages，没有顶层字段。
   const declared = []
   for (const [who, ch] of Object.entries(douma.characters)) {
     for (const slot of ['art', 'face']) {
       if (ch[slot]) declared.push({ who, slot, file: ch[slot] })
+    }
+    for (const [stage, files] of Object.entries(ch.stages || {})) {
+      for (const slot of ['art', 'face']) {
+        if (files[slot]) declared.push({ who: `${who}.${stage}`, slot, file: files[slot] })
+      }
     }
   }
   check('有角色声明了立绘', declared.length > 0, `${declared.length} 条`)
@@ -302,12 +333,188 @@ console.log('\n[story] 斗码苍穹的角色立绘声明')
   const orphans = onDisk.filter((f) => !used.has(f))
   eq('art/ 下没有没人用的孤儿文件', orphans.join(','), '')
 
-  // 主角沿用玩家自己的仓库精灵，不该被包立绘顶掉
-  check('主角不声明包立绘', !douma.characters.pet.art, douma.characters.pet.art || '')
-  // 通用包没有立绘目录，界面要能回落到「色块 + 名字」
-  check('通用包没声明立绘',
-    !Object.values(PACKS.default.characters).some((c) => c.art || c.face),
-    '通用包不该有立绘')
+  // 云岚宗与主角都是阶段化角色：顶层不声明图，只在 stages 里给
+  check('云岚宗是阶段化角色',
+    !douma.characters.boss.art && Boolean(douma.characters.boss.stages?.early?.art),
+    douma.characters.boss.stages?.early?.art || '')
+  check('主角是阶段化角色',
+    !douma.characters.pet.art && Boolean(douma.characters.pet.stages?.early?.art),
+    douma.characters.pet.stages?.early?.art || '')
+  // 阶段立绘必须带阶段后缀，否则 packStageArtUrl 找不到（它按 stages 里声明的文件名取）
+  // 立绘是 <角色>_<阶段>.png，头像是 <角色>_<阶段>_face.png
+  eq('阶段立绘都带阶段后缀',
+    Object.values(douma.characters)
+      .flatMap((c) => Object.values(c.stages || {}))
+      .flatMap((f) => [f.art, f.face].filter(Boolean))
+      .filter((f) => !/_(early|mid|late|final)(_face)?\.png$/.test(f))
+      .join(','),
+    '')
+  // 仓可梦包（default）：口袋宝贝整包移植——精灵立绘随包走，
+  // boss 不配静态立绘（用剧情里选中的那只）
+  {
+    const dflt = PACKS.default
+    check('仓可梦包声明了精灵立绘',
+      Boolean(dflt.characters.pet.art) && Boolean(dflt.characters.scout.art),
+      `${dflt.characters.pet.art || '-'} / ${dflt.characters.scout.art || '-'}`)
+    check('boss 不配静态立绘（用选中的）',
+      !dflt.characters.boss.art && !dflt.characters.boss.face,
+      dflt.characters.boss.art || '')
+    const dfltDeclared = Object.entries(dflt.characters)
+      .flatMap(([who, ch]) => ['art', 'face']
+        .filter((slot) => ch[slot])
+        .map((slot) => ({ who, slot, file: ch[slot] })))
+    const dfltMissing = dfltDeclared
+      .filter((d) => !fs.existsSync(path.join(packsDir, 'default', 'art', d.file)))
+    eq('仓可梦声明的立绘文件都存在', dfltMissing.map((d) => `${d.who}.${d.slot}`).join(','), '')
+
+    // 口袋宝贝图鉴随包移植：383 只的立绘都得真在 art/ 里
+    const roster = JSON.parse(fs.readFileSync(path.join(packsDir, 'default', 'roster.json'), 'utf8'))
+    const rosterMissing = roster
+      .filter((r) => !r.art || !fs.existsSync(path.join(packsDir, 'default', 'art', r.art)))
+      .map((r) => `${r.id}:${r.name}`)
+    check('口袋宝贝图鉴随包移植', roster.length >= 300 && !rosterMissing.length,
+      `${roster.length} 只${rosterMissing.length ? `，缺图 ${rosterMissing.slice(0, 5).join(',')}` : ''}`)
+  }
+
+  // 阶段标签：ink 里的 # stage: 必须在角色表里有对应声明，
+  // 否则这一屏的角色会静默用错形象（看着没报错，图就是不对）
+  const fs2 = await import('node:fs')
+  const path2 = await import('node:path')
+  const { fileURLToPath: fileURLToPath2 } = await import('node:url')
+  const packsDir2 = path2.resolve(path2.dirname(fileURLToPath2(import.meta.url)), '../src/story/packs')
+  const ink2 = fs2.readFileSync(path2.join(packsDir2, 'douma', 'story.ink'), 'utf8')
+  const stageTags = [...new Set([...ink2.matchAll(/^\s*#\s*stage:\s*(\S+)/gm)].map((m) => m[1]))]
+  check('ink 声明了阶段', stageTags.length > 0, stageTags.join(','))
+  const declaredStages = new Set(
+    Object.values(douma.characters).flatMap((c) => Object.keys(c.stages || {})),
+  )
+  eq('ink 的阶段都在角色表里声明过',
+    stageTags.filter((s) => !declaredStages.has(s)),
+    [])
+  eq('角色表声明的阶段都被 ink 用到',
+    [...declaredStages].filter((s) => !stageTags.includes(s)),
+    [])
+}
+
+console.log('\n[story] 斗码苍穹的开章解说')
+{
+  // 开章是「片头解说」：旁白独占屏幕中央，配成品音频，逐字显现。
+  const fs = await import('node:fs')
+  const path = await import('node:path')
+  const { fileURLToPath } = await import('node:url')
+  const packsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/story/packs')
+
+  const douma = PACKS.douma
+  const ink = fs.readFileSync(path.join(packsDir, 'douma', 'story.ink'), 'utf8')
+
+  // ink 里声明的 # opening 音频必须真有那个文件
+  const declared = [...ink.matchAll(/^\s*#\s*opening:\s*(\S+)/gm)].map((m) => m[1])
+  check('开章声明了音频', declared.length === 1, declared.join(','))
+  const audioOk = declared.every((f) =>
+    ['mp3', 'wav', 'ogg', 'm4a'].some((ext) =>
+      fs.existsSync(path.join(packsDir, 'douma', 'audio', f.replace(/\.\w+$/, `.${ext}`)))))
+  check('开章音频文件存在', audioOk, declared.join(','))
+
+  // 开场白台词必须在兜底表里（模型不可用时也要能念）
+  check('开场白有台词兜底', Boolean(douma.lines['narrator.opening']), '缺 narrator.opening')
+  check('开场白讲的是码气',
+    /码气/.test(douma.lines['narrator.opening'] || ''),
+    (douma.lines['narrator.opening'] || '').slice(0, 30))
+  // 通用包没有开章：界面不能因为这一屏不存在而挂
+  check('通用包没有开章',
+    !/^\s*#\s*opening:/m.test(fs.readFileSync(path.join(packsDir, 'default', 'story.ink'), 'utf8')),
+    'default 不该有开章')
+}
+
+console.log('\n[story] 斗码苍穹的变身过场')
+{
+  // 过场：卡片形象 → 光团 → 变暗 → 醒来变成人形态。
+  // 素材全部随包走：光团在 fx/，人形态立绘在 art/。
+  const fs = await import('node:fs')
+  const path = await import('node:path')
+  const { fileURLToPath } = await import('node:url')
+  const packsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/story/packs')
+
+  const douma = PACKS.douma
+  const transforms = douma.meta?.transforms || {}
+  check('meta 声明了过场', Object.keys(transforms).length > 0, Object.keys(transforms).join(','))
+
+  const awaken = transforms.awaken || {}
+  // 光团特效必须在 fx/ 目录里
+  check('过场声明了光团特效', Boolean(awaken.orb), String(awaken.orb))
+  check('光团特效文件存在',
+    fs.existsSync(path.join(packsDir, 'douma', 'fx', String(awaken.orb || '').replace(/\.\w+$/, '.gif'))),
+    String(awaken.orb))
+  // 人形态立绘必须在 art/ 目录里，且是主角的早期阶段形象
+  check('过场声明了人形态立绘', Boolean(awaken.hero), String(awaken.hero))
+  check('人形态立绘文件存在',
+    fs.existsSync(path.join(packsDir, 'douma', 'art', String(awaken.hero || ''))),
+    String(awaken.hero))
+  eq('人形态立绘就是主角的早期阶段形象',
+    awaken.hero,
+    douma.characters?.pet?.stages?.early?.art)
+  // 过场有字幕：过场屏没有台词，字幕是唯一的文字线索
+  check('过场有字幕', Boolean(awaken.caption), String(awaken.caption))
+
+  // ink 里声明的过场键必须在 meta.transforms 里有对应项
+  const ink = fs.readFileSync(path.join(packsDir, 'douma', 'story.ink'), 'utf8')
+  const tags = [...new Set([...ink.matchAll(/^\s*#\s*transform:\s*(\S+)/gm)].map((m) => m[1]))]
+  check('ink 声明了过场', tags.length > 0, tags.join(','))
+  eq('ink 的过场都在 meta 里声明过',
+    tags.filter((t) => !transforms[t]),
+    [])
+
+  // 通用包没有过场：界面不能因为这一屏不存在而挂
+  check('通用包没有过场',
+    !/^\s*#\s*transform:/m.test(fs.readFileSync(path.join(packsDir, 'default', 'story.ink'), 'utf8')),
+    'default 不该有过场')
+}
+
+console.log('\n[story] 系统剧本不接 AI 生成')
+{
+  // 系统剧本（source=system）的每一句都已在剧本包 lines.json 里定稿。
+  // 前端在 isSystemScript() 时直接返回 { texts:{}, source:'script' }，
+  // runtime 据此把 textSource 标成 script，界面显示「剧本定稿」而不是「台词兜底」。
+  const douma = PACKS.douma
+
+  // 前端 isSystemScript 分支的形状：一次模型都不调，直接交回包内定稿
+  let modelCalls = 0
+  const systemFetcher = async () => {
+    modelCalls += 1
+    return { texts: {}, source: 'script' }
+  }
+  const runtime = createStoryRuntime({ vars: { chapter_count: 3 }, pack: 'douma' })
+  const scene = await runtime.enter({ fetchTexts: systemFetcher })
+  eq('台词来源标为 script', scene.textSource, 'script')
+
+  // 定稿文案必须原样来自包内 lines.json —— 没被任何模型改写
+  const pkgLines = douma.lines
+  check('每句台词都能在包内 lines.json 找到',
+    scene.lines.every((l) => l.key && typeof pkgLines[l.key] === 'string' && pkgLines[l.key].trim()),
+    scene.lines.map((l) => l.key).join(','))
+  check('台词文本与包内定稿一致',
+    scene.lines.every((l) => l.text === pkgLines[l.key]),
+    scene.lines.map((l) => `${l.key}:${l.text}`).join(' | ').slice(0, 120))
+
+  // 斗码苍穹的语汇必须在场：定稿里出现「码气 / 魂殿 / 宗门」这类词，
+  // 而不是什么都没说的通用占位（模型改写一遍就会把语汇冲掉）
+  const allText = scene.lines.map((l) => l.text).join('')
+  check('定稿保留了斗码苍穹的语汇',
+    /码气|魂殿|宗门|斗气|三年之约/.test(allText),
+    allText.slice(0, 60))
+
+  // AI 剧本照旧：fetchTexts 返回 llm 时标成 llm
+  const runtime2 = createStoryRuntime({ vars: { chapter_count: 3 }, pack: 'douma' })
+  const scene2 = await runtime2.enter({ fetchTexts: async () => ({ texts: {}, source: 'llm' }) })
+  eq('模型台词标成 llm', scene2.textSource, 'llm')
+
+  // fetchTexts 返回 null（模型不可用）：整屏退回包内定稿，不能空着
+  const runtime3 = createStoryRuntime({ vars: { chapter_count: 3 }, pack: 'douma' })
+  const scene3 = await runtime3.enter({ fetchTexts: async () => null })
+  eq('模型不可用时退回 fallback', scene3.textSource, 'fallback')
+  check('退回时仍有台词可念',
+    scene3.lines.length > 0 && scene3.lines.every((l) => l.text && l.text !== '……'),
+    scene3.lines.length ? '' : '没有台词')
 }
 
 console.log(`\n${failures ? `✗ ${failures} 项失败` : '✓ 全部通过'}\n`)
