@@ -131,6 +131,8 @@
 | 场景 id | 标题 | 背景 | 登场 | 关键台词 |
 |---|---|---|---|---|
 | `opening` | 开章解说 | `void` | 旁白 | `narrator.opening` |
+| `origin_a` | 身世·天才期 | `void` | 旁白 | `narrator.origin_a` |
+| `origin_b` | 身世·跌落 | `void` | 旁白 | `narrator.origin_b` |
 | `awaken` | 变身过场 | `void` | 主角 | —（无台词，`# transform: awaken`） |
 | `prologue` | 递上战书 | `dawn` | 主角、旁白 | `narrator.hook` / `pet.oath` |
 | `growth_gate` | 药老与焚决 | `alley` | 主角、药老 | `scout.hook` / `scout.offer` |
@@ -144,24 +146,42 @@
 | `boss_lose` | 认输 | `sect` | 主角、云岚宗 | `boss.glory` |
 | `ending` | 结局 | `dawn` | 主角、旁白 | `narrator.ending_a` / `narrator.ending_b` |
 
-### 开章（`opening`）
+### 解说屏（`opening` / `origin_a` / `origin_b`）
 
-开章不是对话，是**片头解说**：旁白独占屏幕中央，配成品音频 `audio/opening.mp3`，
-逐字显现（`StoryOpening.jsx`，GSAP stagger 按音频时长摊平）。
-文案固定：
+三屏连续的**片头解说**：旁白独占屏幕中央，配成品配音，逐字显现
+（`StoryOpening.jsx`，GSAP stagger 按音频时长摊平）。
 
-> 这里是属于码气的世界，没有那么多弯弯绕绕，有的仅仅是繁衍到巅峰的码气。
+| 屏 | 讲什么 | 音频 | 文案 |
+|---|---|---|---|
+| `opening` | 这是什么样的世界 | `audio/opening.mp3`（用户提供的成品） | 「这里是属于码气的世界，没有那么多弯弯绕人，有的仅仅是繁衍到巅峰的码气。」 |
+| `origin_a` | 他当年多强 | `audio/narrator_origin_a.m4a` | 四岁修炼 Python、十岁握有 GitHub Copilot、十一岁凝聚代码之力，最年轻的 P6 码师 |
+| `origin_b` | 他怎么跌下来 | `audio/narrator_origin_b.m4a` | 十一岁那年「丧失」了写代码的能力，码量从 P6 跌到 P3，三年冷落、被退婚 |
 
-玩家点击可跳过（字全亮 + 音频快进），随后进 `prologue`。
+**顺序是刻意的**：`opening`（世界）→ `origin_a`/`origin_b`（他是谁）→ `awaken`（变身过场）→
+`prologue`（递战书）。先讲清「他是谁、怎么跌下来的」，再让他从卡片形象变成人形态醒来 ——
+顺序反了，「原来是他」这个重量就没了。
+
+**为什么身世要拆两屏**：154 字一屏会排到 8 行、约 850px，撑破解说屏；
+而且一口气念完没有停顿。一屏讲强、一屏讲跌，两拍比一段更有分量。
+
+**配音是包内成品，不是运行时 TTS**：解说屏一进来就要响，运行时合成要等十几秒。
+改台词后的重录链路：
+
+```bash
+backend/.venv/bin/python scripts/tts-narration.py douma narrator.origin_a narrator.origin_b
+```
+
+音色默认 Kokoro `sid=52`（zm_yunyang，低沉男声，避���宠物 / boss 的音），
+语速 `--speed 1.18`（约 6.8 字/秒，贴着 `opening.mp3` 的解说节奏）。
 
 ### 变身过场（`awaken`）
 
-开章之后、序章之前有一段过场：**卡片形象 → 光团 → 画面变暗 → 醒来变成人形态**。
+身世两屏之后、序章之前有一段过场：**卡片形象 → 光团 → 画面变暗 → 醒来变成人形态**。
 
 - ink 侧：`# transform: awaken`，这一屏没有台词
 - 素材侧：`meta.transforms.awaken = { orb, hero, caption }`；orb 在 `fx/`，hero 在 `art/`
 - 组件：`src/components/StoryTransform.jsx`（GSAP 时间轴四段）
-- 顺序：开章 `opening` → 过场 `awaken` → 序章 `prologue`
+- 顺序：`opening` → `origin_a` → `origin_b` → 过场 `awaken` → 序章 `prologue`
 - 字幕：「三年之约到期那一日，山门之外——他睁开了眼。」
 
 ---

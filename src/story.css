@@ -1106,10 +1106,12 @@
 /* ---------- 开章解说屏 ---------- */
 
 /* 片头解说：旁白独占整屏，文字居中，不是对话。
-   背景用深黑压掉场景色，让解说文字成为唯一的视觉焦点。 */
+   背景用深黑压掉场景色，让解说文字成为唯一的视觉焦点。
+   min-height 与正片舞台（.story-stage）保持一致 —— 否则解说屏比舞台矮一截，
+   页面底部会露出一块空地，像是「这一屏没画完」。 */
 .story-opening {
   position: relative;
-  min-height: 460px;
+  min-height: 500px;
   display: flex;
   flex-direction: column;
   align-items: center;

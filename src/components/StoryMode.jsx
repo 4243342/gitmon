@@ -419,8 +419,8 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
     // 换屏先掐掉上一屏的语音；先开口念第一句，再预取后面的
     // （本地是 CPU 串行合成，预取抢在前面只会把开口时间往后拖）
     tts.stop()
-    // 开章解说屏自带成品配音：不让 TTS 再念一遍，否则两路声音叠在一起
-    const isOpening = Boolean(next.opening)
+    // 解说屏自带成品配音：不让 TTS 再念一遍，否则两路声音叠在一起
+    const isOpening = Boolean(next.narration)
     if (lines.length && !isOpening) {
       const auto = getTtsConfig().autoFirst && !next.battle
       const opening = auto
@@ -1186,9 +1186,14 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
     return packFaceUrl(packId, who, castMap[who], stage)
   }
 
-  // 开章解说屏：包内音频 + 这一屏的台词
-  const openingAudio = scene?.opening ? packAudioUrl(packId, scene.opening) : null
-  const openingText = scene?.opening ? (lines[0]?.text || '') : ''
+  // 解说屏（旁白独占屏幕中央）：可以有多段。
+  //   第一段是开章（# opening: xxx.mp3），后面几段是 # narration: xxx.mp3。
+  // 音频按包取；某段没声明音频就是纯字幕往下走。
+  const narrationAudioFile = scene?.narration
+    ? (scene.narrationAudio || scene.opening || '')
+    : ''
+  const narrationAudio = narrationAudioFile ? packAudioUrl(packId, narrationAudioFile) : null
+  const narrationText = scene?.narration ? (lines[0]?.text || '') : ''
 
   // 变身过场：素材全部随包走。
   //   orb  → fx/ 目录（特效：脉动光团）
@@ -1575,11 +1580,14 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
         </section>
       )}
 
-      {/* 开章解说屏：旁白独占屏幕中央，不是对话 */}
-      {view === 'play' && scene?.opening && (
+      {/* 解说屏：旁白独占屏幕中央，不是对话。可以有多段 */}
+      {view === 'play' && scene?.narration && (
         <StoryOpening
-          text={openingText}
-          audioUrl={openingAudio}
+          // key 用 sceneId：换屏时强制重挂组件，
+          // 否则「只推进一格」的那道闸会从上一屏带过来，第二屏点不动。
+          key={scene.sceneId}
+          text={narrationText}
+          audioUrl={narrationAudio}
           onDone={() => advanceOpening()}
         />
       )}
@@ -1596,7 +1604,7 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
       )}
 
       {/* 场景 / 战斗 */}
-      {view === 'play' && scene && !scene.opening && !scene.transform && (
+      {view === 'play' && scene && !scene.narration && !scene.transform && (
         <section className={`story-stage story-bg-${scene.bg || 'dawn'}`}>
           <span className="story-stage-chapter" aria-hidden="true">
             {`CH.${String(Math.min((scene.vars?.chapter || 0) + 1, 99)).padStart(2, '0')}`}

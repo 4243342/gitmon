@@ -47,6 +47,35 @@ VAR ending_id = ""
 # opening: opening.mp3
 {say("narrator.opening")}
 + [继续]
+    -> origin_a
+
+// 第二段旁白：主角身世 —— 从空前绝后的码术天才到码量跌到 P3。
+// 同样是解说屏（# narration），自带成品配音：
+//   台词改了就跑 scripts/tts-narration.py douma narrator.origin_a narrator.origin_b 重录。
+// 拆成两屏讲：一屏说他当年多强，一屏说他怎么跌下来。
+// 一屏塞完 154 字会排到 8 行、撑破解说屏，而且一口气念完没有停顿、没有重量。
+// 这一段放在过场之前：先讲清「他是谁、怎么跌下来的」，
+// 再让他从卡片形象变成人形态醒来 —— 顺序反了就没了「原来是他」的重量。
+=== origin_a ===
+# scene: origin_a
+# stage: early
+# bg: void
+# cast: narrator
+# keys: narrator.origin_a
+# narration: narrator_origin_a.m4a
+{say("narrator.origin_a")}
++ [继续]
+    -> origin_b
+
+=== origin_b ===
+# scene: origin_b
+# stage: early
+# bg: void
+# cast: narrator
+# keys: narrator.origin_b
+# narration: narrator_origin_b.m4a
+{say("narrator.origin_b")}
++ [继续]
     -> awaken
 
 // 过场：主角由卡片形象变成光团 → 画面变暗 → 醒来变成人形态。

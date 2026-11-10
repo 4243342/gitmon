@@ -346,11 +346,56 @@ try {
   const opening = await page.evaluate(() => ({
     present: Boolean(document.querySelector('.story-opening')),
     hasTf: Boolean(document.querySelector('.story-tf')),
+    audioSrc: document.querySelector('.story-opening')?.dataset?.audioSrc || '',
   }))
   check('建线后先进开章解说屏', opening.present && !opening.hasTf, JSON.stringify(opening))
+  check('开章解说带成品配音', /opening\.mp3$/.test(opening.audioSrc), opening.audioSrc)
 
-  // 点掉开章 → 应该进过场屏
-  console.log('\n[tf] 开章之后进过场屏')
+  // 点掉开章 → 应该进身世旁白第一屏
+  console.log('\n[tf] 开章之后进身世旁白')
+  await page.evaluate(() => document.querySelector('.story-opening')?.click())
+  await sleep(900)
+  const origin = await page.evaluate(() => {
+    const el = document.querySelector('.story-opening')
+    if (!el) return { present: false }
+    const chars = el.querySelectorAll('.story-open-char')
+    const lit = Array.from(chars).filter((n) => Number(getComputedStyle(n).opacity) > 0.5).length
+    return {
+      present: true,
+      hasTf: Boolean(document.querySelector('.story-tf')),
+      audioSrc: el.dataset.audioSrc || '',
+      pages: el.dataset.openingPages || '',
+      total: chars.length,
+      lit,
+      text: el.querySelector('.story-opening-text')?.textContent || '',
+    }
+  })
+  check('开章之后进身世旁白（还是解说屏，不是过场）',
+    origin.present && !origin.hasTf, JSON.stringify({ present: origin.present, hasTf: origin.hasTf }))
+  check('身世旁白带成品配音', /narrator_origin_a\.m4a$/.test(origin.audioSrc), origin.audioSrc)
+  check('身世旁白讲的是天才期',
+    /码术天才/.test(origin.text) && /P6/.test(origin.text), origin.text.slice(0, 30))
+  check('身世旁白是逐字显现', origin.lit < origin.total, `${origin.lit}/${origin.total}`)
+
+  // 点掉身世第一屏 → 应该进身世第二屏（跌落）
+  console.log('\n[tf] 身世旁白第二屏')
+  await page.evaluate(() => document.querySelector('.story-opening')?.click())
+  await sleep(900)
+  const originB = await page.evaluate(() => {
+    const el = document.querySelector('.story-opening')
+    if (!el) return { present: false }
+    return {
+      present: true,
+      audioSrc: el.dataset.audioSrc || '',
+      text: el.querySelector('.story-opening-text')?.textContent || '',
+    }
+  })
+  check('身世旁白有第二屏', originB.present, JSON.stringify(originB))
+  check('第二屏也带成品配音', /narrator_origin_b\.m4a$/.test(originB.audioSrc), originB.audioSrc)
+  check('第二屏讲的是跌落', /P3/.test(originB.text), originB.text.slice(0, 30))
+
+  // 点掉身世第二屏 → 应该进过场屏
+  console.log('\n[tf] 身世旁白之后进过场屏')
   await startSampling()
   await page.evaluate(() => document.querySelector('.story-opening')?.click())
   await sleep(600)

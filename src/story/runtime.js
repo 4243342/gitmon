@@ -39,7 +39,9 @@ export function speakerOf(key) {
 }
 
 function parseTags(tags = []) {
-  const meta = { scene: '', bg: '', cast: [], keys: [], battle: '', win: '', lose: '', opening: '', ending: false, stage: '', transform: '', tags }
+  // narration = 这是解说屏（旁白独占屏幕中央），opening = 解说屏配的成品音频文件名。
+  // 两者分开：一个包可以有好几段解说，只有第一段带成品音频，后面的段纯字幕。
+  const meta = { scene: '', bg: '', cast: [], keys: [], battle: '', win: '', lose: '', opening: '', narration: false, narrationAudio: '', ending: false, stage: '', transform: '', tags }
   for (const raw of tags) {
     const tag = String(raw || '').trim()
     const [head, ...rest] = tag.split(':')
@@ -52,8 +54,12 @@ function parseTags(tags = []) {
       case 'battle': meta.battle = value; break
       case 'win': meta.win = value; break
       case 'lose': meta.lose = value; break
-      // 开章解说屏：值是包内音频文件名（相对 packs/<id>/audio/）
-      case 'opening': meta.opening = value; break
+      // 解说屏（旁白独占屏幕中央）：可以有多段。
+      //   # opening: xxx.mp3  —— 开章第一段（向后兼容的老写法）
+      //   # narration: xxx.mp3 —— 后续解说段，可带成品配音，也可只出字幕
+      // 值为空就是「这一段没有成品音频」，纯字幕往下走。
+      case 'opening': meta.opening = value; meta.narration = true; break
+      case 'narration': meta.narration = true; if (value) meta.narrationAudio = value; break
       // 角色阶段：这一屏用哪个阶段的形象（如 early）。角色表里没声明这个阶段就退回无阶段的图
       case 'stage': meta.stage = value; break
       // 过场：值是过场键（对应 meta.transforms 里的一个条目）
@@ -205,7 +211,11 @@ export class StoryRuntime {
       lines: real.lines,
       choices: this.choices,
       battle: view.battle,
-      // 开章解说屏：有值就是包内音频文件名（相对 packs/<id>/audio/）
+      // 解说屏（旁白独占屏幕中央）：可以有多段，其中只有一段带成品配音。
+      // narrationAudio 统一是「这一段解说的音频文件名」，没有就是纯字幕。
+      narration: view.narration,
+      narrationAudio: view.narrationAudio || view.opening,
+      // 开章那段的老字段（向后兼容：只 # opening: 的包仍从这里读音频名）
       opening: view.opening,
       // 角色阶段：这一屏该用哪个阶段的形象（角色表 stages 里声明的键）
       stage: view.stage,

@@ -449,15 +449,23 @@ try {
     }
   }
 
-  console.log('\n[pack] 开章之后经过场进正片')
-  // 点开章屏 → 跳过它，进变身过场
-  await page.evaluate(() => document.querySelector('.story-opening')?.click())
-  await sleep(1200)
+  console.log('\n[pack] 解说屏三屏之后经过场进正片')
+  // 解说屏有三屏：开章 + 身世两屏。一屏点一次。
+  for (let i = 0; i < 4; i += 1) {
+    const clicked = await page.evaluate(() => {
+      const el = document.querySelector('.story-opening')
+      if (!el) return false
+      el.click()
+      return true
+    })
+    if (!clicked) break
+    await sleep(1200)
+  }
 
-  // 开章之后先进过场（变身动画），过场播完才进正片。
+  // 三屏解说之后先进过场（变身动画），过场播完才进正片。
   // 这一段的详细断言在 scripts/story-transform-check.mjs 里。
   const transformSeen = await page.evaluate(() => Boolean(document.querySelector('.story-tf')))
-  check('开章之后进过场屏', transformSeen, '没找到 .story-tf')
+  check('解说屏之后进过场屏', transformSeen, '没找到 .story-tf')
 
   // 过场约 7 秒，等它播完自动进正片
   await sleep(9000)
@@ -504,20 +512,26 @@ try {
   await sleep(3500)
 
   // 读档路径：mock 返回的 ink_state 是空的，运行时从头开始 ——
-  // 所以要先过开章与过场两屏才到正片。
-  // （这跟第一次进线的路径一样：开章 → 过场 → 序章）
+  // 所以要先过开章、身世旁白两屏、过场才到正片。
+  // （这跟第一次进线的路径一样：开章 → origin_a → origin_b → 过场 → 序章）
   const resumePath = await page.evaluate(() => ({
     opening: Boolean(document.querySelector('.story-opening')),
     transform: Boolean(document.querySelector('.story-tf')),
     stage: Boolean(document.querySelector('.story-stage')),
   }))
-  check('重进后仍在同一个包里（开章 / 过场 / 正片三选一）',
+  check('重进后仍在同一个包里（解说屏 / 过场 / 正片三选一）',
     resumePath.opening || resumePath.transform || resumePath.stage,
     JSON.stringify(resumePath))
 
-  // 走到正片：跳过开章 → 等过场播完
-  if (resumePath.opening) {
-    await page.evaluate(() => document.querySelector('.story-opening')?.click())
+  // 走到正片：解说屏有三屏（开章 + 身世两屏），一屏点一次，再等过场播完
+  for (let i = 0; i < 4; i += 1) {
+    const clicked = await page.evaluate(() => {
+      const el = document.querySelector('.story-opening')
+      if (!el) return false
+      el.click()
+      return true
+    })
+    if (!clicked) break
     await sleep(1200)
   }
   await sleep(9000)

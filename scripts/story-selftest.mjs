@@ -154,10 +154,25 @@ console.log('\n[story] 剧本包装载')
   check('开章台词是世界观开场白',
     /码气/.test(scene.lines[0]?.text || ''),
     scene.lines[0]?.text?.slice(0, 30) || '')
-  // 走完开章先进过场（变身动画），过场之后才是序章
+  // 走完开章先进第二段旁白（身史两屏），再过场（变身动画），过场之后才是序章
+  douma.choose(0)
+  const originScene = await douma.enter()
+  eq('开章之后进身世旁白', originScene.sceneId, 'origin_a')
+  check('身世旁白也是解说屏', originScene.narration === true, String(originScene.narration))
+  eq('身世旁白带成品配音', originScene.narrationAudio, 'narrator_origin_a.m4a')
+  check('身世旁白讲的是天才期',
+    /码术天才/.test(originScene.lines[0]?.text || '') && /P6/.test(originScene.lines[0]?.text || ''),
+    originScene.lines[0]?.text?.slice(0, 30) || '')
+  douma.choose(0)
+  const originB = await douma.enter()
+  eq('身世旁白第二屏是跌落', originB.sceneId, 'origin_b')
+  eq('第二屏也带成品配音', originB.narrationAudio, 'narrator_origin_b.m4a')
+  check('跌落那屏讲到 P3',
+    /P3/.test(originB.lines[0]?.text || ''),
+    originB.lines[0]?.text?.slice(0, 30) || '')
   douma.choose(0)
   const transformScene = await douma.enter()
-  eq('开章之后进过场', transformScene.sceneId, 'awaken')
+  eq('身世旁白之后进过场', transformScene.sceneId, 'awaken')
   eq('过场声明了过场键', transformScene.transform, 'awaken')
   check('过场有素材规格', Boolean(transformScene.transformSpec?.orb && transformScene.transformSpec?.hero),
     JSON.stringify(transformScene.transformSpec || {}))
@@ -166,6 +181,7 @@ console.log('\n[story] 剧本包装载')
   douma.choose(0)
   const after = await douma.enter()
   eq('过场之后进序章', after.sceneId, 'prologue')
+  check('序章不是解说屏', !after.narration, String(after.narration))
   check('序章没有音频声明', !after.opening, String(after.opening))
   check('序章没有过场声明', !after.transform, String(after.transform))
   check('角色表来自包内', Boolean(scene.characters?.scout), Object.keys(scene.characters || {}).join(','))
@@ -407,19 +423,31 @@ console.log('\n[story] 斗码苍穹的开章解说')
   const douma = PACKS.douma
   const ink = fs.readFileSync(path.join(packsDir, 'douma', 'story.ink'), 'utf8')
 
-  // ink 里声明的 # opening 音频必须真有那个文件
-  const declared = [...ink.matchAll(/^\s*#\s*opening:\s*(\S+)/gm)].map((m) => m[1])
-  check('开章声明了音频', declared.length === 1, declared.join(','))
+  // ink 里声明的解说屏音频必须真有那个文件（# opening: 与 # narration: 都算）
+  const declared = [
+    ...[...ink.matchAll(/^\s*#\s*opening:\s*(\S+)/gm)].map((m) => m[1]),
+    ...[...ink.matchAll(/^\s*#\s*narration:\s*(\S+)/gm)].map((m) => m[1]),
+  ]
+  check('解说屏声明了音频', declared.length >= 2, declared.join(','))
   const audioOk = declared.every((f) =>
     ['mp3', 'wav', 'ogg', 'm4a'].some((ext) =>
       fs.existsSync(path.join(packsDir, 'douma', 'audio', f.replace(/\.\w+$/, `.${ext}`)))))
-  check('开章音频文件存在', audioOk, declared.join(','))
+  check('解说屏音频文件存在', audioOk, declared.join(','))
 
   // 开场白台词必须在兜底表里（模型不可用时也要能念）
   check('开场白有台词兜底', Boolean(douma.lines['narrator.opening']), '缺 narrator.opening')
   check('开场白讲的是码气',
     /码气/.test(douma.lines['narrator.opening'] || ''),
     (douma.lines['narrator.opening'] || '').slice(0, 30))
+  // 身世旁白（两屏）也要有兜底
+  check('身世旁白有台词兜底',
+    Boolean(douma.lines['narrator.origin_a']) && Boolean(douma.lines['narrator.origin_b']),
+    '缺 narrator.origin_a / narrator.origin_b')
+  check('身世旁白讲了天才与跌落',
+    /码术天才/.test(douma.lines['narrator.origin_a'] || '')
+    && /P6/.test(douma.lines['narrator.origin_a'] || '')
+    && /P3/.test(douma.lines['narrator.origin_b'] || ''),
+    '身世旁白没讲全')
   // 通用包没有开章：界面不能因为这一屏不存在而挂
   check('通用包没有开章',
     !/^\s*#\s*opening:/m.test(fs.readFileSync(path.join(packsDir, 'default', 'story.ink'), 'utf8')),

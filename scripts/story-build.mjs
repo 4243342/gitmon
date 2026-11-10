@@ -149,9 +149,13 @@ for (const id of packIds) {
     fail(`剧本包 ${id} 的 ink 用了角色表里没声明的阶段：\n  - ${unknownStages.join(', ')}（已声明：${[...declaredStages].join(', ') || '无'}）`)
   }
 
-  // 开章音频：ink 里写了 # opening: xxx.mp3 就必须真有那个文件
+  // 解说屏音频：ink 里写了 # opening: xxx / # narration: xxx 就必须真有那个文件
   const audioDir = resolve(dir, 'audio')
-  const openingFiles = [...new Set([...ink.matchAll(/^\s*#\s*opening:\s*(\S+)/gm)].map((m) => m[1]))]
+  const audioTags = [
+    ...[...ink.matchAll(/^\s*#\s*opening:\s*(\S+)/gm)].map((m) => m[1]),
+    ...[...ink.matchAll(/^\s*#\s*narration:\s*(\S+)/gm)].map((m) => m[1]),
+  ]
+  const openingFiles = [...new Set(audioTags)]
   const missingAudio = []
   for (const file of openingFiles) {
     const hit = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac']
@@ -160,7 +164,7 @@ for (const id of packIds) {
     if (!hit) missingAudio.push(file)
   }
   if (missingAudio.length) {
-    fail(`剧本包 ${id} 的开章声明了音频但文件不存在：\n  - ${missingAudio.join('\n  - ')}`)
+    fail(`剧本包 ${id} 的解说屏声明了音频但文件不存在：\n  - ${missingAudio.join('\n  - ')}`)
   }
 
   // 过场：ink 里写了 # transform: xxx，meta.transforms 里就得有这一项，

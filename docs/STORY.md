@@ -759,14 +759,38 @@ CREATE TABLE story_saves (
 
 「斗码苍穹」这条主线（剧本内容见 `src/story/packs/douma/STORY.md`）比通用包多三样东西。
 
-### 10.5.1 开章解说屏
+### 10.5.1 解说屏（narration）
 
-开章不是对话，是**片头解说**：旁白独占屏幕中央，成品配音 `audio/opening.mp3`，
-逐字显现（GSAP stagger 按音频时长摊平，每个字的出现点正好落在音频结束前）。
+解说屏不是对话，是**片头解说**：旁白独占屏幕中央，成品配音，逐字显现
+（GSAP stagger 按音频时长摊平，每个字的出现点正好落在音频结束前）。
 
-- ink 侧：`# opening: opening.mp3`，这一屏没有底部对话框
+一个包可以有多段解说，每段一屏：
+
+```
+story.ink:
+  === opening ===            # 开章第一段（老写法，向后兼容）
+  # opening: opening.mp3
+  {say("narrator.opening")}
+
+  === origin_a ===           # 后续解说段
+  # narration: narrator_origin_a.m4a
+  {say("narrator.origin_a")}
+```
+
+- ink 侧：`# opening: <文件>`（开章段）与 `# narration: <文件>`（后续段），
+  值是包内 `audio/` 下的文件名；值为空就是纯字幕往下走
+- runtime 侧：`scene.narration`（是不是解说屏）、`scene.narrationAudio`（这一段的音频）
 - 组件：`src/components/StoryOpening.jsx`
-- 玩家点画面可跳过（字全亮 + 音频快进）
+- 配音是**包内成品**而不是运行时 TTS：解说屏一进来就要响，运行时合成要等十几秒。
+  重录链路：`scripts/tts-narration.py`（见 §10.5.4）
+- 玩家点画面可跳过（字全亮 + 音频快进），一次点击只往前推一格
+
+**两个必须记住的坑：**
+
+- **换屏时组件要重挂**：React 复用同一位置的组件，`key` 不变的话
+  「只推进一格」的那道闸会从上一屏带过来，第二屏点不动 → `key={scene.sceneId}`
+- **一屏别超过 120 字**：154 字会排到 8 行、约 850px，撑破解说屏。
+  宁可拆成两屏（一屏讲强、一屏讲跌），两拍比一段更有分量
 
 ### 10.5.2 角色阶段（stage）
 
@@ -789,7 +813,7 @@ story.ink:
 
 ### 10.5.3 变身过场
 
-开章之后、正片之前有一段过场：**卡片形象 → 光团 → 画面变暗 → 醒来变成人形态**。
+身世两屏之后、正片之前有一段过场：**卡片形象 → 光团 → 画面变暗 → 醒来变成人形态**。
 
 - ink 侧：`# transform: awaken`，这一屏没有台词
 - 素材侧：`meta.transforms.awaken = { orb, hero, caption }`；orb 在 `fx/`，hero 在 `art/`
@@ -799,6 +823,21 @@ story.ink:
 - **根元素类名要用独立前缀**（`story-tf-phase-*`）：直接拼 phase 值会和子元素类名
   （`story-tf-card` 等）撞车，把根元素的 `position: fixed` 覆盖成 `absolute`
 - **压暗层在舞台层之下**：z-index 反了的话，「黑暗里亮出人形」就永远看不见
+
+### 10.5.4 成品配音的重录链路
+
+`scripts/tts-narration.py` 把「改台词 → 重录」做成一���命令：
+
+```bash
+backend/.venv/bin/python scripts/tts-narration.py douma narrator.origin_a narrator.origin_b --speed 1.18
+```
+
+- 走本地 Kokoro（`backend/models/kokoro-multi-lang-v1_1`），免 key 免联网
+- 默认音色 `sid=52`（zm_yunyang，低沉男声解说腔），避开宠物 / boss 的音
+- 输出 m4a（macOS 自带 `afconvert` 转的）；转不了就留 wav，浏览器一样能播
+- **不要把 m4a 改名成 mp3** —— 容器和扩展名对不上，某些浏览器会拒播
+- Kokoro 中文词典认不出的写法（`GitHub`、`「」`、`——`）在合成时会被跳过，
+  脚本里做了替换；显示给玩家看的文案仍保留原来的写法
 
 ## 11. 开源组件选型：能直接套的都套
 
@@ -852,7 +891,8 @@ inkjs 与 ajv 均为 MIT，可商用。**依赖已安装并锁定**（`package.j
 | `npm run test:story` | 路线自检：场景进入、选项、变量、战斗分支、动态章节数、存档回滚、多结局、**多包隔离**（两个包的路线 / 结局 / 角色表互不串） |
 | `cd backend && .venv/bin/python -m pytest tests/ -q` | 后端：包注册表、系统剧本读包、世界观注入、缓存键按包隔离、pack 落库、结局标题按包取 |
 | `node scripts/story-pack-check.mjs` | 浏览器端：包选择器 → 方案卡 → 建线 → 正片渲染 → **重新进页面续跑不串包**（需前后端已启动） |
-| `node scripts/story-transform-check.mjs` | 浏览器端：开章 → **变身过场四段顺序**（卡片 → 光团 → 变暗 → 人形态）→ 自动进正片；含过场层的布局与层序断言 |
+| `node scripts/story-transform-check.mjs` | 浏览器端：开章解说 → **身世旁白两屏** → **变身过场四段顺序**（卡片 → 光团 → 变暗 → 人形态）→ 自动进正片；含解说屏配音/逐字显现、过场层布局与层序断言 |
+| `backend/.venv/bin/python scripts/tts-narration.py douma narrator.origin_a` | 重录解说屏成品配音（本地 Kokoro） |
 
 ## 12. 未决问题
 
