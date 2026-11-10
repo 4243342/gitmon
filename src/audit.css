@@ -30,42 +30,124 @@
   width: min(560px, 94%);
 }
 
-/* 光团：呼吸的白金色能量球 + 双扫描环，属性未定前一直转 */
+/* 光团：虚幻灵体能量球（对标 cssfx 的多层辉光渐变组合，星尘氛围沿用 tsParticles 取意），
+   属性未定前一直漂浮呼吸：冰蓝紫幻彩内核 + 灵雾漂移 + 3D 倾斜轨道 + 星尘上浮 */
 .audit-orb {
   position: absolute;
-  top: 34px;
-  width: 150px;
-  height: 150px;
+  top: 30px;
+  width: 156px;
+  height: 156px;
   transition: opacity .55s ease, transform .55s ease, filter .55s ease;
+  animation: orb-float 4.6s ease-in-out infinite;
 }
-.audit-orb-core {
+/* 悬浮用独立 translate 属性，避免动画占用 transform 挡住显形退场的 scale */
+@keyframes orb-float {
+  0%, 100% { translate: 0 -4px; }
+  50% { translate: 0 5px; }
+}
+/* 灵雾：两团高斯模糊的青 / 紫雾斑在球内反向漂移，做出虚无缥缈的灵体质感 */
+.audit-orb-haze {
   position: absolute;
-  inset: 26px;
+  inset: 10px;
   border-radius: 50%;
   background:
-    radial-gradient(circle at 38% 34%, rgba(255, 255, 255, .98), rgba(245, 197, 66, .65) 46%, rgba(245, 197, 66, 0) 72%),
-    radial-gradient(circle, rgba(255, 246, 214, .9), rgba(255, 246, 214, 0) 70%);
-  filter: blur(1px);
-  animation: orb-breathe 1.7s ease-in-out infinite;
+    radial-gradient(38% 32% at 32% 40%, rgba(124, 232, 255, .75), transparent 72%),
+    radial-gradient(40% 34% at 70% 60%, rgba(167, 139, 250, .7), transparent 74%),
+    radial-gradient(30% 26% at 55% 28%, rgba(190, 232, 255, .55), transparent 76%);
+  filter: blur(9px);
+  animation: haze-drift 5.4s ease-in-out infinite alternate;
+}
+@keyframes haze-drift {
+  from { transform: translate(-5px, 4px) rotate(-8deg); }
+  to { transform: translate(6px, -5px) rotate(9deg); }
+}
+/* 内核：亮白心 → 冰蓝 → 紫边消散的多层径向渐变 + 三层冷光辉光 */
+.audit-orb-core {
+  position: absolute;
+  inset: 30px;
+  border-radius: 50%;
+  background:
+    radial-gradient(36% 32% at 34% 30%, rgba(255, 255, 255, .98), transparent 74%),
+    radial-gradient(circle at 52% 48%,
+      rgba(235, 246, 255, .98) 0%,
+      rgba(150, 205, 255, .9) 38%,
+      rgba(139, 122, 255, .65) 62%,
+      rgba(96, 66, 190, .32) 80%,
+      rgba(70, 46, 150, 0) 96%);
+  box-shadow:
+    0 0 20px rgba(160, 210, 255, .8),
+    0 0 48px rgba(167, 139, 250, .45),
+    0 0 88px rgba(124, 232, 255, .22),
+    inset 0 0 16px rgba(255, 255, 255, .6);
+  animation: orb-breathe 2.8s ease-in-out infinite;
+}
+/* 能量流：conic 彩带绕心缓转，径向渐隐成一圈幻彩光晕 */
+.audit-orb-core::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg,
+    rgba(124, 232, 255, 0), rgba(124, 232, 255, .75),
+    rgba(167, 139, 250, 0) 34%, rgba(167, 139, 250, .7) 52%,
+    rgba(255, 226, 138, 0) 74%, rgba(255, 226, 138, .5) 88%,
+    rgba(124, 232, 255, 0));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 14px), #000 calc(100% - 9px));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 14px), #000 calc(100% - 9px));
+  animation: spin 3.4s linear infinite;
+  opacity: .85;
 }
 .audit-orb-ring {
   position: absolute;
-  inset: 0;
+  inset: 2px;
   border-radius: 50%;
-  border: 1px solid rgba(245, 197, 66, .55);
+  border: 1.5px solid rgba(124, 232, 255, .4);
   border-top-color: rgba(255, 255, 255, .95);
-  animation: spin 2.6s linear infinite;
+  animation: spin 3.1s linear infinite;
 }
 .audit-orb-ring--2 {
-  inset: 14px;
-  border-color: rgba(255, 255, 255, .3);
-  border-bottom-color: rgba(245, 197, 66, .85);
-  animation-duration: 1.7s;
+  inset: 16px;
+  border-color: rgba(167, 139, 250, .28);
+  border-bottom-color: rgba(167, 139, 250, .95);
+  animation-duration: 2s;
   animation-direction: reverse;
 }
+/* 3D 倾斜虚线轨道：像环绕灵核的星环，绕 Z 轴慢转 */
+.audit-orb-orbit {
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  border: 1px dashed rgba(190, 214, 255, .55);
+  transform: rotateX(72deg);
+  animation: orb-orbit 7s linear infinite;
+}
+@keyframes orb-orbit {
+  from { transform: rotateX(72deg) rotateZ(0deg); }
+  to { transform: rotateX(72deg) rotateZ(360deg); }
+}
+/* 星尘：四粒小光点自球缘上浮消散（氛围取意 tsParticles，纯 CSS 实现零依赖） */
+.audit-orb-mote {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #eaf4ff;
+  box-shadow: 0 0 8px rgba(190, 226, 255, .95);
+  opacity: 0;
+  animation: mote-rise 3.2s ease-out infinite;
+}
+.audit-orb-mote--1 { left: 18%; bottom: 22%; animation-delay: 0s; }
+.audit-orb-mote--2 { left: 44%; bottom: 14%; width: 4px; height: 4px; animation-delay: .8s; }
+.audit-orb-mote--3 { left: 68%; bottom: 24%; animation-delay: 1.6s; }
+.audit-orb-mote--4 { left: 82%; bottom: 40%; width: 4px; height: 4px; animation-delay: 2.4s; }
+@keyframes mote-rise {
+  0% { opacity: 0; transform: translateY(0) scale(.6); }
+  18% { opacity: .95; }
+  100% { opacity: 0; transform: translateY(-58px) translateX(6px) scale(1.15); }
+}
 @keyframes orb-breathe {
-  0%, 100% { transform: scale(.92); opacity: .78; }
-  50% { transform: scale(1.06); opacity: 1; }
+  0%, 100% { transform: scale(.94); opacity: .82; }
+  50% { transform: scale(1.05); opacity: 1; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 /* 显形：光团让位给宠物 */

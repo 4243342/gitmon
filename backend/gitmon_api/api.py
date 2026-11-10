@@ -249,6 +249,8 @@ def repo_card(platform: str, owner: str, repo: str, token: str = Depends(session
 # ---------------------------------------------------------------- 错误处理
 
 def install_error_handlers(app) -> None:
+    from .story import StoryError
+
     @app.exception_handler(ScanError)
     async def _scan_error(request: Request, exc: ScanError) -> JSONResponse:
         headers = {}
@@ -259,6 +261,10 @@ def install_error_handlers(app) -> None:
             content={"error": exc.message, "hint": exc.hint},
             headers=headers,
         )
+
+    @app.exception_handler(StoryError)
+    async def _story_error(request: Request, exc: StoryError) -> JSONResponse:
+        return JSONResponse(status_code=exc.status_code, content={"error": exc.message, "hint": exc.hint})
 
     @app.exception_handler(InvalidRepo)
     async def _invalid_repo(request: Request, exc: InvalidRepo) -> JSONResponse:

@@ -5,6 +5,7 @@
 // 自动带回 baseUrl / model / 厂商名。密钥只存 sessionStorage（关标签页即失效），
 // 绑定结果（不含密钥）存 localStorage，下次打开自动恢复。
 import { ownerHeader } from './sync.js'
+import { t } from './i18n.js'
 
 const CFG_KEY = 'gitmon:llm:config'
 const KEY_KEY = 'gitmon:llm:key'
@@ -33,10 +34,13 @@ export function loadLLMConfig() {
   const saved = readJSON(localStorage, CFG_KEY) || {}
   let key = ''
   try { key = sessionStorage.getItem(KEY_KEY) || '' } catch { /* 隐私模式下忽略 */ }
+  const binding = saved.binding && typeof saved.binding === 'object' ? saved.binding : null
   return {
     baseUrl: typeof saved.baseUrl === 'string' && saved.baseUrl ? saved.baseUrl : DEFAULT_LLM_CONFIG.baseUrl,
     model: typeof saved.model === 'string' && saved.model ? saved.model : DEFAULT_LLM_CONFIG.model,
-    binding: saved.binding && typeof saved.binding === 'object' ? saved.binding : null,
+    // 防线 4/4：加载即丢弃与密钥家族错配的存量 binding（历史假阳性残留等）——
+    // binding 置 null 后 bindState 落 idle，密钥框的自动识别 effect 会重新认出正确厂商。
+    binding: binding && !providerKeyMismatch(binding.baseUrl, key) ? binding : null,
     custom: saved.custom && typeof saved.custom === 'object' ? saved.custom : null,
     deepAudit: saved.deepAudit !== false,
     apiKey: key,
@@ -82,6 +86,51 @@ export function boundConfig(config) {
     baseUrl: b.baseUrl || config.baseUrl,
     model: b.model || config.model,
   }
+}
+
+// —— 服务商 ↔ 密钥家族强互斥：出站前统一拦截 ——
+// baseUrl（localStorage）与 apiKey（sessionStorage）各自独立更新，拼在一起
+// 就会出现「OpenRouter 端点 + OpenAI 密钥」这类必然 401 的错配。只对有把握
+// 的组合下结论；自定义中转站 / 普通 sk- 密钥识别不了，一律放行，绝不误伤。
+function providerName(url) {
+  const u = String(url || '').toLowerCase()
+  if (u.includes('openrouter.ai')) return 'OpenRouter'
+  if (u.includes('api.openai.com')) return 'OpenAI'
+  if (u.includes('anthropic.com')) return 'Anthropic'
+  if (u.includes('groq.com')) return 'Groq'
+  return ''
+}
+
+function keyFamily(key) {
+  const k = String(key || '').trim()
+  if (k.startsWith('sk-or-')) return 'OpenRouter'
+  if (k.startsWith('sk-ant-')) return 'Anthropic'
+  if (k.startsWith('gsk_')) return 'Groq'
+  if (k.startsWith('sk-proj-') || k.startsWith('sk-pro-') || k.startsWith('sk-svcacct-')) return 'OpenAI'
+  return ''
+}
+
+function providerKeyMismatch(baseUrl, apiKey) {
+  const provider = providerName(baseUrl)
+  const family = keyFamily(apiKey)
+  return provider && family && provider !== family ? { provider, family } : null
+}
+
+function assertProviderKey(baseUrl, apiKey) {
+  const m = providerKeyMismatch(baseUrl, apiKey)
+  if (!m) return
+  throw new Error(t(
+    `服务商与密钥不匹配：服务商是 ${m.provider}，但这枚密钥像 ${m.family} 的（跨家密钥不通用）——重新粘贴 ${m.provider} 的密钥自动识别，或把 Base URL 换回 ${m.family}`,
+    `Provider/key mismatch: endpoint is ${m.provider} but this key looks like ${m.family}'s (keys are not interchangeable) — paste a ${m.provider} key to re-detect, or point Base URL back to ${m.family}`,
+  ))
+}
+
+// 出站参数统一拦截（与实际请求体同源取值：eff.baseUrl / config.apiKey）
+function assertOutbound(eff, config) {
+  assertProviderKey(
+    eff?.baseUrl?.trim() || DEFAULT_LLM_CONFIG.baseUrl,
+    config?.apiKey || '',
+  )
 }
 
 // 后端错误是 { detail: { error, hint } }；模型侧错误统一翻译成人话
@@ -144,6 +193,7 @@ export async function bindWithLLM({ apiKey, custom = null } = {}) {
 /** 连接测试：一次极小的对话请求，通了才允许开启高级模式（绑定只验证过 /models） */
 export async function pingWithLLM({ config } = {}) {
   const eff = boundConfig(config)
+  assertOutbound(eff, config)
   const data = await postJSON('/api/llm/ping', {
     baseUrl: eff.baseUrl?.trim() || DEFAULT_LLM_CONFIG.baseUrl,
     model: eff.model?.trim() || DEFAULT_LLM_CONFIG.model,
@@ -156,6 +206,7 @@ export async function pingWithLLM({ config } = {}) {
 /** 所有评测项都由模型给出；这里只负责转发与错误翻译。evidence = 深度审计的真实抓取证据 */
 export async function evaluateWithLLM({ repo, config, hint = '', platform = 'github', evidence = null }) {
   const eff = boundConfig(config)
+  assertOutbound(eff, config)
   const body = {
     repo,
     baseUrl: eff.baseUrl?.trim() || DEFAULT_LLM_CONFIG.baseUrl,
@@ -173,6 +224,7 @@ export async function evaluateWithLLM({ repo, config, hint = '', platform = 'git
 /** 高级竞技场：模型对比两个项目水平，推演回合对战 + 审计报告 */
 export async function battleWithLLM({ player, opponent, difficulty = 'normal', config }) {
   const eff = boundConfig(config)
+  assertOutbound(eff, config)
   const data = await postJSON('/api/llm/battle', {
     player,
     opponent,

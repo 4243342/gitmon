@@ -3,6 +3,7 @@ import { StarBadge } from '../starBadge.jsx'
 import { useI18n } from '../i18n.js'
 
 // 我的图鉴（文档 §9 P1）
+// 「桌宠上任」选择框在精灵仓库 hero 标题行（App 内），不在此组件（spec §2 修订）
 export default function Collection({ list, onPick }) {
   const { t } = useI18n()
   if (!list.length) return null

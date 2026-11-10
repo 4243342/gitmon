@@ -18,6 +18,8 @@ import {
   rivalPets,
   rivalTeamLabel,
   sameTypePool,
+  tierLabel,
+  tierOfPet,
 } from '../rivals.js'
 import { parseRepoInput, scanOwnerBox, scanRepo } from '../scan.js'
 import { battleWithLLM } from '../llm.js'
@@ -38,8 +40,8 @@ const MODES = [
     key: 'same',
     index: '02',
     name: ['同类型对战', 'Same-Type Battle'],
-    tag: ['找同属性的仓库', 'Same element only'],
-    desc: ['只从和你先发精灵同属性的知名仓库里挑对手。克制关系一眼看得懂，适合摸清属性打法。', 'Rivals are drawn only from famous repos sharing your lead pet’s element. Type matchups stay readable — ideal for learning the meta.'],
+    tag: ['同属性 · 同星级层', 'Same element & star tier'],
+    desc: ['从和你先发精灵同属性、同星级层（按仓库星数分层）的仓库里挑对手，同层不够才向相邻层借。克制关系一眼看得懂，适合摸清属性打法。', 'Rivals share your lead pet’s element and star tier (repo stars). Adjacent tiers only fill in when the same tier runs short. Type matchups stay readable — ideal for learning the meta.'],
   },
   {
     key: 'random',
@@ -366,9 +368,10 @@ function Setup({ mode, pets, team, setTeam, difficulty, setDifficulty, onStart, 
 
   const lead = team[0]
   const samePool = useMemo(
-    () => (mode === 'same' && lead ? sameTypePool(lead.element?.key) : []),
+    () => (mode === 'same' && lead ? sameTypePool(lead.element?.key, lead) : []),
     [mode, lead],
   )
+  const leadTier = lead ? tierOfPet(lead) : null
 
   const modeInfo = MODES.find((m) => m.key === mode)
   const hasEnemy = online.size === 'team' ? online.ownerTeam.length > 0 : !!online.opponent
@@ -394,7 +397,10 @@ function Setup({ mode, pets, team, setTeam, difficulty, setDifficulty, onStart, 
                 {lead.element.name}{t('系', ' type')}
               </span>
               <span className="same-pool">
-                {t(`同属性仓库 ${samePool.length} 个：`, `${samePool.length} same-type repos: `)}
+                {t(
+                  `同属性同层（${tierLabel(leadTier)}）仓库 ${samePool.length} 个：`,
+                  `${samePool.length} same-type, same-tier (${tierLabel(leadTier)}) repos: `,
+                )}
                 {samePool.slice(0, 6).map((p) => p.repo).join(' · ')}
                 {samePool.length > 6 ? ' …' : ''}
               </span>

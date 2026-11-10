@@ -105,6 +105,63 @@ CREATE TABLE IF NOT EXISTS sessions (
     expires_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
+-- 剧情模式：一条 active 线 / 一个 owner（C1）。部分唯一索引是硬约束，不是前端按钮。
+CREATE TABLE IF NOT EXISTS story_runs (
+    id               TEXT PRIMARY KEY,
+    owner_key        TEXT NOT NULL,
+    pet_key          TEXT NOT NULL,
+    pet_id           TEXT NOT NULL DEFAULT '',
+    pet_name         TEXT NOT NULL DEFAULT '',
+    script_title     TEXT NOT NULL,
+    script_brief     TEXT NOT NULL DEFAULT '',
+    script_source    TEXT NOT NULL DEFAULT 'ai',
+    track            TEXT NOT NULL DEFAULT '',
+    boss             TEXT NOT NULL DEFAULT '{}',
+    rationale        TEXT NOT NULL DEFAULT '',
+    queries          TEXT NOT NULL DEFAULT '[]',
+    selection_source TEXT NOT NULL DEFAULT 'ai',
+    seed             INTEGER NOT NULL DEFAULT 0,
+    gap              REAL NOT NULL DEFAULT 0,
+    chapter_count    INTEGER NOT NULL DEFAULT 3,
+    scene_id         TEXT NOT NULL DEFAULT 'prologue',
+    ink_state        TEXT NOT NULL DEFAULT '',
+    vars             TEXT NOT NULL DEFAULT '{}',
+    visited          TEXT NOT NULL DEFAULT '[]',
+    history          TEXT NOT NULL DEFAULT '[]',
+    rollback         TEXT NOT NULL DEFAULT '',
+    route            TEXT NOT NULL DEFAULT '',
+    ending           TEXT NOT NULL DEFAULT '',
+    status           TEXT NOT NULL DEFAULT 'active',
+    step             INTEGER NOT NULL DEFAULT 0,
+    created_at       REAL NOT NULL,
+    updated_at       REAL NOT NULL,
+    closed_at        REAL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_story_active ON story_runs(owner_key) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS idx_story_owner ON story_runs(owner_key, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS story_saves (
+    id         TEXT PRIMARY KEY,
+    run_id     TEXT NOT NULL,
+    slot       INTEGER NOT NULL,
+    scene_id   TEXT NOT NULL,
+    vars       TEXT NOT NULL,
+    visited    TEXT NOT NULL,
+    ink_state  TEXT NOT NULL DEFAULT '',
+    created_at REAL NOT NULL,
+    UNIQUE (run_id, slot)
+);
+
+CREATE TABLE IF NOT EXISTS story_endings (
+    id          TEXT PRIMARY KEY,
+    owner_key   TEXT NOT NULL,
+    ending_id   TEXT NOT NULL,
+    run_id      TEXT NOT NULL,
+    title       TEXT NOT NULL DEFAULT '',
+    unlocked_at REAL NOT NULL,
+    UNIQUE (owner_key, ending_id)
+);
 """
 
 

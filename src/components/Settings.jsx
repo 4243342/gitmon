@@ -189,6 +189,17 @@ export default function Settings({
                 {t('抽卡时给仓库做品质评测所用的模型。粘贴一枚 API Key 即自动识别厂商并拉取其模型列表供下拉选择；不配置则使用服务端默认通道。',
                    'Model used to rate repos when drawing cards. Paste an API Key to auto-detect the vendor and load its model list; leave unconfigured to use the server default.')}
               </p>
+              {/* 深度审计作为独立设置项（默认开），不藏在 BYOK 面板里 */}
+              <Row
+                label={t('深度审计（2–5 分钟）', 'Deep Audit (2–5 min)')}
+                hint={t('真实扫仓 · 里程碑弹幕 · 等级进化演出；关闭则退回即时推测', 'Real repo scan · milestone barrage · level-up evolution; off falls back to instant guesses')}
+              >
+                <Toggle
+                  on={llmConfig.deepAudit !== false}
+                  ariaLabel={t('深度审计开关', 'Toggle deep audit')}
+                  onClick={() => onLLMConfigChange({ ...llmConfig, deepAudit: llmConfig.deepAudit === false })}
+                />
+              </Row>
               <AdvancedPanel
                 config={llmConfig}
                 onConfigChange={onLLMConfigChange}
@@ -199,8 +210,6 @@ export default function Settings({
                 bindState={bindState}
                 bindError={bindError}
                 onBind={onBind}
-                deepAudit={llmConfig.deepAudit !== false}
-                onDeepAuditChange={(v) => onLLMConfigChange({ ...llmConfig, deepAudit: v })}
               />
             </div>
           )}

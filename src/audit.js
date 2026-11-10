@@ -119,7 +119,7 @@ function milestonePlan(snap) {
       step: 1,
       title: t('M1 发现属性', 'M1 Discover element'),
       gain: 1,
-      popup: { kind: 'element', name: guess.element?.name || '未知', sub: top ? `${top.name} ${top.pct.toFixed(0)}%` : t('语言构成未知', 'Language mix unknown') },
+      popup: { kind: 'element', name: `${guess.element?.name || t('未知', 'unknown')} · ${t('勘测预览', 'survey preview')}`, sub: top ? `${top.name} ${top.pct.toFixed(0)}%` : t('语言构成未知', 'Language mix unknown') },
       barrages: [
         top ? t(`语言构成：${top.name} 占 ${top.pct.toFixed(0)}%`, `Language mix: ${top.name} ${top.pct.toFixed(0)}%`) : t('语言构成读取失败', 'Language mix unreadable'),
         t('元素反应已确认', 'Elemental reaction confirmed'),
@@ -162,14 +162,15 @@ function milestonePlan(snap) {
   ]
 }
 
-// 抓取失败的降级计划：全部文案改口「模型推测」，不加级（真实感不能靠编）
+// 抓取失败的降级计划：文案改口「模型推测」，但等级节拍照常推进——
+// 终值仍由模型给，中途 1→9 的勘测是演出骨架，停着不动会让等级/进化动画整体消失。
 function fallbackPlan(reason) {
   return [
     { step: 0, title: t('M0 连接仓库', 'M0 Connect repo'), gain: 0, barrages: [t(`真实审计受阻：${reason}`, `Real audit blocked: ${reason}`), t('转为模型推测模式', 'Switching to model guess mode')] },
-    { step: 1, title: t('M1 发现属性', 'M1 Discover element'), gain: 0, barrages: [t('属性改由模型推测', 'Element left to model guess')] },
-    { step: 2, title: t('M2 生态位', 'M2 Ecological niche'), gain: 0, barrages: [t('种族改由模型推测', 'Species left to model guess')] },
-    { step: 3, title: t('M3 工程量勘测', 'M3 Scale survey'), gain: 0, barrages: [t('工程量改由模型推测', 'Scale left to model guess')] },
-    { step: 4, title: t('M4 质量检验', 'M4 Quality check'), gain: 0, barrages: [t('品质证据缺失，模型按知识给估值', 'Quality evidence missing; model estimates from knowledge')] },
+    { step: 1, title: t('M1 发现属性', 'M1 Discover element'), gain: 1, barrages: [t('属性改由模型推测', 'Element left to model guess')] },
+    { step: 2, title: t('M2 生态位', 'M2 Ecological niche'), gain: 3, barrages: [t('种族改由模型推测', 'Species left to model guess')] },
+    { step: 3, title: t('M3 工程量勘测', 'M3 Scale survey'), gain: 3, barrages: [t('工程量改由模型推测', 'Scale left to model guess')] },
+    { step: 4, title: t('M4 质量检验', 'M4 Quality check'), gain: 1, barrages: [t('品质证据缺失，模型按知识给估值', 'Quality evidence missing; model estimates from knowledge')] },
   ]
 }
 
@@ -202,7 +203,7 @@ async function pace(ms, lines, emit, shouldSkip) {
  * @param {() => boolean} opts.shouldSkip  用户点了「跳过」→ 节拍归零
  * @returns {Promise<{data, snap, evidence, midLevel}>}
  */
-export async function runDeepAudit({ input, evaluate, onEvent, shouldSkip = () => false }) {
+export async function runDeepAudit({ input, evaluate, onEvent, shouldSkip = () => false, buildPreview = null }) {
   let seq = 0
   const emit = (ev) => onEvent({ seq: seq++, ...ev })
 
@@ -220,7 +221,7 @@ export async function runDeepAudit({ input, evaluate, onEvent, shouldSkip = () =
     emit({ kind: 'barrage', text: t('正在读取仓库元数据与文件树…', 'Reading repo metadata & file tree…') })
     snap = await scanRepo(input)
     emit({ kind: 'barrage', text: snap.cached ? t('命中快照缓存，直接开卷', 'Snapshot cache hit — fast track') : t('档案已调取', 'Archive retrieved') })
-    // 预览宠物入流（舞台先捏好形态，M1 属性弹窗时才显形）
+    // 预览宠物入流（舞台先捏好形态，M1 属性弹窗时才显形；M5 会用模型定稿覆盖）
     const previewPet = previewPetOf(snap)
     if (previewPet) emit({ kind: 'spawn', pet: previewPet })
   } catch (e) {
@@ -256,6 +257,18 @@ export async function runDeepAudit({ input, evaluate, onEvent, shouldSkip = () =
   emit({ kind: 'barrage', text: t('评测官正在落章…', 'The rater is stamping…') })
   emit({ kind: 'milestone', step: 5, title: t('M5 模型总评', 'M5 Model verdict') })
   const data = await evalP
+  // M5 定稿：高级模式的属性/种族由模型给，和前面本地规则引擎的「勘测预览」可能不同。
+  // 这里用模型结果重新显形一次，保证舞台上看到的物种 = 最终卡面（抓取失败时也靠它补形态）。
+  if (typeof buildPreview === 'function') {
+    try {
+      const preview = buildPreview(data)
+      if (preview) {
+        emit({ kind: 'popup', kindOf: 'element', name: `${preview.element?.name || ''} · ${t('模型定稿', 'model verdict')}`, sub: preview.species?.name || '' })
+        emit({ kind: 'spawn', pet: preview })
+        await sleep(700) // 留一拍给「显形 → 进化」的过渡
+      }
+    } catch { /* 预览失败不影响出卡 */ }
+  }
   // 终场等级：审计台内直接滚到模型终值（等级与勘测同步动，不再等撕卡才炸出来）
   const parsed = Math.round(Number(data?.evaluation?.level))
   const finalLevel = Number.isFinite(parsed) && parsed > 0 ? Math.max(parsed, level) : level

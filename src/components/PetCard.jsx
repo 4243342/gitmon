@@ -41,10 +41,13 @@ export default function PetCard({ pet, revealed = false }) {
   //（原库由 Svelte 弹簧驱动；这里等价换算，离开时回中）。
   // 事件挂内容层原生监听：材质叠层 pointer-events:none，命中测试永远落回内容层；
   // pointerleave 不冒泡，挂到实际命中元素上最稳，不依赖 React 对 pointerout 的派生。
+  // 陀螺仪一旦给出数据，指针跟随就让位，避免触屏拖动和重力感应互相打架。
+  const gyroRef = useRef(false)
   useEffect(() => {
     const hit = contentRef.current
     if (!hit) return
     const move = (e) => {
+      if (gyroRef.current) return
       const el = rootRef.current
       if (!el) return
       const rect = el.getBoundingClientRect()
@@ -75,6 +78,88 @@ export default function PetCard({ pet, revealed = false }) {
     return () => {
       hit.removeEventListener('pointermove', move)
       hit.removeEventListener('pointerleave', leave)
+    }
+  }, [])
+
+  // 移动端：陀螺仪微旋转。手机倾斜时驱动同一组 pokemon-cards-css 变量（与桌面指针跟随二选一），
+  // 幅度限制在 ±6°，只做轻微视差，不晃眼。iOS 需要用户手势里申请权限，安卓首次触摸后自动生效。
+  useEffect(() => {
+    const el = rootRef.current
+    if (!el) return
+    if (typeof window === 'undefined') return
+    if (!window.matchMedia?.('(pointer: coarse)').matches) return
+    if (typeof window.DeviceOrientationEvent === 'undefined') return
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+
+    let raf = 0
+    let baseline = null
+    let running = false
+    let latest = null
+
+    const apply = () => {
+      raf = 0
+      if (!latest) return
+      const { beta, gamma } = latest
+      latest = null
+      if (baseline == null) baseline = Math.min(75, Math.max(20, beta))
+      const gx = Math.max(-1, Math.min(1, gamma / 30))
+      const gy = Math.max(-1, Math.min(1, (beta - baseline) / 20))
+      gyroRef.current = true
+      const px = 50 - gx * 24
+      const py = 50 + gy * 20
+      const set = (k, v) => el.style.setProperty(k, v)
+      set('--pointer-x', `${Math.round(px)}%`)
+      set('--pointer-y', `${Math.round(py)}%`)
+      set('--pointer-from-center', String(Math.min(1, Math.hypot(px - 50, py - 50) / 50)))
+      set('--pointer-from-top', String(py / 100))
+      set('--pointer-from-left', String(px / 100))
+      set('--rotate-x', `${(-gx * 6).toFixed(1)}deg`)
+      set('--rotate-y', `${(gy * 6).toFixed(1)}deg`)
+      set('--background-x', `${37 + (px / 100) * 26}%`)
+      set('--background-y', `${33 + (py / 100) * 34}%`)
+      set('--mx', `${Math.round(px)}%`)
+      set('--my', `${Math.round(py)}%`)
+    }
+
+    const onOrient = (e) => {
+      if (e.beta == null || e.gamma == null) return
+      latest = { beta: e.beta, gamma: e.gamma }
+      if (!raf) raf = requestAnimationFrame(apply)
+    }
+
+    const start = () => {
+      if (running) return
+      running = true
+      window.addEventListener('deviceorientation', onOrient, true)
+    }
+
+    const requestAndStart = () => {
+      const DOE = window.DeviceOrientationEvent
+      if (typeof DOE.requestPermission === 'function') {
+        DOE.requestPermission()
+          .then((state) => { if (state === 'granted') start() })
+          .catch(() => {}) // 用户拒绝或非安全上下文：保持指针跟随（触屏上即静止）
+      } else {
+        start()
+      }
+    }
+
+    const onFirstTouch = () => {
+      el.removeEventListener('pointerdown', onFirstTouch)
+      requestAndStart()
+    }
+    el.addEventListener('pointerdown', onFirstTouch, { passive: true })
+    // 没有 requestPermission 的浏览器（安卓）直接监听；拿不到数据就静默不动
+    if (typeof window.DeviceOrientationEvent.requestPermission !== 'function') requestAndStart()
+
+    const onOrientChange = () => { baseline = null }
+
+    window.addEventListener('orientationchange', onOrientChange)
+    return () => {
+      el.removeEventListener('pointerdown', onFirstTouch)
+      window.removeEventListener('deviceorientation', onOrient, true)
+      window.removeEventListener('orientationchange', onOrientChange)
+      if (raf) cancelAnimationFrame(raf)
     }
   }, [])
 

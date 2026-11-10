@@ -382,6 +382,7 @@ AI 模式「真实审计 2–5 分钟」演出（中央光团 → 属性确定�
 | 进化序列时间轴 | [greensock/GSAP](https://github.com/greensock/GSAP) ⭐约26.4k | timeline 分段编排思路 → 进化演出拆成「白闪 → 形态切换 → 阶段名定格 → 自收」四拍串行 | 跨阶检测 + 演出自收两段 effect | 附带标准（免费使用，仅转售受限） |
 | 演出节拍编排 | [juliangarnier/anime](https://github.com/juliangarnier/anime) ⭐约70k | timeline + stagger 的多阶段动画编排思路 → 里程碑节拍控制器 | `AuditStage.jsx` 节拍调度 | MIT |
 | 弹窗进出场 | [motiondivision/motion](https://github.com/motiondivision/motion) ⭐约32k（原 framer-motion） | 发现属性 / 种族判定弹窗的 spring 进出场节奏 | 弹窗组件 | MIT |
+| 光团灵体化 | [jolaleye/cssfx](https://github.com/jolaleye/cssfx) ⭐约6.1k | 纯 CSS 辉光特效的多层渐变组合思路 → 勘测初始光团重做为虚幻灵体能量球：冰蓝紫多层径向内核 + conic 幻彩能量流环绕 + 模糊灵雾漂移 + 3D 倾斜虚线轨道 + 星尘上浮（氛围取意表一 tsParticles，纯 CSS 实现零依赖） | `src/audit.css` `.audit-orb` 光团（haze / core / orbit / 双环 / 四粒星尘） | MIT |
 
 > 进化与里程碑的礼花闪光不新增来源，复用表一已在用的 tsParticles；弹窗皮肤复用 Kenney Pixel UI。
 
@@ -441,9 +442,54 @@ AI 模式「真实审计 2–5 分钟」演出（中央光团 → 属性确定�
 
 ---
 
+## 剧情模式：开源组件选型
+
+剧情模式（[`docs/STORY.md`](docs/STORY.md)）的原则是**能直接套的通用件就不自研**。下表为已落地的选型，
+依赖已安装，许可证见 [`THIRD-PARTY.md`](THIRD-PARTY.md)。
+
+| 环节 | 选型 | 版本 / 协议 | 套用方式 |
+|---|---|---|---|
+| 场景图运行时（节点、选项、变量、条件） | [inkjs](https://github.com/y-lohse/inkjs) | 2.4.0 / MIT | **直接依赖**：路线写在 [`src/story/story.ink`](src/story/story.ink)，`npm run story:build` 编译成 `story.json`，浏览器端由 inkjs 执行 |
+| 存档 / 回滚 | inkjs `state.ToJson()` / `LoadJson()` | 同上 | **直接用**：快照写入 `story_runs.ink_state` 与 `story_saves` |
+| 内容结构校验 | [ajv](https://github.com/ajv-validator/ajv) | 8.20 / MIT | **直接依赖**：构建期校验 `characters.json` / `lines.json`，缺 fallback、缺角色直接报错 |
+| 台词实时生成 | 自研 [`src/llm.js`](src/llm.js) + 后端代理 | — | 经 ink 的 `EXTERNAL say(key)` 回注；模型超时走 `lines.json` 的 fallback |
+| Boss 检索 | 自研 [`src/scan.js`](src/scan.js) + GitHub Search | — | 模型出检索条件，后端执行；断网退内置池 |
+| 剧情 UI（对话框 / 立绘 / 选项） | 自研 [`src/components/StoryMode.jsx`](src/components/StoryMode.jsx) | — | 仅参考 [Monogatari](https://github.com/Monogatari/monogatari) 的 JSON 结构 |
+| 短剧节拍库 | 自建 | — | 无可引用的高星中文库 |
+
+取舍说明：
+
+- **不整套引入 Monogatari**：它把剧本、UI、存档全包了，会替换掉现有大厅、卡面与像素风；只取 headless 的 inkjs 运行时
+- **不引入 json-logic-js**：条件与变量改用 ink 原生语法后，自研求值器与它一起省掉
+- 动态章节数（差距越大关卡越多）用 ink 的循环 knot 表达，不需要额外引擎
+
+代码入口：
+
+| 文件 | 职责 |
+|---|---|
+| [`src/story/story.ink`](src/story/story.ink) | 离线路线唯一真相源：场景、选项、变量、战斗分支、多结局 |
+| [`src/story/runtime.js`](src/story/runtime.js) | inkjs 运行时：场景渲染、选项、存档快照、战斗后跳转 |
+| [`scripts/story-build.mjs`](scripts/story-build.mjs) | 编译 `.ink` → `story.json` / `story-data.js`，并用 ajv 做内容校验 |
+| [`src/components/StoryMode.jsx`](src/components/StoryMode.jsx) | 选主角 → 选 Boss → 选剧本 → 场景 / 战斗 / 存档 |
+| [`backend/gitmon_api/story.py`](backend/gitmon_api/story.py) | 检索、剧本、建线、状态裁决、结局收集 |
+
+```bash
+npm run story:build   # 改完 .ink 后重新编译 + 校验（vite build 前会自动跑）
+npm run test:story    # 路线自检：选项 / 变量 / 章节数 / 存档回滚 / 多结局
+```
+
+
+---
+
 ## 设计文档
 
-完整的产品设计（判定公式、玩法数值、架构、竞品分析）见 [`docs/DESIGN.md`](docs/DESIGN.md)。
+| 文档 | 内容 |
+|---|---|
+| [`docs/DESIGN.md`](docs/DESIGN.md) | 产品设计：判定公式、玩法数值、架构、竞品分析 |
+| [`docs/STORY.md`](docs/STORY.md) | 剧情模式：单线约束、Boss/剧本选择、galgame 场景图、离线路线 + 实时文本、组件选型 |
+| [`docs/QUEST.md`](docs/QUEST.md) | 任务模式：AI 指出代码问题 → 玩家修复 → 复审发奖 |
+| [`docs/BATTLE.md`](docs/BATTLE.md) | 对战机制：伤害公式、属性表、与 Showdown 的对拍 |
+| [`docs/SSOT.md`](docs/SSOT.md) | 前后端同步契约：SQLite 为唯一真相源 |
 
 ---
 

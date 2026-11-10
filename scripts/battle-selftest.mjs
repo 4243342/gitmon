@@ -54,8 +54,10 @@ const pets = rivalPets()
 console.log(`内置对手 ${pets.length} 只：${pets.map((p) => `${p.repo}(Lv${p.level})`).slice(0, 6).join(' ')}…`)
 for (const pet of pets) {
   const unit = toCombatant(pet)
-  // HP 随等级增长：只需落在「该等级理论最大值」之内（旧断言的 <400 是固定等级时代的残留）
-  check(`${pet.repo} HP 合理`, unit.maxHp > 60 && unit.maxHp <= statCapAtLevel(pet.level, true), String(unit.maxHp))
+  // HP 上限是「无词条理论最大值」；词条按百分比加成，允许在基准上限之上浮动
+  const hpBonus = (pet.traits || []).reduce((a, t) => a + (t.effect?.statsPct || 0) + (t.effect?.HP || 0), 0)
+  const hpCap = Math.round(statCapAtLevel(pet.level, true) * (1 + hpBonus / 100))
+  check(`${pet.repo} HP 合理`, unit.maxHp > 60 && unit.maxHp <= hpCap, String(unit.maxHp))
   check(`${pet.repo} 四技能`, unit.moves.length === 4)
   check(`${pet.repo} 技能已解锁标记`, unit.moves.filter((m) => m.unlocked).length >= 2)
 }

@@ -2,6 +2,24 @@
 
 本项目引入的第三方代码及其许可证。除下表所列，其余代码均为本项目自研（MIT，见 `LICENSE`）。
 
+## inkjs（ink 剧情脚本运行时）
+
+- 来源：<https://github.com/y-lohse/inkjs>（通过 `npm i inkjs` 引入，v2.4.0）
+- 许可证：MIT，Copyright (c) Yannick Lohse（ink 原作者 inkle 亦为 MIT）
+- 引入方式：**运行时直接依赖**。`src/story/runtime.js` 用 `Story` 执行编译后的剧情 JSON，`story.state.ToJson()` / `LoadJson()` 直接用于存档与回滚；`scripts/story-build.mjs` 在构建期用 `inkjs/compiler/Compiler` 把 `src/story/story.ink` 编译成 `story.json` / `story-data.js`。
+- 使用范围：剧情模式（`docs/STORY.md`）。路线、选项、变量、战斗分支、多结局全部由 ink 脚本表达；本项目只实现台词生成、战斗与 UI。
+
+完整许可证文本见 <https://github.com/y-lohse/inkjs/blob/master/LICENSE.md>。
+
+## ajv（JSON Schema 校验）
+
+- 来源：<https://github.com/ajv-validator/ajv>（通过 `npm i ajv` 引入，v8.20.0）
+- 许可证：MIT，Copyright (c) Evgeny Poberezkin
+- 引入方式：**构建期依赖**。`scripts/story-build.mjs` 用 ajv 校验 `src/story/characters.json` 与 `src/story/lines.json`（角色字段、台词 fallback 的完整性与长度），校验失败直接中断构建，不进入浏览器包体。
+- 使用范围：剧情内容库的结构校验，对应设计文档「结构错误必须在启动时暴露」。
+
+完整许可证文本见 <https://github.com/ajv-validator/ajv/blob/master/LICENSE>。
+
 ## pokemon-cards-css（卡面全息材质库）
 
 - 来源：<https://github.com/simeydotme/pokemon-cards-css>（npm 包已下架，2022 年后不再发布，故从 GitHub 直接 vendor）

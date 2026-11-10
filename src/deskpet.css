@@ -1,0 +1,219 @@
+/* 页面内桌宠：右下角站桩 + 待机动画（spec: docs/superpowers/specs/2026-11-10-desktop-pet-design.md）
+   层级：高于顶栏(40)，低于全屏弹层(adv-backdrop 90 / modal 95+) */
+
+.deskpet {
+  position: fixed;
+  right: 16px;
+  bottom: 14px;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.deskpet-body {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: grab;
+  line-height: 0;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .4));
+  transition: transform .15s ease;
+  touch-action: none; /* 指针拖动不被页面滚动抢走 */
+}
+.deskpet-body:hover { transform: scale(1.06); }
+.deskpet-body:active { transform: scale(.96); }
+
+/* 拖动中：抓手光标、冻结浮动动画（避免动画与手动位移打架） */
+.deskpet.dragging .deskpet-body { cursor: grabbing; transition: none; }
+.deskpet.dragging .sprite-float,
+.deskpet.dragging .sprite { animation: none !important; }
+.deskpet.dragging .deskpet-bubble { display: none; }
+
+/* 点击轻跳（hop）：先压扁再弹起，落回带一点回弹 */
+.deskpet.hop .deskpet-body { animation: deskpet-hop .6s ease; }
+@keyframes deskpet-hop {
+  0%   { transform: translateY(0) scale(1, 1); }
+  18%  { transform: translateY(2px) scale(1.1, .85); }
+  45%  { transform: translateY(-16px) scale(.95, 1.08); }
+  75%  { transform: translateY(0) scale(1.05, .95); }
+  100% { transform: translateY(0) scale(1, 1); }
+}
+
+.deskpet-close {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--dim);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .15s ease;
+  z-index: 1;
+}
+.deskpet:hover .deskpet-close { opacity: 1; }
+.deskpet-close:hover { color: var(--accent); border-color: var(--accent); }
+
+/* 待机/互动冒泡：贴在桌宠头顶，右对齐，带小尾巴 */
+.deskpet-bubble {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  right: 0;
+  max-width: 216px;
+  padding: 7px 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px 12px 3px 12px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: right;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .35);
+  pointer-events: none;
+  animation: deskpet-pop .18s ease;
+}
+.deskpet-bubble::after {
+  content: '';
+  position: absolute;
+  right: 10px;
+  top: 100%;
+  border: 6px solid transparent;
+  border-top-color: var(--line);
+}
+@keyframes deskpet-pop {
+  from { opacity: 0; transform: translateY(4px) scale(.94); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* 收起后的角落小球（点开还原） */
+.deskpet-ball {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 80;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, .5);
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, .45);
+  animation: floaty 3s ease-in-out infinite; /* 与精灵待机同一呼吸节奏 */
+  transition: transform .15s ease;
+}
+.deskpet-ball:hover { transform: scale(1.15); }
+
+/* 精灵仓库 hero 标题行的「桌宠上任」选择框（spec §2 修订） */
+.hero-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.deskpet-picker {
+  position: relative; /* 卡片条锚定在徽章下方 */
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  flex-wrap: wrap;
+}
+.deskpet-picker-label {
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--dim);
+}
+
+/* 当前桌宠徽章（代替原下拉框） */
+.deskpet-current {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 6px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color .15s ease;
+}
+.deskpet-current:hover,
+.deskpet-current[aria-expanded='true'] { border-color: var(--accent); }
+.deskpet-current b { font-weight: 600; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deskpet-current i { font-style: normal; color: var(--dim); }
+.deskpet-caret { color: var(--dim); font-size: 10px; transition: transform .15s ease; }
+.deskpet-caret.up { transform: rotate(180deg); }
+
+/* 剧情进行中：桌宠锁定徽标（C2） */
+.deskpet-lock {
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: .1em;
+  padding: 2px 6px;
+  border-radius: 5px;
+  color: #ffcb05;
+  border: 1px solid rgba(255, 203, 5, .45);
+  background: rgba(255, 203, 5, .12);
+}
+
+/* 卡片条：横向滚动的迷你卡列表
+   Portal 到 body + fixed 定位（top/right 由 JS 按徽章位置写入），
+   脱离 hero 的 clip-path / overflow:hidden 裁剪 */
+.deskpet-cards {
+  position: fixed;
+  z-index: 70;
+  display: flex;
+  gap: 8px;
+  max-width: min(92vw, 720px);
+  padding: 10px;
+  overflow-x: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .45);
+  animation: deskpet-pop .16s ease;
+}
+.deskpet-card {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 88px;
+  padding: 14px 6px 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  cursor: pointer;
+  transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease;
+}
+.deskpet-card:hover { transform: translateY(-3px); border-color: var(--q-color, var(--accent)); }
+.deskpet-card.sel {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(255, 203, 5, .35), 0 0 14px rgba(255, 203, 5, .25);
+}
+.dc-q {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--q-color, var(--dim));
+}
+.dc-name {
+  max-width: 78px;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dc-meta { font-size: 10px; color: var(--dim); }

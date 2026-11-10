@@ -7,7 +7,6 @@ import '../advanced.css'
 export default function AdvancedPanel({
   config, onConfigChange, hint, onHintChange, onClearKey, busy,
   bindState = 'idle', bindError = '', gate = null, pingTesting = false, onBind, onClose,
-  deepAudit = true, onDeepAuditChange,
 }) {
   const { t: tf } = useI18n()
   const [showCustom, setShowCustom] = useState(false)
@@ -104,19 +103,7 @@ export default function AdvancedPanel({
         </div>
       )}
 
-      {/* 深度审计（docs/AI-AUDIT.md）：默认开——真实扫仓 + 里程碑弹幕 + 等级进化演出 */}
-      <label className="llm-deep" title={tf('开启后抽卡会先真实抓取仓库证据（2–5 分钟）：里程碑弹幕、属性/种族弹窗、等级从 Lv.1 滚到审计完成等级并触发进化；关闭则退回即时推测', 'When on, pulls first fetch real repo evidence (2–5 min): milestone barrage, attribute/species popups, level rolls from Lv.1 to the audited level and may evolve; off falls back to instant guesses')}>
-        <input
-          type="checkbox"
-          checked={deepAudit}
-          onChange={(e) => onDeepAuditChange?.(e.target.checked)}
-          disabled={busy}
-        />
-        <span className="llm-deep-text">
-          {tf('深度审计（2–5 分钟）', 'Deep Audit (2–5 min)')}
-          <em>{tf('真实扫仓 · 里程碑弹幕 · 等级进化演出', 'Real repo scan · milestone barrage · level-up evolution show')}</em>
-        </span>
-      </label>
+      {/* 深度审计开关已移至「设置 → 模型」（默认开），这里不再重复 */}
 
       <details className="llm-custom" open={showCustom} onToggle={(e) => setShowCustom(e.currentTarget.open)}>
         <summary>{tf('更多选项（可选）', 'More options (optional)')}</summary>

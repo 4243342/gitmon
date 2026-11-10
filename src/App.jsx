@@ -24,6 +24,10 @@ import Leaderboard from './components/Leaderboard.jsx'
 import AdvancedPanel from './components/AdvancedPanel.jsx'
 import AuditStage from './components/AuditStage.jsx'
 import Settings from './components/Settings.jsx'
+import DesktopPet from './components/DesktopPet.jsx'
+import DeskPetPicker from './components/DeskPetPicker.jsx'
+import StoryMode from './components/StoryMode.jsx'
+import { loadDesk, saveDesk, petKey } from './deskPet.js'
 import { finalRollDuration, runDeepAudit, buildEvidence } from './audit.js'
 import { bindWithLLM, clearLLMKey, evaluateWithLLM, loadLLMConfig, pingWithLLM, saveLLMConfig } from './llm.js'
 import { buildPetFromEvaluation } from './llmEval.js'
@@ -186,6 +190,16 @@ export default function App() {
   const [error, setError] = useState('')
   const [pet, setPet] = useState(null)
   const [collection, setCollection] = useState([])
+  // 桌宠（spec 2026-11-10-desktop-pet-design.md）：SSOT §1 轻 UI 状态，只存本地、不上云
+  const [desk, setDesk] = useState(loadDesk)
+  useEffect(() => saveDesk(desk), [desk])
+  // 所选宠被删除 → 静默回退图鉴第一只并改存（spec §4）；图鉴为空则不渲染
+  useEffect(() => {
+    if (!desk.on || !desk.key || !collection.length) return
+    if (!collection.some((p) => petKey(p) === desk.key)) {
+      setDesk((d) => ({ ...d, key: petKey(collection[0]) }))
+    }
+  }, [desk, collection])
   const [step, setStep] = useState(0)
   const [mode, setMode] = useState('repo') // repo | owner
   const [box, setBox] = useState(null)
@@ -199,6 +213,20 @@ export default function App() {
   const [battleChallenge, setBattleChallenge] = useState(null)
   // 排行榜「观摩」：只读展示对方仓库扫出来的卡面
   const [preview, setPreview] = useState(null) // null | {full, loading} | {full, pet} | {full, error}
+  // 剧情模式解锁条件弹层
+  const [storyGate, setStoryGate] = useState(false)
+  // 剧情进行中锁定的桌宠（C2）：结案 / 放弃后解锁
+  const [deskLock, setDeskLock] = useState(null)
+  const [storyNotice, setStoryNotice] = useState('')
+  // 剧情进行中：桌宠显示以 story_run.pet_key 为准（C2），本地选择被覆盖
+  const deskPet = desk.on && collection.length
+    ? (collection.find((p) => petKey(p) === (deskLock || desk.key)) || collection[0])
+    : null
+  useEffect(() => {
+    if (!storyNotice) return
+    const timer = setTimeout(() => setStoryNotice(''), 3200)
+    return () => clearTimeout(timer)
+  }, [storyNotice])
   const [muted, setMuted] = useState(sfx.muted)
   // 高级模式：自填 LLM，所有评测交给模型
   const [advanced, setAdvanced] = useState(false)
@@ -320,6 +348,21 @@ export default function App() {
     if (mine) setPet(mine)
   }
 
+  // 剧情结算：只给经验与升级，不计入竞技场战绩
+  const grantStoryXp = (target, xp) => {
+    if (!target || !xp) return
+    let exp = (target.exp || 0) + xp
+    let level = Number(target.level) || 1
+    while (level < 999 && exp >= expForLevel(level)) {
+      exp -= expForLevel(level)
+      level += 1
+    }
+    const recomputed = recomputePetStats(target, level)
+    const next = { ...target, ...recomputed, exp, level }
+    setCollection(upsertPet(loadCollection(), next))
+    markDirty(next)
+  }
+
   const fail = (e) => {
     setError(e.message || t('扫描失败，请检查地址', 'Scan failed, check the URL'))
     sfx.error()
@@ -371,7 +414,34 @@ export default function App() {
   const handleBind = () => {
     if (!llmConfig.apiKey?.trim() || aiBusy || bindState === 'binding') return
     setError('')
-    applyBinding(llmConfig).then((ok) => { if (ok) sfx.blip() })
+    applyBinding(llmConfig).then((next) => {
+      if (!next) return
+      sfx.blip()
+      // 识别成功后立刻做一次连接测试并进入高级模式：
+      // 否则用户看到「已识别」却没真正进高级版（高级竞技场 / 深度审计演出都不出现）。
+      if (!advanced) enableAdvanced(next)
+    })
+  }
+
+  // 连接测试 → 开启高级模式：手动点入口和绑定成功都走这一条，避免两套判定
+  async function enableAdvanced(cfg) {
+    setGateMsg(null)
+    setPingTesting(true)
+    try {
+      const r = await pingWithLLM({ config: cfg })
+      setAdvanced(true)
+      persistAiMode(true)
+      const sec = r.latencyMs != null ? ` ${(r.latencyMs / 1000).toFixed(1)}s` : ''
+      setGateMsg({ type: 'ok', text: t(`连接测试通过（${r.model}${sec}）· 高级模式已开启`, `Connection test passed (${r.model}${sec}) · Advanced mode on`) })
+      sfx.blip()
+      return true
+    } catch (e) {
+      setGateMsg({ type: 'err', text: t(`连接测试未通过：${e.message}`, `Connection test failed: ${e.message}`) })
+      sfx.error()
+      return false
+    } finally {
+      setPingTesting(false)
+    }
   }
 
   // 高级模式（深度评测）开启状态持久化：刷新 / 重启后密钥还在就自动恢复，
@@ -388,13 +458,17 @@ export default function App() {
     try { saved = localStorage.getItem('gitmon:ai-mode') === '1' } catch { /* noop */ }
     if (!saved) return
     if (llmConfig.apiKey?.trim() && llmConfig.binding) {
+      // 高级版默认态：会话恢复了密钥 + 绑定 → 自动回到高级模式（深度审计为高级版默认开）。
+      // 依赖 key/binding 而非仅挂载时跑一次：否则重粘密钥后这个检查永不重跑，
+      // advanced 一直为 false，抽卡退回普通扫描台、深度审计长演出消失。
       setAdvanced(true)
+      setGateMsg(null)
       return
     }
     // 上次开着、但本会话密钥没了（新标签页 / 隐私窗口）：说明原因并打开入口
     setGateMsg({ type: 'err', text: t('深度评测（AI高级版）的密钥只保存在本会话：重新粘贴 API Key，再点一次右上「AI高级版入口」即可恢复', 'The Deep Eval (AI Pro) key only lives in this session: paste your API Key again, then click “AI Pro Access” top-right to restore it') })
     if (guestSkipped() || cachedProfile()?.authenticated) setAdvOpen(true)
-  }, [])
+  }, [llmConfig.apiKey, llmConfig.binding])
 
   // AI 入口：开启前必须先过连接测试（真打一次 chat/completions），
   // 绑定只验证过 /models 能列出模型，不能保证评测链路真的能通。
@@ -417,21 +491,7 @@ export default function App() {
       sfx.error()
       return
     }
-    setGateMsg(null)
-    setPingTesting(true)
-    try {
-      const r = await pingWithLLM({ config: cfg })
-      setAdvanced(true)
-      persistAiMode(true)
-      const sec = r.latencyMs != null ? ` ${(r.latencyMs / 1000).toFixed(1)}s` : ''
-      setGateMsg({ type: 'ok', text: t(`连接测试通过（${r.model}${sec}）· 高级模式已开启`, `Connection test passed (${r.model}${sec}) · Advanced mode on`) })
-      sfx.blip()
-    } catch (e) {
-      setGateMsg({ type: 'err', text: t(`连接测试未通过：${e.message}`, `Connection test failed: ${e.message}`) })
-      sfx.error()
-    } finally {
-      setPingTesting(false)
-    }
+    await enableAdvanced(cfg)
   }
 
   // 高级模式：不调 GitHub/Gitee API，也不跑 judge() —— 评测整体交给模型
@@ -475,6 +535,13 @@ export default function App() {
           evaluate: (evidence) => evaluateWithLLM({ repo: input, config: cfg, hint: llmHint, platform, evidence }),
           onEvent: (ev) => setAuditEvents((prev) => [...prev, ev]),
           shouldSkip: () => auditSkipRef.current,
+          // 抓取失败时的兜底形态：拿模型评测结果先捏一只，显形与进化照演
+          buildPreview: (d) => buildPetFromEvaluation(d.evaluation, {
+            input, platform, hint: llmHint,
+            model: d.meta?.model || cfg.model,
+            warnings: d.meta?.warnings || [],
+            binding: cfg.binding,
+          }),
         })
         const { data, snap, midLevel, finalLevel } = result
         const next = buildPetFromEvaluation(data.evaluation, {
@@ -546,19 +613,56 @@ export default function App() {
     }
     setRevalError('')
     setRevalBusy(true)
+    const backView = view
+    // 高级模式 + 深度审计：重新鉴定也走一次挖掘演出（AuditStage），不再只有按钮文字在转
+    const withShow = advanced && cfg.deepAudit !== false
     try {
       const input = pet.fullName
-      // 深度审计开着时，重新鉴定同样带真实抓取证据（耗时藏在「鉴定中…」后面）
-      let evidence = null
-      if (llmConfig.deepAudit !== false) {
+      let data
+      if (withShow) {
+        auditSkipRef.current = false
+        setAuditEvents([])
+        setView('scan')
         try {
-          const snap = await scanRepo(input, { fresh: false })
-          evidence = buildEvidence(snap, '')
-        } catch { evidence = null /* 抓取失败退回纯推测 */ }
+          const result = await runDeepAudit({
+            input,
+            evaluate: (evidence) => evaluateWithLLM({
+              repo: input, config: cfg, hint: llmHint, platform: pet.platform || 'github', evidence,
+            }),
+            onEvent: (ev) => setAuditEvents((prev) => [...prev, ev]),
+            shouldSkip: () => auditSkipRef.current,
+            buildPreview: (d) => buildPetFromEvaluation(d.evaluation, {
+              input, platform: pet.platform || 'github', hint: llmHint,
+              model: d.meta?.model || cfg.model,
+              warnings: d.meta?.warnings || [],
+              binding: cfg.binding,
+            }),
+          })
+          data = result.data
+          // 等审计台把终场等级滚完（含跨阶进化演出）再回原页面：
+          // 立刻 setView 会把舞台卸载，等级滚动和进化动画等于没有。
+          if (!auditSkipRef.current) {
+            const wait = result.finalLevel > result.midLevel
+              ? finalRollDuration(result.midLevel, result.finalLevel) + 550
+              : 350
+            await new Promise((r) => setTimeout(r, wait))
+          }
+        } finally {
+          setView(backView)
+        }
+      } else {
+        // 深度审计关了：仍然带一次真实抓取的证据（耗时藏在「评测中…」后面）
+        let evidence = null
+        if (llmConfig.deepAudit !== false) {
+          try {
+            const snap = await scanRepo(input, { fresh: false })
+            evidence = buildEvidence(snap, '')
+          } catch { evidence = null /* 抓取失败退回纯推测 */ }
+        }
+        data = await evaluateWithLLM({
+          repo: input, config: cfg, hint: llmHint, platform: pet.platform || 'github', evidence,
+        })
       }
-      const data = await evaluateWithLLM({
-        repo: input, config: cfg, hint: llmHint, platform: pet.platform || 'github', evidence,
-      })
       const built = buildPetFromEvaluation(data.evaluation, {
         input,
         platform: pet.platform || 'github',
@@ -782,7 +886,7 @@ export default function App() {
   }
 
   // 顶栏左上角全局返回：按当前页智能回退到上一页
-  const SUBVIEWS = ['scan', 'box', 'pack', 'reveal', 'detail', 'battle', 'training', 'leaderboard', 'settings', 'warehouse']
+  const SUBVIEWS = ['scan', 'box', 'pack', 'reveal', 'detail', 'battle', 'training', 'leaderboard', 'settings', 'warehouse', 'story']
   const backTarget = (() => {
     switch (view) {
       case 'reveal': return box ? 'box' : 'home'
@@ -818,8 +922,16 @@ export default function App() {
     setPet(null)
   }
 
+  // 剧情模式：C3 = 已绑定模型 + 至少一只 AI 认证精灵（不再看 advanced 开关）
+  const storyCast = collection.filter((p) => p.aiEvaluated)
+  const storyBinding = Boolean(llmConfig?.binding) && llmConfig.binding.verified !== false
+  const storyReady = storyBinding && storyCast.length > 0
+
   return (
     <div className="app">
+      {storyNotice && (
+        <button className="story-toast" onClick={() => setStoryNotice('')}>{storyNotice}</button>
+      )}
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand" onClick={reset}>
@@ -877,12 +989,6 @@ export default function App() {
                       bindError={bindError}
                       gate={gateMsg}
                       pingTesting={pingTesting}
-                      deepAudit={llmConfig.deepAudit !== false}
-                      onDeepAuditChange={(next) => {
-                        const nextCfg = { ...llmConfig, deepAudit: next }
-                        setLLMConfig(nextCfg)
-                        saveLLMConfig(nextCfg)
-                      }}
                       onBind={handleBind}
                       onClose={() => setAdvOpen(false)}
                     />
@@ -974,6 +1080,13 @@ export default function App() {
                 <button className="ghost-btn" onClick={() => setView('battle')} disabled={collection.length === 0}>
                   {t('进入竞技场', 'Enter Arena')}
                 </button>
+                <button
+                  className="ghost-btn"
+                  onClick={() => { if (storyReady) { sfx.swoosh(); setView('story') } else { sfx.blip(); setStoryGate(true) } }}
+                  title={t('查看剧情模式进入条件', 'See Story Mode requirements')}
+                >
+                  {t('进入剧情模式', 'Enter Story Mode')}
+                </button>
               </div>
               {advanced && (
                 <div className="input-row account-adv-row">
@@ -1019,6 +1132,15 @@ export default function App() {
               />
               <button onClick={run} disabled={aiBusy}>
                 {aiBusy ? t('模型评测中…', 'Model evaluating…') : advanced ? t('让模型评测并抽卡', 'Evaluate & Draw') : t('抽卡', 'Draw')}
+              </button>
+            </div>
+            <div className="account-actions" style={{ marginTop: 10 }}>
+              <button
+                className="ghost-btn"
+                onClick={() => { if (storyReady) { sfx.swoosh(); setView('story') } else { sfx.blip(); setStoryGate(true) } }}
+                title={t('查看剧情模式进入条件', 'See Story Mode requirements')}
+              >
+                {t('进入剧情模式', 'Enter Story Mode')}
               </button>
             </div>
             {error && <p className="error">! {error}</p>}
@@ -1120,6 +1242,62 @@ export default function App() {
         </main>
       )}
 
+      {/* 剧情模式解锁条件：点入口先看条件，满足后可直接进入 */}
+      {storyGate && (
+        <>
+          <div className="preview-backdrop" onClick={() => setStoryGate(false)} />
+          <div className="preview-pop" role="dialog" aria-label={t('剧情模式进入条件', 'Story Mode requirements')}>
+            <div className="preview-head">
+              <span className="preview-title">{t('剧情模式 · 进入条件', 'Story Mode · Requirements')}</span>
+              <button className="preview-close" onClick={() => setStoryGate(false)}>{t('✕ 关闭', '✕ Close')}</button>
+            </div>
+            <ul className="story-gate-list">
+              <li>
+                <span className={storyBinding ? 'ok' : 'no'}>{storyBinding ? '✓' : '✗'}</span>
+                <span>{t('账号已绑定模型（高级模式可用）', 'A model is bound to this account')}</span>
+              </li>
+              <li>
+                <span className={storyCast.length ? 'ok' : 'no'}>{storyCast.length ? '✓' : '✗'}</span>
+                <span>
+                  {t(`拥有至少一只 AI 认证精灵（当前 ${storyCast.length} 只）`, `At least one AI-certified pet (currently ${storyCast.length})`)}
+                </span>
+              </li>
+            </ul>
+            <p className="preview-note">
+              {storyReady
+                ? t('条件已满足，可以进入剧情模式。', 'All requirements met — you can enter.')
+                : t('两项都满足后即可进入剧情模式。', 'Meet both requirements to enter Story Mode.')}
+            </p>
+            <div className="account-actions">
+              {storyReady && (
+                <button className="primary-btn" onClick={() => { setStoryGate(false); sfx.swoosh(); setView('story') }}>
+                  {t('进入剧情模式', 'Enter Story Mode')}
+                </button>
+              )}
+              {!storyBinding && (
+                <button className="primary-btn" onClick={() => { setStoryGate(false); setAdvOpen(true) }}>
+                  {t('去绑定模型', 'Bind a model')}
+                </button>
+              )}
+              <button className="ghost-btn" onClick={() => setStoryGate(false)}>{t('知道了', 'Got It')}</button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {view === 'story' && (
+        <StoryMode
+          pets={collection}
+          llmConfig={llmConfig}
+          onExit={() => { sfx.back(); setView('home') }}
+          onReward={grantStoryXp}
+          onLockChange={(key) => {
+            setDeskLock(key)
+            if (key) setDesk((d) => ({ ...d, key, on: true }))
+          }}
+        />
+      )}
+
       {view === 'settings' && (
         <main className="settings-wrap">
           <Settings
@@ -1156,7 +1334,21 @@ export default function App() {
       {view === 'warehouse' && (
         <main className="home">
           <section className="hero">
-            <h2>{t('精灵仓库', 'Sprite Vault')}</h2>
+            <div className="hero-title-row">
+              <h2>{t('精灵仓库', 'Sprite Vault')}</h2>
+              {/* 「桌宠上任」卡片可视化选择（spec §2 修订 v2） */}
+              {collection.length > 0 && (
+                <DeskPetPicker
+                  list={collection}
+                  value={deskLock || desk.key}
+                  on={desk.on}
+                  lockedKey={deskLock}
+                  onLocked={() => setStoryNotice(t('剧情进行中：结案或放弃后才能切换桌宠', 'Story in progress — finish or abandon it to switch the desktop pet'))}
+                  onPick={(p) => setDesk((d) => ({ ...d, key: petKey(p), on: true }))}
+                  onToggle={() => setDesk((d) => ({ ...d, key: d.key ?? petKey(collection[0]), on: !d.on }))}
+                />
+              )}
+            </div>
             <p>{t('抽到的每一只精灵都住在', 'Every sprite you draw lives ')}<b>{t('这里', 'here')}</b>{t(' —— 点开看详情、培育成长，或者直接带去对战。', ' — open one to view details, grow it, or take it straight into battle.')}</p>
           </section>
           {collection.length > 0 ? (
@@ -1266,9 +1458,24 @@ export default function App() {
           <div className="actions">
             <button className="primary-btn" onClick={() => exportShareCard(pet)}>{t('导出分享卡', 'Export Share Card')}</button>
             <button className="primary-btn" onClick={() => { setBattleInitial(pet); setBattleChannel('classic'); setView('battle') }}>{t('带它去对战', 'Take It to Battle')}</button>
+            {/* 详情页也要能重新鉴定（揭晓页之外的常驻入口）；未绑定时点击给出引导文案 */}
+            <button
+              type="button"
+              className="reeval-btn"
+              onClick={handleReevaluate}
+              disabled={revalBusy}
+              title={pet.aiEvaluated
+                ? t('用你绑定的模型对这个仓库再评测一次，重 roll 品质 / 六维 / 技能 / 词条', 'Re-evaluate this repo with your bound model — re-roll quality / six stats / skills / traits')
+                : t('用你的模型做一次 AI 专业评测：品质 / 六维 / 技能 / 词条全部由模型按项目定制，替代规则引擎的结果', 'Run a pro AI evaluation with your model: quality / six stats / skills / traits all customized per project, replacing the rule engine result')}
+            >
+              <span className="reeval-btn-text">
+                {revalBusy ? (pet.aiEvaluated ? t('鉴定中…', 'Appraising…') : t('评测中…', 'Evaluating…')) : (pet.aiEvaluated ? t('重新鉴定', 'Re-appraise') : t('AI 专业评测', 'Pro AI Eval'))}
+              </span>
+            </button>
             {box && <button className="ghost-btn" onClick={() => setView('box')}>{t('返回卡箱', 'Back to Box')}</button>}
             <button className="ghost-btn" onClick={reset}>{t('再抽一只', 'Draw Another')}</button>
           </div>
+          {revalError && <p className="error reval-error">! {revalError}</p>}
           <GrowPanel
             pet={pet}
             onUpdate={(next) => {
@@ -1326,6 +1533,14 @@ export default function App() {
         </>
       )}
 
+      {/* 桌宠：右下角常驻（spec 2026-11-10-desktop-pet-design.md），全视图不卸载 */}
+      <DesktopPet
+        pet={deskPet}
+        collapsed={desk.collapsed}
+        onCollapse={(v) => setDesk((d) => ({ ...d, collapsed: v }))}
+        pos={desk.pos}
+        onPosChange={(p) => setDesk((d) => ({ ...d, pos: p }))}
+      />
       <footer className="footer">
         {t('GitMon Prototype v0.3 · 数据来自 GitHub / Gitee 公开 API · 开包动画 pack-opener-js · 粒子 tsParticles · 对战机制参照 Pokémon Showdown（MIT）', 'GitMon Prototype v0.3 · Data from GitHub / Gitee public APIs · Pack animation pack-opener-js · Particles tsParticles · Battle mechanics modeled on Pokémon Showdown (MIT)')}
       </footer>

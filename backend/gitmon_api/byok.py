@@ -19,13 +19,13 @@ from urllib.parse import urlparse
 
 import httpx
 
-from .llm import LLMError
+from .llm import LLMError, http_request
 
 # (id, 展示名, chat/completions 基址, 首选模型, 密钥前缀提示)
 # 根地址沿用 zip 里 OPENAI_COMPAT_DEFAULT_ROOT，并把 /v1 等版本段补齐。
 PROVIDERS: list[dict[str, Any]] = [
     {"id": "openai", "label": "OpenAI", "baseUrl": "https://api.openai.com/v1", "model": "gpt-4o-mini", "prefixes": ("sk-proj-", "sk-")},
-    {"id": "openrouter", "label": "OpenRouter", "baseUrl": "https://openrouter.ai/api/v1", "model": "openai/gpt-4o-mini", "prefixes": ("sk-or-v1-", "sk-or-")},
+    {"id": "openrouter", "label": "OpenRouter", "baseUrl": "https://openrouter.ai/api/v1", "model": "openai/gpt-4o-mini", "prefixes": ("sk-or-v1-", "sk-or-"), "public": True},
     {"id": "deepseek", "label": "DeepSeek", "baseUrl": "https://api.deepseek.com/v1", "model": "deepseek-chat", "prefixes": ("sk-",)},
     {"id": "groq", "label": "Groq", "baseUrl": "https://api.groq.com/openai/v1", "model": "llama-3.3-70b-versatile", "prefixes": ("gsk_",)},
     {"id": "siliconflow", "label": "硅基流动 SiliconFlow", "baseUrl": "https://api.siliconflow.cn/v1", "model": "Qwen/Qwen2.5-7B-Instruct", "prefixes": ("sk-",)},
@@ -141,6 +141,13 @@ def _priority(provider: dict[str, Any], key: str) -> int:
     return 0 if any(pref and lowered.startswith(pref) for pref in provider["prefixes"]) else 1
 
 
+def _match_len(provider: dict[str, Any], key: str) -> int:
+    """密钥命中该厂商的最长前缀长度，没命中返回 0（sk-proj- 会优先于通用的 sk-）。"""
+    lowered = key.lower()
+    hits = [len(pref) for pref in provider["prefixes"] if pref and lowered.startswith(pref)]
+    return max(hits) if hits else 0
+
+
 def _base_url_ok(url: str) -> str:
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
@@ -148,11 +155,7 @@ def _base_url_ok(url: str) -> str:
     return url.rstrip("/")
 
 
-async def _probe(client: httpx.AsyncClient, base_url: str, api_key: str) -> list[str]:
-    resp = await client.get(
-        f"{base_url}/models",
-        headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
-    )
+def _probe(resp: httpx.Response) -> list[str]:
     if resp.status_code != 200:
         return []
     try:
@@ -181,8 +184,11 @@ async def detect(api_key: str, *, provider: str | None = None, custom: dict[str,
         label = str(custom.get("label") or "自定义端点")[:40]
         given_model = str(custom.get("model") or "").strip()
         try:
-            async with httpx.AsyncClient(timeout=PROBE_TIMEOUT) as client:
-                models = await _probe(client, base, key)
+            resp = await http_request(
+                "GET", f"{base}/models", timeout=PROBE_TIMEOUT,
+                headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
+            )
+            models = _probe(resp)
         except httpx.HTTPError:
             models = []
         if not models and not given_model:
@@ -201,14 +207,31 @@ async def detect(api_key: str, *, provider: str | None = None, custom: dict[str,
         candidates = [target]
     else:
         candidates = sorted(PROVIDERS, key=lambda p: (_priority(p, key), PROVIDERS.index(p)))
+        # 公开 /models 端点（如 OpenRouter 无需鉴权、列表恒非空）不能作为识别证据：
+        # 前一顺位探测瞬时失败时它会把任何密钥假阳性绑成自己——前缀不吻合就不探测。
+        candidates = [
+            p for p in candidates
+            if not (p.get("public") and _priority(p, key) != 0)
+        ]
 
-    async with httpx.AsyncClient(timeout=PROBE_TIMEOUT, follow_redirects=True) as client:
-        results = await asyncio.gather(
-            *[_probe(client, p["baseUrl"], key) for p in candidates],
-            return_exceptions=True,
-        )
-    for target, models in zip(candidates, results):
-        if isinstance(models, Exception) or not models:
+    results = await asyncio.gather(
+        *[
+            http_request(
+                "GET", f"{p['baseUrl']}/models", timeout=PROBE_TIMEOUT, follow_redirects=True,
+                headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
+            )
+            for p in candidates
+        ],
+        return_exceptions=True,
+    )
+    failures: dict[str, str] = {}
+    for target, resp in zip(candidates, results):
+        if isinstance(resp, Exception):
+            failures[target["id"]] = "超时/不可达"
+            continue
+        models = _probe(resp)
+        if not models:
+            failures[target["id"]] = f"HTTP {resp.status_code}"
             continue
         chosen = choose_model(models, target["model"])
         return {
@@ -220,10 +243,33 @@ async def detect(api_key: str, *, provider: str | None = None, custom: dict[str,
             "verified": True,
             "detectedBy": "models",
         }
-    raise LLMError(
-        "没能自动认出这枚密钥属于哪家厂商",
-        "确认密钥有效、网络/代理可用；也可以展开「自定义端点」手动填地址和模型",
-    )
+
+    # 密钥前缀只指向一家厂商、而这家的接口本机探测不到（如 openai 在部分机房超时）：
+    # 先按前缀绑定并标记未验证，比直接报「认不出来」更可用，调用时再暴露真实网络问题。
+    # 注意：① 只取「匹配到的最长前缀」，避免 sk- 这种通用前缀把五家都算进来；
+    #      ② 只有「探测不到」才降级；厂商可达但返回 401 说明密钥本身无效，不能放过。
+    lengths = {p["id"]: _match_len(p, key) for p in candidates}
+    best = max(lengths.values(), default=0)
+    prefix_hits = [p for p in candidates if best and lengths[p["id"]] == best]
+    if len(prefix_hits) == 1 and failures.get(prefix_hits[0]["id"], "").startswith("超时"):
+        target = prefix_hits[0]
+        reason = failures[target["id"]]
+        return {
+            "provider": target["id"],
+            "label": target["label"],
+            "baseUrl": target["baseUrl"],
+            "model": target["model"],
+            "models": [target["model"]],
+            "verified": False,
+            "detectedBy": "prefix",
+            "note": f"{target['label']} 接口从服务器探测不到（{reason or '无响应'}），已按密钥前缀绑定，调用前请确认网络或改用自定义端点",
+        }
+
+    hint = "确认密钥有效、网络/代理可用；也可以展开「自定义端点」手动填地址和模型"
+    unreachable = [pid for pid, why in failures.items() if why.startswith("超时")]
+    if unreachable:
+        hint += f"（本服务器探测不到：{', '.join(unreachable)}）"
+    raise LLMError("没能自动认出这枚密钥属于哪家厂商", hint)
 
 
 async def bind(text: str, *, custom: dict[str, Any] | None = None) -> dict[str, Any]:

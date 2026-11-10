@@ -1439,6 +1439,16 @@ body::after {
 .account-note { margin: 0; font-size: 11.5px; line-height: 1.8; color: var(--dim); }
 .account-note b { color: #8fb7ff; font-weight: 500; }
 
+/* 剧情模式进入条件清单 */
+.story-gate-list { list-style: none; margin: 2px 0 4px; padding: 0; display: grid; gap: 10px; }
+.story-gate-list li {
+  display: flex; align-items: flex-start; gap: 8px;
+  font-size: 13px; line-height: 1.7; color: var(--text);
+}
+.story-gate-list li > span:first-child { flex: none; width: 14px; font-weight: 700; }
+.story-gate-list .ok { color: #57d68a; }
+.story-gate-list .no { color: #ff9f6b; }
+
 @media (max-width: 640px) {
   .account-hero { padding: 18px 16px; }
   .account-actions > button { flex: 1 1 auto; }

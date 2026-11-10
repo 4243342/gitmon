@@ -12,11 +12,13 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import re
 import time
 from typing import Any
 from urllib.parse import urlparse
+from urllib.request import getproxies, proxy_bypass
 
 import httpx
 
@@ -255,6 +257,81 @@ def validate_base_url(base_url: str) -> str:
     return url
 
 
+def _is_local_url(url: str) -> bool:
+    """回环 / 内网端点（本地模型）判定。"""
+    host = (urlparse(url).hostname or "").lower()
+    if not host or host == "localhost" or host.endswith(".local"):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return bool(ip.is_loopback or ip.is_private or ip.is_link_local)
+
+
+def _outbound_proxy(url: str) -> str | None:
+    """给这次出站请求挑代理：外网端点沿用环境 / 系统代理，本地端点一律直连。
+
+    httpx 的 trust_env 会经 urllib 读 macOS 系统代理注册表，哪怕进程里没有任何
+    http_proxy 变量——本地模型的 127.0.0.1 请求也会被劫到代理上：代理转发回环
+    时好时坏（开着 502、关了 ConnectError），表现就是「第一次行第二次就不行」。
+    """
+    if _is_local_url(url):
+        return None
+    host = urlparse(url).hostname or ""
+    try:
+        if proxy_bypass(host):
+            return None
+    except OSError:
+        pass
+    proxies = getproxies()
+    return proxies.get("https") or proxies.get("http") or None
+
+
+async def http_request(
+    method: str,
+    url: str,
+    *,
+    timeout: httpx.Timeout | float,
+    headers: dict[str, str] | None = None,
+    json_body: Any = None,
+    follow_redirects: bool = False,
+) -> httpx.Response:
+    """发一次 LLM 出站请求：有代理先走代理；代理连不上（如 Clash 关闭）再直连兜底。
+
+    trust_env=False 是关键：不让 httpx 自己再读一遍环境 / 系统代理，
+    代理策略完全由 _outbound_proxy 决定（本地直连、外网代理+直连兜底）。
+    """
+    proxy = _outbound_proxy(url)
+    if proxy:
+        try:
+            async with httpx.AsyncClient(
+                timeout=timeout, trust_env=False, proxy=proxy, follow_redirects=follow_redirects,
+            ) as client:
+                return await client.request(method, url, headers=headers, json=json_body)
+        except (httpx.ConnectError, httpx.ConnectTimeout):
+            pass  # 代理端口没了或连不上 → 直连重试一次
+    async with httpx.AsyncClient(
+        timeout=timeout, trust_env=False, follow_redirects=follow_redirects,
+    ) as client:
+        return await client.request(method, url, headers=headers, json=json_body)
+
+
+def _fix_payload_for_400(payload: dict, text: str) -> bool:
+    """部分新模型（o 系 / gpt-5 等）只收 max_completion_tokens、temperature 只支持默认值 1。
+
+    按 400 报文就地改请求体，返回 True 让调用方重发一次；每修一次都删掉/换掉对应键，
+    不会重复触发，最多多试两次；不认识的 400 返回 False 照常报错。
+    """
+    if "max_completion_tokens" in text and "max_tokens" in payload:
+        payload["max_completion_tokens"] = payload.pop("max_tokens")
+        return True
+    if "temperature" in text and "temperature" in payload:
+        payload.pop("temperature")
+        return True
+    return False
+
+
 async def chat_completion(
     *, base_url: str, api_key: str, model: str, system: str, user: str,
     timeout: float = 60.0, max_tokens: int = 2200,
@@ -272,17 +349,23 @@ async def chat_completion(
         "temperature": 0.7,
         "max_tokens": max_tokens,
     }
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=10.0)) as client:
-            resp = await client.post(f"{base_url}/chat/completions", headers=headers, json=payload)
-    except httpx.TimeoutException:
-        raise LLMError(f"模型响应超时（{int(timeout)} 秒）", "换更快的模型，或检查网络代理") from None
-    except httpx.ConnectError:
-        raise LLMError("连不上模型接口", "检查 Base URL、网络代理；本地模型请确认服务已启动") from None
-    except httpx.HTTPError:
-        raise LLMError("模型接口请求失败", "检查 Base URL 与网络连通性") from None
+    while True:
+        try:
+            resp = await http_request(
+                "POST", f"{base_url}/chat/completions",
+                timeout=httpx.Timeout(timeout, connect=10.0), headers=headers, json_body=payload,
+            )
+        except httpx.TimeoutException:
+            raise LLMError(f"模型响应超时（{int(timeout)} 秒）", "换更快的模型，或检查网络代理") from None
+        except httpx.ConnectError:
+            raise LLMError("连不上模型接口", "检查 Base URL、网络代理；本地模型请确认服务已启动") from None
+        except httpx.HTTPError:
+            raise LLMError("模型接口请求失败", "检查 Base URL 与网络连通性") from None
 
-    _raise_for_status(resp)
+        if resp.status_code != 400 or not _fix_payload_for_400(payload, resp.text):
+            break
+
+    _raise_for_status(resp, base_url=base_url, api_key=api_key)
 
     try:
         body = resp.json()
@@ -294,10 +377,51 @@ async def chat_completion(
     return str(content or "")
 
 
-def _raise_for_status(resp: httpx.Response) -> None:
+def _provider_key_mismatch(base_url: str | None, api_key: str | None) -> str | None:
+    """服务商与密钥家族的强互斥检测：只对有把握的组合下结论。
+
+    baseUrl（存 localStorage）与 apiKey（存 sessionStorage）各自独立更新，
+    拼在一起就可能「OpenRouter 端点 + OpenAI 密钥」这类 401 错配——这里把
+    双方身份点破，用户照着改即可。自定义中转站 / 普通 sk- 密钥识别不了，
+    返回 None 走通用提示，绝不误伤。
+    """
+    url = str(base_url or "").lower()
+    key = str(api_key or "").strip()
+    provider = ""
+    if "openrouter.ai" in url:
+        provider = "OpenRouter"
+    elif "api.openai.com" in url:
+        provider = "OpenAI"
+    elif "anthropic.com" in url:
+        provider = "Anthropic"
+    elif "groq.com" in url:
+        provider = "Groq"
+    family = ""
+    if key.startswith("sk-or-"):
+        family = "OpenRouter"
+    elif key.startswith("sk-ant-"):
+        family = "Anthropic"
+    elif key.startswith("gsk_"):
+        family = "Groq"
+    elif key.startswith(("sk-proj-", "sk-pro-", "sk-svcacct-")):
+        family = "OpenAI"
+    if provider and family and provider != family:
+        return (
+            f"服务商与密钥不匹配：服务商是 {provider}，但密钥像 {family} 的"
+            f"（跨家密钥不通用）——把 Base URL 换回 {family}，或换用 {provider} 的密钥"
+        )
+    return None
+
+
+def _raise_for_status(
+    resp: httpx.Response, *, base_url: str | None = None, api_key: str | None = None,
+) -> None:
     """HTTP 状态码 → 人话错误（绝不回显请求头里的密钥）。"""
     if resp.status_code == 401 or resp.status_code == 403:
-        raise LLMError("API Key 无效或没有权限", "检查密钥，或换个模型服务商")
+        raise LLMError(
+            "API Key 无效或没有权限",
+            _provider_key_mismatch(base_url, api_key) or "检查密钥，或换个模型服务商",
+        )
     if resp.status_code == 404:
         raise LLMError("接口地址或模型名不对", "Base URL 一般要带 /v1；模型名要和服务商一致")
     if resp.status_code == 429:
@@ -319,6 +443,7 @@ async def ping(*, base_url: str, api_key: str, model: str) -> dict[str, Any]:
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
+    # 同 chat_completion：按 400 报文自动换键 / 删 temperature 后重发
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": "ping"}],
@@ -326,16 +451,21 @@ async def ping(*, base_url: str, api_key: str, model: str) -> dict[str, Any]:
         "max_tokens": 8,
     }
     started = time.perf_counter()
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=8.0)) as client:
-            resp = await client.post(f"{url}/chat/completions", headers=headers, json=payload)
-    except httpx.TimeoutException:
-        raise LLMError("连接测试超时（20 秒）", "检查网络代理，或换一个更快的模型") from None
-    except httpx.ConnectError:
-        raise LLMError("连不上模型接口", "检查 Base URL、网络代理；本地模型请确认服务已启动") from None
-    except httpx.HTTPError:
-        raise LLMError("模型接口请求失败", "检查 Base URL 与网络连通性") from None
-    _raise_for_status(resp)
+    while True:
+        try:
+            resp = await http_request(
+                "POST", f"{url}/chat/completions",
+                timeout=httpx.Timeout(20.0, connect=8.0), headers=headers, json_body=payload,
+            )
+        except httpx.TimeoutException:
+            raise LLMError("连接测试超时（20 秒）", "检查网络代理，或换一个更快的模型") from None
+        except httpx.ConnectError:
+            raise LLMError("连不上模型接口", "检查 Base URL、网络代理；本地模型请确认服务已启动") from None
+        except httpx.HTTPError:
+            raise LLMError("模型接口请求失败", "检查 Base URL 与网络连通性") from None
+        if resp.status_code != 400 or not _fix_payload_for_400(payload, resp.text):
+            break
+    _raise_for_status(resp, base_url=base_url, api_key=api_key)
     # 能拿到 2xx 就算通：有的端点 200 但结构异常，这里不深究，评测时再由 parse 兜底
     return {
         "ok": True,

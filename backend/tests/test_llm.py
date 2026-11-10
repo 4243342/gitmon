@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -249,3 +250,174 @@ def test_api_ping_translates_connection_errors(client, monkeypatch):
     resp = client.post("/api/llm/ping", json={"model": "m"})
     assert resp.status_code == 502
     assert resp.json()["detail"]["error"] == "连不上模型接口"
+
+
+def _mock_401(monkeypatch):
+    async def fake_request(method, url, **kwargs):
+        return httpx.Response(401, request=httpx.Request(method, url))
+
+    monkeypatch.setattr(llm, "http_request", fake_request)
+
+
+def test_ping_401_names_provider_key_mismatch(monkeypatch):
+    """服务商与密钥家族错配时，401 的 hint 要点名双方（OpenRouter ≠ OpenAI）。"""
+    _mock_401(monkeypatch)
+    with pytest.raises(llm.LLMError) as exc:
+        asyncio.run(llm.ping(
+            base_url="https://openrouter.ai/api/v1",
+            api_key="sk-proj-abc123", model="m",
+        ))
+    assert exc.value.message == "API Key 无效或没有权限"
+    assert "OpenRouter" in exc.value.hint and "OpenAI" in exc.value.hint
+    assert "不匹配" in exc.value.hint or "不通用" in exc.value.hint
+
+
+def test_ping_401_without_mismatch_keeps_generic_hint(monkeypatch):
+    """识别不了错配（如普通 sk- 密钥）时保持原有通用提示。"""
+    _mock_401(monkeypatch)
+    with pytest.raises(llm.LLMError) as exc:
+        asyncio.run(llm.ping(base_url="https://api.openai.com/v1", api_key="sk-short", model="m"))
+    assert exc.value.hint == "检查密钥，或换个模型服务商"
+
+
+def test_chat_completion_401_reports_mismatch(monkeypatch):
+    """评测主链路（chat/completions）的 401 同样点破错配。"""
+    _mock_401(monkeypatch)
+    with pytest.raises(llm.LLMError) as exc:
+        asyncio.run(llm.chat_completion(
+            base_url="https://openrouter.ai/api/v1",
+            api_key="gsk_abc123", model="m", system="s", user="u",
+        ))
+    assert "OpenRouter" in exc.value.hint and "Groq" in exc.value.hint
+
+
+def _mock_max_tokens_400_then_ok(monkeypatch):
+    """首发 max_tokens 被 400 点名换键，重发 max_completion_tokens 后成功。"""
+    seen: list[dict] = []
+
+    async def fake_request(method, url, **kwargs):
+        body = kwargs["json_body"]
+        seen.append(dict(body))  # 快照：chat_completion 会就地改 payload
+        if "max_tokens" in body:
+            return httpx.Response(
+                400,
+                json={"error": {"message": (
+                    "Unsupported parameter: 'max_tokens' is not supported with this model. "
+                    "Use 'max_completion_tokens' instead."
+                )}},
+                request=httpx.Request(method, url),
+            )
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": "pong/ok"}}]},
+            request=httpx.Request(method, url),
+        )
+
+    monkeypatch.setattr(llm, "http_request", fake_request)
+    return seen
+
+
+def test_chat_completion_retries_with_max_completion_tokens(monkeypatch):
+    """推理系模型（o 系 / gpt-5）拒收 max_tokens → 自动换 max_completion_tokens 重发成功。"""
+    seen = _mock_max_tokens_400_then_ok(monkeypatch)
+    out = asyncio.run(llm.chat_completion(
+        base_url="https://api.openai.com/v1", api_key="sk-x", model="m", system="s", user="u",
+    ))
+    assert out == "pong/ok"
+    assert len(seen) == 2
+    assert "max_tokens" in seen[0] and "max_completion_tokens" not in seen[0]
+    assert seen[1].get("max_completion_tokens") == 2200 and "max_tokens" not in seen[1]
+
+
+def test_ping_retries_with_max_completion_tokens(monkeypatch):
+    """绑定前的连接测试同样换键重发，不再被这个 400 挡在高级模式门外。"""
+    seen = _mock_max_tokens_400_then_ok(monkeypatch)
+    result = asyncio.run(llm.ping(
+        base_url="https://api.openai.com/v1", api_key="sk-x", model="m",
+    ))
+    assert result["ok"] is True
+    assert len(seen) == 2
+    assert seen[1].get("max_completion_tokens") == 8 and "max_tokens" not in seen[1]
+
+
+def test_chat_completion_400_without_keyword_does_not_retry(monkeypatch):
+    """与换键无关的 400 不触发重发，照常点破错误详情。"""
+    calls = []
+
+    async def fake_request(method, url, **kwargs):
+        calls.append(dict(kwargs["json_body"]))
+        return httpx.Response(
+            400, json={"error": {"message": "context length exceeded"}},
+            request=httpx.Request(method, url),
+        )
+
+    monkeypatch.setattr(llm, "http_request", fake_request)
+    with pytest.raises(llm.LLMError) as exc:
+        asyncio.run(llm.chat_completion(
+            base_url="https://api.openai.com/v1", api_key="sk-x", model="m", system="s", user="u",
+        ))
+    assert len(calls) == 1
+    assert "HTTP 400" in exc.value.message
+
+
+def test_chat_completion_drops_temperature_on_400(monkeypatch):
+    """temperature 只支持默认值 1 的模型 → 删掉该键重发成功。"""
+    seen: list[dict] = []
+
+    async def fake_request(method, url, **kwargs):
+        body = kwargs["json_body"]
+        seen.append(dict(body))
+        if "temperature" in body:
+            return httpx.Response(
+                400,
+                json={"error": {"message": (
+                    "Unsupported value: 'temperature' does not support 0.7 with this model. "
+                    "Only the default (1) value is supported."
+                )}},
+                request=httpx.Request(method, url),
+            )
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]},
+            request=httpx.Request(method, url),
+        )
+
+    monkeypatch.setattr(llm, "http_request", fake_request)
+    out = asyncio.run(llm.chat_completion(
+        base_url="https://api.openai.com/v1", api_key="sk-x", model="m", system="s", user="u",
+    ))
+    assert out == "ok"
+    assert len(seen) == 2
+    assert "temperature" in seen[0] and "temperature" not in seen[1]
+    assert seen[1]["max_tokens"] == 2200  # 只删 temperature，max_tokens 保留
+
+
+def test_chat_completion_fixes_both_400s_in_sequence(monkeypatch):
+    """max_tokens 与 temperature 两个 400 依次出现时逐个修，最终成功。"""
+    seen: list[dict] = []
+
+    async def fake_request(method, url, **kwargs):
+        body = kwargs["json_body"]
+        seen.append(dict(body))
+        if "max_tokens" in body:
+            return httpx.Response(
+                400, json={"error": {"message": "Use 'max_completion_tokens' instead."}},
+                request=httpx.Request(method, url),
+            )
+        if "temperature" in body:
+            return httpx.Response(
+                400, json={"error": {"message": "'temperature' does not support 0.7"}},
+                request=httpx.Request(method, url),
+            )
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]},
+            request=httpx.Request(method, url),
+        )
+
+    monkeypatch.setattr(llm, "http_request", fake_request)
+    out = asyncio.run(llm.chat_completion(
+        base_url="https://api.openai.com/v1", api_key="sk-x", model="m", system="s", user="u",
+    ))
+    assert out == "ok"
+    assert len(seen) == 3
+    assert "max_tokens" in seen[0] and "temperature" in seen[0]
+    assert "max_completion_tokens" in seen[1] and "temperature" in seen[1]
+    assert "max_completion_tokens" in seen[2] and "temperature" not in seen[2]

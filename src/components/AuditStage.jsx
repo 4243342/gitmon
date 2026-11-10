@@ -117,9 +117,15 @@ export default function AuditStage({ events = [], onSkip }) {
       {/* 中央舞台：光团 → 属性确定显形宠物；等级大字随勘测滚动 */}
       <div className={`audit-core ${stagePet && revealed ? 'is-revealed' : ''}`}>
         <div className="audit-orb" aria-hidden>
+          <span className="audit-orb-haze" />
           <span className="audit-orb-core" />
+          <span className="audit-orb-orbit" />
           <span className="audit-orb-ring" />
           <span className="audit-orb-ring audit-orb-ring--2" />
+          <span className="audit-orb-mote audit-orb-mote--1" />
+          <span className="audit-orb-mote audit-orb-mote--2" />
+          <span className="audit-orb-mote audit-orb-mote--3" />
+          <span className="audit-orb-mote audit-orb-mote--4" />
         </div>
 
         {stagePet && revealed && (
