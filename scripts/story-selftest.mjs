@@ -172,7 +172,7 @@ console.log('\n[story] 两个包的路线互不串')
 
 console.log('\n[story] 结局标题表按包隔离')
 {
-  eq('斗码苍穹的焚决线标题', endingTitles('douma')['ending_flame'], '焚决线 · 一把火烧穿山门')
+  eq('斗码苍穹的焚决线标题', endingTitles('douma')['ending_flame'], '焚决线 · 名碑换名，规矩由你定')
   eq('通用包的内应线标题', endingTitles('default')['ending_trust'], '内应线 · 有人替你开门')
   check('两个包的结局表不是同一套',
     Object.keys(endingTitles('douma')).join() !== Object.keys(endingTitles('default')).join())
@@ -203,6 +203,22 @@ console.log('\n[story] 斗码苍穹的分支与四结局')
   check('正线有标题', Boolean(titles.ending_steady))
 }
 
+console.log('\n[story] 路线名随包走')
+{
+  // 「内应线 / 独行线」是通用包的词；斗码苍穹那条是「有人作证线 / 独自赴约线」。
+  // 结局屏要按包显示，路线名就得跟角色表 / 结局标题一样随包走。
+  const douma = createStoryRuntime({ vars: { chapter_count: 3 }, pack: 'douma' })
+  const scene = await douma.enter()
+  eq('斗码苍穹的路线名来自包内', scene.routeLabels?.insider, '有人作证线')
+  eq('斗码苍穹的独行路线名', scene.routeLabels?.solo, '独自赴约线')
+
+  const fallback = createStoryRuntime({ vars: { chapter_count: 3 } })
+  const fallbackScene = await fallback.enter()
+  check('通用包没有自定义路线名（前端回落通用文案）',
+    !fallbackScene.routeLabels?.insider,
+    JSON.stringify(fallbackScene.routeLabels || {}))
+}
+
 console.log('\n[story] 斗码苍穹的四个结局都可达')
 {
   // 逐个结局找一条路：结局不能是「写了但永远走不到」
@@ -220,6 +236,25 @@ console.log('\n[story] 斗码苍穹的四个结局都可达')
   for (const id of ['ending_flame', 'ending_lone', 'ending_steady', 'ending_withered']) {
     check(`${id} 有路可走`, found.has(id), [...found].join(','))
   }
+}
+
+console.log('\n[story] 斗码苍穹的主线是「三年之约」')
+{
+  // 这条线换了骨架：序章立约 → 成长章公开复现 → 魂殿 → 立约 → Boss 战 → 结局
+  const run = await playthrough({ pack: 'douma', pick: () => 1 })
+  check('有立约场景', run.visited.includes('vow_scene'), run.visited.join(','))
+  check('有魂殿场景', run.visited.includes('soul_gate'), run.visited.join(','))
+  check('序章之后进成长章', run.visited.includes('growth_gate'), run.visited.join(','))
+  // 三年之约的题眼：约期与名碑（不是「被逐出宗门」那套）
+  const douma = PACKS.douma
+  check('世界观里写的是三年之约', douma.meta.world.includes('三年之约'), douma.meta.world.slice(0, 40))
+  check('世界观里有名碑', douma.meta.world.includes('名碑'), douma.meta.world.slice(0, 40))
+  check('三张方案卡都属三年之约',
+    douma.meta.variants.every((v) => v.title.includes('约') || v.title.includes('焚决') || v.title.includes('名碑')),
+    douma.meta.variants.map((v) => v.title).join(' | '))
+  check('方案卡 beats 提到名碑或规矩',
+    douma.meta.variants.some((v) => v.beats.some((b) => b.includes('碑') || b.includes('规矩'))),
+    'beats 没提到')
 }
 
 console.log(`\n${failures ? `✗ ${failures} 项失败` : '✓ 全部通过'}\n`)

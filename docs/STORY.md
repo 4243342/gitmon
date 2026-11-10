@@ -271,13 +271,14 @@ Boss 定下来之后，才轮到写「这个故事怎么讲」——因为剧本
 | 台词兜底 | `lines.json` | 模型不可用时这一包每句 key 的中文台词 |
 | 背景地点牌 | `meta.json` → `bgs` | 这一包每个背景 key 的地点名 |
 | 结局标题 | `meta.json` → `endings` | 这一包每个结局 id 的标题 |
+| 路线名 | `meta.json` → `routes` | 这一包每条路线（`insider` / `solo`）的显示名 |
 
 ```
 src/story/packs/<id>/
   ├── story.ink        # 路线
   ├── lines.json       # 台词兜底
   ├── characters.json  # 角色表
-  └── meta.json        # 标题 / 标签 / 世界观 / 文风 / bgs / endings / variants
+  └── meta.json        # 标题 / 标签 / 世界观 / 文风 / bgs / endings / routes / variants
 ```
 
 #### 已有两个包
@@ -285,14 +286,40 @@ src/story/packs/<id>/
 | 包 id | 名称 | 定位 |
 |---|---|---|
 | `default` | 通用远征 | 兜底包。AI 生成与自定义剧本走它；老存档也走它 |
-| `douma` | 斗码苍穹 | 第一条专属包。斗破苍穹骨架：项目即宗门，star 是香火，fork 是分家，release 是境界 |
+| `douma` | 斗码苍穹 | 第一条专属包。斗破苍穹骨架 + 三年之约主线：项目即宗门，star 是香火，fork 是分家，release 是境界 |
 
 `default` 不是「没人要的包」，它是**兼容层**：所有非系统剧本的路径都落到它，
 所以任何一次改动都不会波及原有行为。
 
-`douma` 是一条完整主线：序章（被逐出宗门名册）→ 成长章（`chapter == 1` 时插入魂殿追杀）
-→ 终章分流（`trust >= 7` 走内应线借势，否则独闯山门）→ Boss 战 → 四个结局
-（`ending_flame` / `ending_withered` / `ending_lone` / `ending_steady`）。
+`douma` 是一条完整主线：**三年之约**。
+三年前主角被宗门名册除名，与云岚宗立下三年之期——期满之日上云岚宗山门，在**名碑**上刻下自己的名字，
+谁的名字留在碑上，往后三年的规矩就由谁定。药老留下半卷**焚决**：口诀不是秘籍，
+得有人照着复现一遍才炼得成；魂殿是专抄作业的组织，也正是主角必须把东西摊开的原因。
+
+路线结构：
+
+```
+序章（递上战书，立下三年之约）
+  → 成长章 × (chapter_count - 1)：坊市公开复现焚决 + 杂兵战
+      （chapter == 1 时插入魂殿追杀 → 魂殿场景）
+  → 终章分流：trust >= 7 走「有人作证线」，否则「独自赴约线」
+  → 立约（名碑就在阶前，规矩由谁定，看这一战）
+  → Boss 战
+  → 四个结局
+     ending_flame   焚决线 · 名碑换名，规矩由你定
+     ending_withered 陨落线 · 约期未至，先折在山门下
+     ending_lone    独行线 · 一个人刻上名碑，无人作证
+     ending_steady  正线 · 各守一寸，规矩未改
+```
+
+> 结局 id 是**跨周目**的（`story_endings` 表按 id 落库），改标题可以，改 id 会破坏结局收集册。
+
+> **方案卡不是剧情本身。** 三张卡只影响台词生成的 prompt（`script_title` / `script_brief` /
+> `script_beats` 注入 LLM 的 user 段），路线结构由 `story.ink` 独占。
+> 所以「换一张卡 = 换一条故事线」是做不到的——想换剧情就得改 ink。
+> 斗码苍穹的三张卡因此统一写成三年之约的**三个角度**
+> （《三年之约：{boss}》/《焚决：{pet}》/《名碑：{boss}》），
+> 保证玩家选哪张卡，正片都自洽。
 
 #### 单一真相源
 
@@ -314,7 +341,9 @@ const runtime = createStoryRuntime({ vars, pack: 'douma' })
 
 `StoryRuntime` 构造时把路线 / 角色 / 台词兜底绑成一体（`this.pack.characters` / `this.lines` /
 `new Story(this.pack.story)`），`enter()` 的返回值带上 `packId` / `characters` / `bgLabels` /
-`endingTitles`，界面必须按这些渲染——**不能用全局的通用角色表去画一个玄幻包的场景**。
+`endingTitles` / `routeLabels`，界面必须按这些渲染——**不能用全局的通用角色表去画一个玄幻包的场景**。
+路线名同理：「内应线 / 独行线」是通用包的词，斗码苍穹那条是「有人作证线 / 独自赴约线」，
+写死在界面里就会对新包说错话；包里没定义 `routes` 时才回落到通用文案。
 
 未知的 pack id 一律退回 `default`，绝不让正片因为一个写错的 id 整个挂掉。
 
@@ -339,7 +368,8 @@ const runtime = createStoryRuntime({ vars, pack: 'douma' })
   否则同一个 scene 在不同包之间会复用旧台词（换包等于没换）
 - **结局标题**：`progress()` 结算时按 `run.script_pack` 取标题，斗码苍穹的
   `ending_flame` 与通用包的 `ending_trust` 不是同一套
-- **界面**：角色名 / 颜色、背景地点牌、结局标题全部按包渲染
+- **路线名**：结局屏显示的路线名按包取（`meta.routes`），不写死在前端
+- **界面**：角色名 / 颜色、背景地点牌、结局标题、路线名全部按包渲染
 
 #### 构建期守卫
 
@@ -441,7 +471,8 @@ gap = boss.combatPower / median(playerTeam.combatPower)
 
 #### C. 路线与多结局
 
-- **路线分流**：章节末的 `route` 节点按变量阈值跳到不同场景（如 `trust >= 7` 进「内应线」，否则进「独行线」）
+- **路线分流**：章节末的 `route` 节点按变量阈值跳到不同场景（如 `trust >= 7` 分流到两条路线；
+  路线在界面上叫什么由包的 `meta.routes` 决定，见 §3.9）
 - **结局匹配**：结局表按顺序取第一条 `requires` 命中的，最后一条是兜底
 - **结局收集册**：跨周目持久，已解锁的结局在相册里可回看，未解锁的显示问号
 
@@ -698,6 +729,9 @@ CREATE TABLE story_saves (
 40. 同一个场景在两个包里各自生成台词（缓存键含 pack id），不互相复用
 41. `meta.endings` 漏掉该包 ink 里出现的结局 id 时，`npm run story:build` 直接报错中止
 42. 未知 pack id 退回 default，不让正片整个挂掉
+43. 斗码苍穹正片跑的是「三年之约」骨架（含立约场景），不是旧的「被逐出宗门」骨架
+44. 斗码苍穹的结局屏显示的路线名是包内的「有人作证线 / 独自赴约线」，不是通用包的「内应线 / 独行线」
+45. 方案卡只是台词生成的 prompt，路线由 `story.ink` 独占——改卡不改 ink，玩家看到的正片不变
 
 ## 11. 开源组件选型：能直接套的都套
 

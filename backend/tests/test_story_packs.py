@@ -69,7 +69,7 @@ def test_system_scripts_come_from_the_requested_pack() -> None:
     assert "{pet}" not in joined and "{boss}" not in joined
     assert "demo/pet" in joined
     # 斗码苍穹的方案要带玄幻语汇
-    assert any("宗门" in item["title"] or "魂殿" in item["title"] for item in items)
+    assert any("宗门" in item["title"] or "魂殿" in item["title"] or "约" in item["title"] for item in items)
 
 
 def test_two_packs_give_different_scripts() -> None:
@@ -92,7 +92,7 @@ def test_scripts_endpoint_forwards_the_pack() -> None:
     assert all(item["pack"] == "douma" for item in data["scripts"])
     # 方案标题要和斗码苍穹包对得上
     titles = " ".join(item["title"] for item in data["scripts"])
-    assert "宗门" in titles or "魂殿" in titles
+    assert "宗门" in titles or "魂殿" in titles or "约" in titles
 
 
 def test_unknown_pack_in_request_falls_back_to_default() -> None:
@@ -131,6 +131,8 @@ def test_generate_text_injects_the_pack_worldview(monkeypatch) -> None:
     assert out["texts"]["narrator.hook"] == "山门之外，风起。"
     # 世界观 / 文风要进 prompt（generate_text 走 user 段）
     assert "魂殿" in seen["user"] or "宗门" in seen["user"]
+    # 斗码苍穹的主线是「三年之约」：世界观必须真的进了 prompt，否则模型会写回通用腔
+    assert "三年之约" in seen["user"], seen["user"][:120]
 
 
 def test_generate_text_without_pack_has_no_worldview(monkeypatch) -> None:
@@ -219,7 +221,7 @@ def test_create_run_without_pack_records_default(tmp_dir, monkeypatch) -> None:
 # ------------------------------------------------------------------ 结局标题按包取
 
 def test_ending_title_uses_the_pack_table() -> None:
-    assert story._ending_title("douma", "ending_flame") == "焚决线 · 一把火烧穿山门"
+    assert story._ending_title("douma", "ending_flame") == "焚决线 · 名碑换名，规矩由你定"
     assert story._ending_title("default", "ending_trust") == "内应线 · 有人替你开门"
     # 包里没有的结局 id：退回通用表（两条线共用一份 id 时不至于显示空白）
     assert story._ending_title("douma", "ending_trust") == "内应线 · 有人替你开门"
@@ -240,4 +242,4 @@ def test_progress_reports_the_pack_ending_title(tmp_dir, monkeypatch) -> None:
         "ending_id": "ending_flame",
     })
     assert data["cleared"] is True
-    assert data["reward"]["title"] == "焚决线 · 一把火烧穿山门"
+    assert data["reward"]["title"] == "焚决线 · 名碑换名，规矩由你定"

@@ -203,6 +203,8 @@ export class StoryRuntime {
       characters: this.characters,
       bgLabels: this.pack.meta?.bgs || {},
       endingTitles: this.pack.meta?.endings || {},
+      // 路线名也随包走：「内应线」是通用包的词，斗码苍穹那条是「有人作证 / 独自赴约」
+      routeLabels: this.pack.meta?.routes || {},
       // 本屏开始前的 ink 快照：存档 / 回滚都从这里恢复，才能重新渲染同一屏
       stateIn: before,
     }

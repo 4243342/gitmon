@@ -131,9 +131,9 @@ page.on('request', (req) => {
             full_name: 'torvalds/linux', platform: 'github', stars: 180000,
             language: 'C', tier: 'SSR', level: 150, cp: 60000, verdict: FAKE_BOSS.verdict,
           },
-          script_title: '《斗破苍穹：torvalds/linux宗》',
-          script_brief: 'demo/pet 三年前被逐出宗门名册',
-          script_beats: ['开局：名字被划掉。', '中段：药老留下半卷功法。', '收束：山门拦路。'],
+          script_title: '《三年之约：torvalds/linux》',
+          script_brief: 'demo/pet 三年前被除名，与云岚宗立下三年之约',
+          script_beats: ['开局：递上战书。', '中段：焚决要公开复现才炼得成。', '收束：名碑上刻谁的名字。'],
           script_pack: 'douma',
           vars: { chapter: 0, chapter_count: 3, trust: 0, deaths: 0, route: 'solo', ending_id: '' },
           visited: [], history: [], ink_state: '',
@@ -179,9 +179,9 @@ page.on('request', (req) => {
             full_name: 'torvalds/linux', platform: 'github', stars: 180000,
             language: 'C', tier: 'SSR', level: 150, cp: 60000, verdict: FAKE_BOSS.verdict,
           },
-          script_title: '《斗破苍穹：torvalds/linux宗》',
-          script_brief: 'demo/pet 三年前被逐出宗门名册',
-          script_beats: ['开局：名字被划掉。', '中段：药老留下半卷功法。', '收束：山门拦路。'],
+          script_title: '《三年之约：torvalds/linux》',
+          script_brief: 'demo/pet 三年前被除名，与云岚宗立下三年之约',
+          script_beats: ['开局：递上战书。', '中段：焚决要公开复现才炼得成。', '收束：名碑上刻谁的名字。'],
           script_pack: 'douma',
           vars: { chapter: 0, chapter_count: 3, trust: 0, deaths: 0, route: 'solo', ending_id: '' },
           visited: ['prologue'], history: [], ink_state: '',
@@ -212,9 +212,9 @@ page.on('request', (req) => {
             language: 'C', tier: 'SSR', level: 150, cp: 60000,
             verdict: FAKE_BOSS.verdict,
           },
-          script_title: '《斗破苍穹：torvalds/linux宗》',
-          script_brief: 'demo/pet 三年前被逐出宗门名册',
-          script_beats: ['开局：名字被划掉。', '中段：药老留下半卷功法。', '收束：山门拦路。'],
+          script_title: '《三年之约：torvalds/linux》',
+          script_brief: 'demo/pet 三年前被除名，与云岚宗立下三年之约',
+          script_beats: ['开局：递上战书。', '中段：焚决要公开复现才炼得成。', '收束：名碑上刻谁的名字。'],
           script_pack: requestedPack,
           vars: { chapter: 0, chapter_count: 3, trust: 0, deaths: 0, route: 'solo', ending_id: '' },
           visited: [], history: [], ink_state: '',
@@ -356,7 +356,7 @@ try {
     })))
   check('出了三张方案卡', cards.length === 3, String(cards.length))
   check('方案卡带包铭牌', cards.some((c) => c.pack.includes('斗码苍穹')), JSON.stringify(cards.map((c) => c.pack)))
-  check('方案是玄幻语汇', cards.some((c) => /宗门|魂殿|山门|斗破/.test(c.title)), JSON.stringify(cards.map((c) => c.title)))
+  check('方案是玄幻语汇', cards.some((c) => /宗门|魂殿|山门|斗破|约|焚决|名碑/.test(c.title)), JSON.stringify(cards.map((c) => c.title)))
 
   console.log('\n[pack] 建线后正片跑的是同一个包')
   await page.evaluate(() => {
@@ -381,7 +381,10 @@ try {
     check('角色是包内的（药老 / 主角）',
       stage.chips.some((c) => c.includes('药老')) || stage.chips.includes('主角'),
       stage.chips.join(','))
-    check('正片文本是玄幻语汇', /宗门|山门|斗气|功法|云岚|魂殿|名册/.test(stage.text), stage.text.slice(0, 60))
+    check('正片文本是玄幻语汇', /宗门|山门|斗气|功法|云岚|魂殿|名册|约期|名碑|焚决/.test(stage.text), stage.text.slice(0, 60))
+    // 真正的骨架校验：序章必须是「三年之约」，不是旧那套「被逐出宗门」
+    check('正片讲的是三年之约', /三年|约期|名碑|除名通知|立约/.test(stage.text), stage.text.slice(0, 80))
+    check('正片没有旧的「逐出宗门」骨架', !/逐出宗门|被逐出/.test(stage.text), stage.text.slice(0, 80))
   }
 
   console.log('\n[pack] 重新进页面（resume 路径）仍跑同一个包')
@@ -435,8 +438,9 @@ try {
     afterReload.chips.some((c) => c.includes('药老') || c.includes('主角')),
     afterReload.chips.join(','))
   check('重进后文本仍是玄幻语汇',
-    /宗门|山门|斗气|功法|云岚|魂殿|名册/.test(afterReload.text),
+    /宗门|山门|斗气|功法|云岚|魂殿|名册|约期|名碑|焚决/.test(afterReload.text),
     afterReload.text.slice(0, 60))
+  check('重进后仍是三年之约的骨架', /三年|约期|名碑|除名通知|立约/.test(afterReload.text), afterReload.text.slice(0, 80))
 
   check('页面没有 JS 报错', errors.length === 0, errors.slice(0, 2).join(' | '))
 } catch (err) {

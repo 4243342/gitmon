@@ -1085,6 +1085,11 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
   const bgTable = scene?.bgLabels || BG_LABELS
   const bgLabel = bgTable[scene?.bg] || bgTable.dawn || BG_LABELS.dawn
   const endTitles = scene?.endingTitles || ENDING_TITLES
+  // 路线名也随包走：通用包没定义 routes，就退回「内应线 / 独行线」；
+  // 斗码苍穹定义了自己的（有人作证线 / 独自赴约线），别再拿通用包的词硬套。
+  const packRouteLabel = (scene?.routeLabels || {})[scene?.vars?.route]
+  const routeLabel = packRouteLabel
+    || (scene?.vars?.route === 'insider' ? t('内应线', 'Insider') : t('独行线', 'Solo'))
 
   // 语音只跟随点击推进，不反过来驱动节奏（docs/TTS.md T3）
   const speakLine = (line) => {
@@ -1542,7 +1547,7 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
           <p>
             {t('信任', 'Trust')} {scene?.vars?.trust ?? 0}
             {' · '}{t('失败', 'Defeats')} {scene?.vars?.deaths ?? 0}
-            {' · '}{t('路线', 'Route')} {scene?.vars?.route === 'insider' ? t('内应线', 'Insider') : t('独行线', 'Solo')}
+            {' · '}{t('路线', 'Route')} {routeLabel}
           </p>
           {reward?.xp ? <p className="story-reward">+{reward.xp} EXP</p> : null}
           <div className="story-confirm">

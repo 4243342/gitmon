@@ -1,14 +1,20 @@
-// 剧本包 · 斗码苍穹（斗破苍穹骨架）
+// 剧本包 · 斗码苍穹（三年之约主线）
 //
 // 语汇：开源项目被拟作宗门，star 是香火，fork 是分家，release 是境界。
-// 序章 = 被逐出山门的少年；药老 = 藏在旧代码里的老前辈；魂殿 = 抄袭者组织；
-// 云岚宗 = 坐镇山巅的巨头项目。
+//
+// 斗破苍穹骨架 —— 三年之约：
+//   三年前主角被宗门名册除名，与云岚宗立下三年之期：约期满时上云岚宗山门，
+//   在名碑上刻下自己的名字。谁的名字留在碑上，往后三年的规矩就由谁定。
+//   药老留下半卷焚决 —— 口诀不是秘籍，得有人照着复现一遍才炼得成；
+//   魂殿是专抄作业的组织，也正是主角必须把东西摊开的原因。
 //
 // 结构约定与默认包一致（运行时按标签解析）：
 //   # scene: <id> / # bg: <key> / # cast: a,b / # keys: a,b
 //   # battle: minion|boss / # win: <knot> / # lose: <knot> / # ending
 //
 // 变量契约与运行时 KNOWN_VARS 对齐：chapter / chapter_count / trust / deaths / route / ending_id
+//   trust = 三年里愿意认主角这一套、肯替他站台的分量（公开复现攒出来的）
+//   route = insider（有内应替他作证）/ solo（独自赴约，没人同行）
 
 EXTERNAL say(key)
 
@@ -23,7 +29,7 @@ VAR ending_id = ""
 
 -> prologue
 
-// 序章：被划出宗门名册的那天
+// 序章：约期已到，把当年的除名通知连同战书一起寄回去
 === prologue ===
 # scene: prologue
 # bg: dawn
@@ -31,10 +37,10 @@ VAR ending_id = ""
 # keys: narrator.hook,pet.oath
 {say("narrator.hook")}
 {say("pet.oath")}
-+ [接下这道战书]
++ [先递上战书，把这三年应下来]
     ~ trust += 1
     -> growth_loop
-+ [先问凭什么]
++ [在战书上再添一句：规矩由我来定]
     ~ trust += 2
     -> growth_loop
 
@@ -44,6 +50,7 @@ VAR ending_id = ""
 {chapter == 1: -> soul_scene}
 -> growth_gate
 
+// 药老与焚决：不是秘籍，是半卷口诀 —— 要炼成，得有人照着复现一遍
 === growth_gate ===
 # scene: growth_gate
 # bg: alley
@@ -51,28 +58,29 @@ VAR ending_id = ""
 # keys: scout.hook,scout.offer
 {say("scout.hook")}
 {say("scout.offer")}
-+ [正面碾过去]
++ [把最要紧的那一段也交出去]
     ~ trust += 1
     -> gate_battle
-+ [先摸清底细]
++ [全交出去，一段不留]
     ~ trust += 2
     -> gate_battle
-+ [绕开它，省点力气]
++ [谁也不给，自己闷头炼]
     {trust > 0:
         ~ trust -= 1
     }
     ~ route = "solo"
     -> gate_battle
 
-// 魂殿：抄作业的组织，专挑没有靠山的人下手
+// 魂殿：专抄作业的组织。它们越抄，看懂焚决的人就越多
 === soul_scene ===
 # scene: soul_gate
 # bg: alley
-# cast: pet,soul
-# keys: soul.taunt,pet.resolve
+# cast: pet,soul,scout
+# keys: soul.taunt,scout.warn,pet.resolve
 {say("soul.taunt")}
+{say("scout.warn")}
 {say("pet.resolve")}
-+ [今晚就把算法开源]
++ [连夜把实现开源，让追我的人变成读我的人]
     ~ trust += 2
     -> growth_gate
 + [先藏起来，换个地方炼]
@@ -105,7 +113,7 @@ VAR ending_id = ""
     ~ trust += 1
     -> growth_loop
 
-// 终章分流：信任够高有人接应，否则一个人硬闯
+// 终章分流：分量够重就有人替你作证，否则一个人赴约
 === finale_route ===
 {trust >= 7:
     ~ route = "insider"
@@ -117,12 +125,12 @@ VAR ending_id = ""
 
 === finale_insider ===
 # scene: finale_insider
-# bg: alchemy
+# bg: sect
 # cast: pet,scout
 # keys: scout.ally
 {say("scout.ally")}
-+ [借这一手，登上山门]
-    -> boss_battle
++ [踏上石阶，把三年之约了结]
+    -> vow_scene
 
 === finale_solo ===
 # scene: finale_solo
@@ -130,7 +138,21 @@ VAR ending_id = ""
 # cast: pet,narrator
 # keys: narrator.solo
 {say("narrator.solo")}
-+ [一个人，踏上石阶]
++ [一个人走上石阶]
+    -> vow_scene
+
+// 立约：名碑就在阶前，规矩由谁定，看这一战
+=== vow_scene ===
+# scene: vow_scene
+# bg: sect
+# cast: pet,boss
+# keys: boss.hook,boss.challenge
+{say("boss.hook")}
+{say("boss.challenge")}
++ [不必多言，拔剑]
+    -> boss_battle
++ [三年之期已到，请把名碑让出来]
+    ~ trust += 1
     -> boss_battle
 
 === boss_battle ===
