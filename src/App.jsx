@@ -43,6 +43,7 @@ import './styles.css'
 import './game-theme.css'
 import './training.css'
 import './vault.css'
+import './quest.css'
 
 const RANK = { SSR: 4, SR: 3, R: 2, N: 1 }
 
@@ -1537,7 +1538,14 @@ export default function App() {
         </main>
       )}
 
-      {view === 'quest' && <Quest onGo={(v) => { sfx.swoosh(); setView(v) }} />}
+      {view === 'quest' && (
+        <Quest
+          onGo={(v) => { sfx.swoosh(); setView(v) }}
+          // 复审发了奖励：刷新背包余额。**不跳转** —— 玩家还要看证据、
+          // 领下一个任务，跳走等于把刚拿到的奖励藏起来。
+          onReward={() => loadInv()}
+        />
+      )}
 
       {view === 'scan' && (advanced && llmConfig.deepAudit !== false ? (
         <AuditStage events={auditEvents} onSkip={handleSkipAudit} />

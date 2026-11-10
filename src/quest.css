@@ -1,0 +1,322 @@
+/* ============================================================
+   任务模式 · 活动任务板
+   像素 RPG 视觉层：与 game-theme.css / vault.css 同一套语言
+   （2px 描边 + 硬阴影 + 阶梯切角 + 街机字）
+   ============================================================ */
+
+.quest-wrap {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 26px 20px 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ---------- 活动任务卡 ---------- */
+.quest-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 22px 24px;
+  background: var(--panel, rgba(24, 32, 51, .82));
+  border: 2px solid var(--px-line);
+  box-shadow: 6px 6px 0 var(--px-shadow, rgba(0, 0, 0, .55));
+  filter: drop-shadow(6px 6px 0 var(--px-shadow, rgba(0, 0, 0, .55)));
+}
+
+.quest-hero h2 {
+  font-size: 22px;
+  color: var(--text);
+  margin: 6px 0 10px;
+}
+
+/* 小标签：不能借用 story.css 的 .story-kicker —— 任务页不引入那个文件，
+   借了就是一段看不见的字（颜色跟着 story.css 走，样式不在就白字白底）。 */
+.quest-kicker {
+  display: inline-block;
+  padding: 3px 10px;
+  font-family: var(--font-arcade);
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: #2d1c00;
+  background: linear-gradient(180deg, #ffd447, #f5c542);
+}
+
+.quest-hero p {
+  font-size: 14px;
+  line-height: 1.9;
+  color: var(--dim);
+  max-width: 760px;
+}
+
+/* 额度条：今日额度 / 进行中 / 冷却 */
+.quest-quota {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.quest-quota span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--dim);
+  background: rgba(10, 16, 30, .7);
+  border: 2px solid var(--px-line);
+}
+
+.quest-quota b {
+  font-family: var(--font-arcade);
+  font-size: 12px;
+  color: var(--accent);
+}
+
+/* ---------- 提示条 ---------- */
+.quest-msg {
+  padding: 11px 16px;
+  font-size: 13px;
+  line-height: 1.7;
+  border: 2px solid var(--px-line);
+  background: rgba(10, 16, 30, .7);
+}
+
+.quest-msg.ok { color: #9be15d; border-color: rgba(155, 225, 93, .5); }
+.quest-msg.err { color: #ff6b6b; border-color: rgba(255, 107, 107, .5); }
+
+/* ---------- 面板 ---------- */
+.quest-panel {
+  padding: 18px 20px;
+  background: var(--panel, rgba(24, 32, 51, .82));
+  border: 2px solid var(--px-line);
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, .35);
+}
+
+.quest-h {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  color: var(--dim);
+  border-bottom: 1px solid var(--px-line);
+  padding-bottom: 8px;
+  margin-bottom: 14px;
+}
+
+.quest-h em {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--dim);
+  opacity: .8;
+}
+
+.quest-note {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+/* ---------- 按钮 ---------- */
+.quest-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 14px;
+  font-family: var(--font-pixel);
+  font-size: 13px;
+  color: #2d1c00;
+  background: linear-gradient(180deg, #ffd447, #f5c542);
+  border: 2px solid #ffe58a;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: transform .1s, filter .15s;
+}
+
+.quest-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.quest-btn:active:not(:disabled) { transform: translate(2px, 2px); }
+.quest-btn:disabled { filter: grayscale(.7) brightness(.7); cursor: default; }
+
+.quest-btn.ghost {
+  color: var(--dim);
+  background: transparent;
+  border-color: var(--px-line);
+}
+
+.quest-btn.ghost:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ---------- 我手上的任务 ---------- */
+.quest-runs,
+.quest-targets,
+.quest-history,
+.quest-evidence {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.quest-run {
+  padding: 13px 15px;
+  background: rgba(10, 16, 30, .6);
+  border: 2px solid var(--px-line);
+}
+
+.quest-run.is-passed { border-color: rgba(155, 225, 93, .45); }
+.quest-run.is-partial { border-color: rgba(245, 197, 66, .45); }
+.quest-run.is-failed { border-color: rgba(255, 107, 107, .4); }
+
+.quest-run-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.quest-repo {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.quest-badge {
+  padding: 2px 8px;
+  font-family: var(--font-arcade);
+  font-size: 10px;
+  color: var(--dim);
+  border: 1px solid var(--px-line);
+}
+
+.quest-result {
+  font-size: 12px;
+}
+
+.quest-attempts {
+  font-size: 11px;
+  color: var(--dim);
+  opacity: .8;
+}
+
+.quest-run-detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 16px;
+  margin-top: 9px;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+/* 星数变化、判定说明、奖励到账分三段，用竖线隔开，别糊成一团 */
+.quest-run-detail > span { position: relative; }
+.quest-run-detail > span + span::before {
+  content: '';
+  position: absolute;
+  left: -9px;
+  top: 50%;
+  width: 1px;
+  height: 11px;
+  transform: translateY(-50%);
+  background: var(--px-line);
+}
+
+.quest-run-detail b { color: var(--text); font-weight: 500; }
+.quest-run-detail b.up, .quest-run-detail em.up { color: #9be15d; font-style: normal; }
+.quest-run-detail b.flat, .quest-run-detail em.flat { color: #ff6b6b; font-style: normal; }
+
+.quest-missing { color: #f0a35e; line-height: 1.7; }
+.quest-got { color: #9be15d; }
+.quest-time { opacity: .65; }
+
+.quest-run-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 11px;
+}
+
+/* ---------- 证据 ---------- */
+.quest-evidence {
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--px-line);
+  gap: 7px;
+}
+
+.quest-evidence li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 11.5px;
+  color: var(--dim);
+}
+
+.quest-ev-time { opacity: .7; }
+.quest-ev-attr { color: var(--dim); opacity: .85; }
+
+/* ---------- 候选目标 ---------- */
+.quest-target {
+  padding: 12px 14px;
+  background: rgba(10, 16, 30, .55);
+  border: 2px solid var(--px-line);
+}
+
+.quest-target-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.quest-stars {
+  font-family: var(--font-arcade);
+  font-size: 11px;
+  color: var(--accent);
+}
+
+.quest-desc {
+  margin-top: 7px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--dim);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.quest-target-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 11px;
+}
+
+.quest-hatchers {
+  font-size: 11px;
+  color: var(--dim);
+  opacity: .8;
+  margin-right: auto;
+}
+
+/* ---------- 历史 ---------- */
+.quest-history li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--dim);
+  background: rgba(10, 16, 30, .5);
+  border: 1px solid var(--px-line);
+}
+
+@media (max-width: 720px) {
+  .quest-run-detail, .quest-target-foot { gap: 6px 10px; }
+  .quest-evidence li { flex-direction: column; gap: 3px; }
+}

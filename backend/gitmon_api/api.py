@@ -39,6 +39,20 @@ def session_token(request: Request) -> str:
     return (user or {}).get("token", "") if user else ""
 
 
+def session_tokens(request: Request) -> dict[str, str]:
+    """登录会话里的令牌，按平台分桶：``{"github": "...", "gitee": "..."}``。
+
+    一个会话只对应一个平台（GitHub OAuth 或 Gitee OAuth），所以只填自己那一格。
+    任务验真按目标仓库所在平台取令牌 —— 拿 Gitee 令牌去问 GitHub 是问不出结果的。
+    """
+    user = auth.resolve_session(request.cookies.get(auth.SESSION_COOKIE, ""))
+    token = str((user or {}).get("token") or "")
+    if not token:
+        return {}
+    provider = str((user or {}).get("provider") or "github").lower()
+    return {provider: token}
+
+
 class HatchRequest(BaseModel):
     repo: str = Field(min_length=2, max_length=400, description="仓库地址，支持 GitHub / Gitee")
     refresh: bool = Field(default=False, description="忽略 6 小时快照缓存，强制重新扫描")
@@ -250,6 +264,7 @@ def repo_card(platform: str, owner: str, repo: str, token: str = Depends(session
 
 def install_error_handlers(app) -> None:
     from .inventory import InventoryError
+    from .quest import QuestError
     from .story import StoryError
 
     @app.exception_handler(ScanError)
@@ -269,6 +284,13 @@ def install_error_handlers(app) -> None:
 
     @app.exception_handler(InventoryError)
     async def _inventory_error(request: Request, exc: InventoryError) -> JSONResponse:
+        return JSONResponse(
+            status_code=getattr(exc, "status_code", 400),
+            content={"error": exc.message, "hint": exc.hint},
+        )
+
+    @app.exception_handler(QuestError)
+    async def _quest_error(request: Request, exc: QuestError) -> JSONResponse:
         return JSONResponse(
             status_code=getattr(exc, "status_code", 400),
             content={"error": exc.message, "hint": exc.hint},

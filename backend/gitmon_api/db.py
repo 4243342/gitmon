@@ -184,6 +184,9 @@ CREATE TABLE IF NOT EXISTS quest_runs (
 -- 同一个仓库 + 同一种任务，一天只能领一次（硬约束，不靠前端按钮）。
 -- 注意：issued_at 是 REAL 时间戳，SQLite 的 date() 不认 UNIX 纪元秒，
 -- 必须带 'unixepoch' 修饰符，否则表达式恒为 NULL、唯一索引形同虚设。
+-- 这里只能用 'unixepoch'，不能加 'localtime'：带时区换算的 date() 在 SQLite
+-- 里是非确定性函数，写进索引后 INSERT 会直接报 "non-deterministic use of date()"。
+-- 按本地自然日切分由业务层用纪元秒区间做（quest._today_range）。
 CREATE UNIQUE INDEX IF NOT EXISTS ux_quest_goal
     ON quest_runs(owner_key, pet_key, goal_key, date(issued_at, 'unixepoch'));
 CREATE INDEX IF NOT EXISTS idx_quest_owner ON quest_runs(owner_key, issued_at DESC);
@@ -247,6 +250,19 @@ def _migrate(conn: sqlite3.Connection) -> None:
         for name, ddl in columns:
             if name not in existing:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+
+    # 索引表达式改过就得重建：CREATE UNIQUE INDEX IF NOT EXISTS 不会替换旧索引。
+    # 这里比对 sqlite_master 里记录的建表语句，表达式不同就删了重建。
+    # 注意：迁移用的连接没设 row_factory，只能按下标取列。
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='index' AND name='ux_quest_goal'"
+    ).fetchone()
+    if row is not None and "date(issued_at, 'unixepoch')" not in (row[0] or "").replace('"', ""):
+        conn.execute("DROP INDEX IF EXISTS ux_quest_goal")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_quest_goal "
+            "ON quest_runs(owner_key, pet_key, goal_key, date(issued_at, 'unixepoch'))"
+        )
 
 
 class Database:

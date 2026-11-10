@@ -122,6 +122,8 @@ def create_app(settings: Settings | None = None, *, start_queue: bool = True) ->
     app.include_router(llm_router)
     from .story_api import router as story_router
     app.include_router(story_router)
+    from .quest_api import router as quest_router
+    app.include_router(quest_router)
     from .tts_api import router as tts_router
     app.include_router(tts_router)
     install_error_handlers(app)

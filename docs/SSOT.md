@@ -110,7 +110,74 @@ localStorage 里**不允许**出现余额副本。
 
 请求：`{"item_key", "count", "reason"}`。持有量不足 → `400`。
 
-## 5. 同步协议
+### 任务模式 `/api/quest/*`（新增）
+
+任务实例（`quest_runs` 表）同样以服务端为唯一真相源：前端不存任务、
+不缓存判定结果，只把服务端返回的 `result` / `evidence` / `reward` 原样显示。
+
+#### `GET /api/quest/board`
+
+响应：`{"goals": [{key, title, brief, accept[], verifyLevel, reward, quota, targets[], runs[]}], "time"}`
+
+- `quota`：`{dailyLimit, issuedToday, slotsLimit, slotsUsed, cooldownDays}`。
+  `issuedToday` 按**本地自然日**统计（服务端用 `time.mktime` 算当日纪元秒区间，
+  不在 SQL 里写 `date(..., 'localtime')` —— 见 §7 附注）。
+- `targets[]`：候选目标（社区里别人孵化过的仓库），字段
+  `{petKey, platform, fullName, owner, repo, htmlUrl, description, quality, hatchers, stars}`。
+  `stars` 取自快照缓存，**仅供展示**，不参与判定。
+- `runs[]`：该 owner 还没复审完的任务实例（`status='fixing'`）。
+
+#### `POST /api/quest/issue`
+
+请求：`{"goal_key": "star", "target": "github-owner/repo"}`
+
+- `target` 用 `<platform>-<full_name>` 口径（平台段在第一个短横线之前），
+  也接受 `owner/repo` 与完整仓库地址。**前端不要自己拆 owner/repo**，拆错平台就对不上。
+- 领取时后端**现拉一次**目标仓库的星数作为基线（`payload.starsBefore`），
+  不用 6 小时快照缓存 —— 缓存里的星数是旧的，拿它当基线会误判。
+- 拒绝条件（都返回 `{"error", "hint"}`）：
+  - `409` 目标不在候选池内 / 同一仓库处于冷却期（30 天）
+  - `429` 今日额度用尽（3 个/天）/ 手上已压 3 个没复审的任务
+
+#### `POST /api/quest/verify`
+
+请求：`{"id": "<run_id>"}`
+
+响应：`{"run", "result", "missing", "delta", "attributed", "reward"}`
+
+三态判定：
+
+| result | 条件 | 奖励 |
+|---|---|---|
+| `passed` | 星数上涨 **且** 归因核对确认是本人点的 | 全额（星尘 40 + 词条碎片 1）|
+| `partial` | 星数上涨，但归因不足（没令牌 / 令牌说没收藏过） | 40%（星尘 16），可继续复审 |
+| `failed` | 星数没涨 / 读不到星数 | 不发奖 |
+
+- 复审上限 5 次，第 6 次返回 `429` 并把任务置为 `expired`。
+- `partial` 升 `passed` 时**补发差额**（不重发）：`source_key=quest:{run_id}:{item}:{tier}`。
+- 已通过的任务重复提交返回 `{"duplicate": true}`，**不重复发奖**。
+- 归因核对用**玩家自己的**平台令牌（`X-GitHub-Token` / `X-Gitee-Token` 头，
+  或登录会话令牌）：`GET /user/starred/{owner}/{repo}` 返回 204 = 已收藏、404 = 没收藏。
+  服务端兜底令牌代表站点账号，不能用来归因。
+
+#### `GET /api/quest/history`
+
+响应：`{"items": [...], "stats": {total, done, passRate, passed, partial, failed}}`
+
+## 5. SQLite 附注：`date()` 在索引里的坑
+
+`quest_runs` 的唯一索引用 `date(issued_at, 'unixepoch')` 切自然日。三个实测结论：
+
+1. `date(REAL)` 对 Unix 时间戳返回 `NULL` —— 必须带 `'unixepoch'` 修饰符。
+2. `date('now','unixepoch')` **恒为 `NULL`**（`'now'` 是 UTC 字符串，`unixepoch` 只认纪元秒）。
+   拿它当「今天」会让比较永不成立，每日额度直接失效。
+3. 带 `'localtime'` 的 `date()` 在 SQLite 里是**非确定性函数**：索引能建出来，
+   但 INSERT 会报 `non-deterministic use of date() in an index`。
+
+所以索引只用纯 `date(issued_at, 'unixepoch')`（UTC 日界），
+本地自然日切分全部交给业务层用纪元秒区间做（`quest._today_range`）。
+
+## 6. 同步协议
 
 ### 启动（App 启动 effect 内，`loadCollection()` 之后）
 
@@ -136,7 +203,7 @@ localStorage 里**不允许**出现余额副本。
 
 老用户本地已有图鉴、服务端为空 → 按启动规则 3 的首次引导自动上云，无需手工迁移。
 
-## 6. 非目标（本期不做）
+## 7. 非目标（本期不做）
 
 - 战斗编队、开包记录、训练打卡的跨端同步
 - 增量 diff / 版本向量 / 字段级三方合并（LWW 足够）
