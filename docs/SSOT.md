@@ -30,6 +30,15 @@ localStorage 里**不允许**出现余额副本。
 前端**所有**对 `/api/*` 的 fetch 都必须带 `X-Gitmon-User` 头（登录态下由规则 1 覆盖，头仍发）。
 现有测试只走 header 路径，行为不变。
 
+**这个头同时也是服务端限流的分流键**（`main.py::_limit_identity`）：限流按
+`ip + X-Gitmon-User` 记一份 60 秒滑动窗口，另有一份 `ip` 总桶（额度 ×4）防伪造头刷量。
+漏带头不只影响图鉴归属 —— 请求会全部落进 `public` 桶，多个客户端共吃一份额度并提前撞 429。
+新增 `/api/*` 请求时务必复用 `src/sync.js::ownerHeader()`，不要手写 `headers`。
+
+不限流：`OPTIONS` 预检、`/api/health`、`/api/meta`、`/api/auth/me`、
+`/api/auth/providers`、`/api/jobs/{id}`（轮询）。429 带真实 `Retry-After` 与
+`X-RateLimit-Limit / Remaining / Reset`，详见 `backend/README.md`「服务端限流」。
+
 ## 3. 数据模型映射
 
 前端 pet 对象（`engine.judge()` 产物 + 运行时字段）→ 服务端：

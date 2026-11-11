@@ -13,6 +13,7 @@
 import { loadLLMConfig } from './llm.js'
 import { bgm } from './bgm.js'
 import { t } from './i18n.js'
+import { ownerHeader } from './sync.js' // SSOT §2：所有 /api/* 请求都要带身份头
 
 const CFG_KEY = 'gitmon:tts'
 const CACHE_NAME = 'gitmon-tts-v1'
@@ -181,7 +182,8 @@ function warmLocal() {
   if (localWarmed) return
   localWarmed = true
   try {
-    fetch('/api/tts/warm', { method: 'POST' }).catch(() => { localWarmed = false })
+    fetch('/api/tts/warm', { method: 'POST', headers: ownerHeader() })
+      .catch(() => { localWarmed = false })
   } catch { localWarmed = false }
 }
 
@@ -256,7 +258,7 @@ function mimeFor(engine) {
 async function fetchAudio(text, who, engine, signal) {
   const res = await fetch('/api/tts/speech', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...ownerHeader() },
     body: JSON.stringify({ text, role: who, rate: cfg.rate, engine, llm: llmPayload() }),
     signal,
   })

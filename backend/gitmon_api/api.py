@@ -198,10 +198,15 @@ def github_trending(
     since: str = Query(default="weekly", pattern="^(daily|weekly|monthly)$"),
     language: str = Query(default=""),
     limit: int = Query(default=30, ge=1, le=50),
+    token: str = Depends(session_token),
 ) -> dict[str, Any]:
-    """GitHub 趋势榜：把 github.com/trending 的排行榜拉成结构化数据。"""
+    """GitHub 趋势榜：把 github.com/trending 的排行榜拉成结构化数据。
+
+    页面抓取本身不占 API 配额；但网页挂掉会走 Search API 兜底 ——
+    登录会话 / 服务端兜底令牌优先，别让兜底请求按匿名（10 次/分钟）烧配额。
+    """
     try:
-        items = trending.fetch_trending(since, language)
+        items = trending.fetch_trending(since, language, token=token or settings.github_token)
     except Exception as exc:  # 网络抖动 / 匿名限流都归一成 502，前端统一报错
         raise ScanError(f"GitHub 趋势榜拉取失败：{exc}", hint="GitHub 可能对匿名请求限流，稍后重试")
     return {

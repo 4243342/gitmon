@@ -88,7 +88,7 @@ def client(tmp_dir, monkeypatch):
     monkeypatch.setattr(
         trending,
         "fetch_trending",
-        lambda since="weekly", language="": [
+        lambda since="weekly", language="", token="": [
             {
                 "rank": 1,
                 "author": "facebook",
@@ -128,3 +128,49 @@ def test_trending_endpoint_language_and_limit(client: TestClient) -> None:
     assert d["since"] == "daily"
     assert d["language"] == "Python"
     assert d["count"] == 1
+
+
+# ---------------------------------------------------------------- Search 兜底带令牌
+
+class _FakeResp:
+    def raise_for_status(self) -> None:
+        pass
+
+    def json(self) -> dict:
+        return {"items": [{"full_name": "acme/widget", "stargazers_count": 7,
+                           "owner": {"login": "acme"}, "html_url": "https://github.com/acme/widget",
+                           "description": "hi", "language": "Python", "forks_count": 1}]}
+
+
+def test_search_fallback_carries_token(monkeypatch) -> None:
+    """网页抓挂掉走 Search 兜底时，带上会话/兜底令牌，别按匿名烧 10 次/分钟的额度。"""
+    captured: dict = {}
+
+    def fake_get(url, **kwargs):
+        captured["url"] = url
+        captured["headers"] = kwargs.get("headers") or {}
+        if "github.com/trending" in url:
+            raise RuntimeError("page down")
+        return _FakeResp()
+
+    monkeypatch.setattr(trending.httpx, "get", fake_get)
+    monkeypatch.setattr(trending, "_cache", {})
+    items = trending.fetch_trending("weekly", "", token="tok-123")
+    assert items[0]["full_name"] == "acme/widget"
+    assert captured["headers"].get("Authorization") == "Bearer tok-123"
+
+
+def test_search_fallback_without_token_stays_anonymous(monkeypatch) -> None:
+    captured: dict = {}
+
+    def fake_get(url, **kwargs):
+        captured["headers"] = kwargs.get("headers") or {}
+        if "github.com/trending" in url:
+            raise RuntimeError("page down")
+        return _FakeResp()
+
+    monkeypatch.setattr(trending.httpx, "get", fake_get)
+    monkeypatch.setattr(trending, "_cache", {})
+    trending.fetch_trending("weekly", "", token="")
+    assert "Authorization" not in captured["headers"]
+

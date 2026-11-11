@@ -94,7 +94,11 @@ class Settings:
     # 行为开关
     daily_sync: bool = False
     daily_sync_hour: int = 3
+    # 单客户端（IP + X-Gitmon-User）每分钟请求上限；同 IP 总上限为它的 4 倍
     rate_limit_per_min: int = 120
+    # 部署在可信反代后面时，限流按 X-Forwarded-For 取真实客户端 IP。
+    # 默认关：XFF 可以伪造，随便信等于给限流开后门。
+    trust_proxy: bool = False
     use_scc: bool = False
     # 是否在浅克隆后跑一次离线 AI 味检测（依赖 use_scc 的克隆）
     ai_trace: bool = False
@@ -159,6 +163,7 @@ def load_settings() -> Settings:
         daily_sync=_env_bool("GITMON_DAILY_SYNC", False),
         daily_sync_hour=_env_int("GITMON_DAILY_SYNC_HOUR", 3),
         rate_limit_per_min=_env_int("GITMON_RATE_LIMIT", 120),
+        trust_proxy=_env_bool("GITMON_TRUST_PROXY", False),
         use_scc=_env_bool("GITMON_USE_SCC", False),
         ai_trace=_env_bool("GITMON_AI_TRACE", False),
         cors_origins=_env_list("GITMON_CORS_ORIGINS", ["http://127.0.0.1:5173"]),

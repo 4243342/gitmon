@@ -52,3 +52,10 @@
 - 上游 NOTICE：仓库 gallery 里的 Patch Pixel 字体不在 MIT 范围内——本项目未引用任何 gallery 字体/图片资源，不受影响。
 
 完整许可证文本见 <https://github.com/patch-gg/pixelfx/blob/main/LICENSE>。
+
+## 口袋宝贝（口袋精灵2）精灵立绘与图鉴数据
+
+- 来源：<https://github.com/DD1323222/kdjl2>（「口袋精灵2 源码」，MySQL dump `kdjl_mysql_data.sql` 的 `bb` 表 + `kdjl/images/bb/` 精灵图）
+- 许可证：**上游未声明开源许可证**（默认保留全部权利）；上游 README 声明「仅供个人学习使用，素材内容来源网络」，精灵美术素材疑为官方宝可梦系素材的同人沿用。
+- 引入方式：**素材移植（转码，不引代码）**。`bb` 表 383 只精灵的名称 / 五行 / 六维 / 成长率 / 抗性 / 进化链 / 图鉴文案整理为 `src/story/packs/default/roster.json`；站立图（`z*.gif`）与头像（`t*.gif`）转为动态 WebP，放入 `src/story/packs/default/art/bb<id>.webp` / `bb<id>_face.webp`，由 `characters.json` 挂到剧本角色立绘槽（Boss 槽不挂图，用剧情选中的仓库精灵）。
+- 使用范围：剧情模式「仓可梦」包（`docs/STORY.md`）的精灵立绘与随包图鉴。**对外分发前请自行清理或替换该批素材**；如需合规替代，可用本项目种子像素系统（monstrjs）重出立绘。

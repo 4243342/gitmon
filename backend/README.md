@@ -166,6 +166,27 @@ issue / PR 计数与依赖清单（最多 6 份）——单次扫描 12~17 个�
 服务端也可配 `GITHUB_TOKEN` 兜底；Gitee 匿名配额更紧，建议配 `GITEE_TOKEN`。
 配额耗尽会返回 429，带 `Retry-After` 和"去登录"的提示。
 
+### 服务端限流（和上面的平台配额是两回事）
+
+`GITMON_RATE_LIMIT` 挡的是「刷扫描配额」，按 **IP + `X-Gitmon-User`** 双层滑动窗口计数：
+
+| 层 | 计数键 | 额度/分钟 | 作用 |
+|---|---|---|---|
+| 身份桶 | `ip \| 设备头` | `GITMON_RATE_LIMIT` | 同一台机器上的不同浏览器/标签各用各的额度 |
+| IP 总桶 | `ip` | `GITMON_RATE_LIMIT × 4` | 兜住「狂换设备头刷额度」 |
+
+下列请求**不占额度**：CORS 预检 `OPTIONS`、健康检查 `/api/health`、`/api/meta`、
+`/api/auth/me`、`/api/auth/providers`、孵化轮询 `/api/jobs/{id}`。一次孵化会轮询最多
+90 次，把这些算进去会误伤正常玩家。
+
+429 响应带 `Retry-After`（滑动窗口的真实回血秒数，不是写死的 60）、
+`X-RateLimit-Limit / Remaining / Reset`，以及 `retryAfter` 字段；这些头都在
+`Access-Control-Expose-Headers` 里，跨域时前端也读得到。**前端所有 `/api/*` 请求都必须带
+`X-Gitmon-User`**，否则统一落到 `public` 桶共享一份额度。
+
+部署在 Nginx 等反代后面时，`request.client.host` 全是反代 IP，设 `GITMON_TRUST_PROXY=1`
+改按 `X-Forwarded-For` 首段取客户端 IP。默认关闭 —— XFF 可以伪造，随便信等于给限流开后门。
+
 ## 配置
 
 | 环境变量 | 默认 | 说明 |
@@ -181,7 +202,8 @@ issue / PR 计数与依赖清单（最多 6 份）——单次扫描 12~17 个�
 | `GITMON_CACHE_TTL` | `21600` | 快照缓存（秒） |
 | `GITMON_DAILY_SYNC` | `0` | 开 1 后每天定时结算一批精灵 |
 | `GITMON_CORS_ORIGINS` | `http://127.0.0.1:5173` | 允许的前端来源，逗号分隔 |
-| `GITMON_RATE_LIMIT` | `120` | 单 IP 每分钟请求上限（0 = 不限） |
+| `GITMON_RATE_LIMIT` | `120` | 单客户端（IP + 设备头）每分钟请求上限，同 IP 总上限为其 4 倍（0 = 不限） |
+| `GITMON_TRUST_PROXY` | `0` | 开 1 后限流按 `X-Forwarded-For` 取真实 IP，仅在可信反代后使用 |
 | `GITMON_SPRITE_STYLE` | `rich` | `rich` 32×32 分层立绘；`classic` 16×16（与旧版 canvas 逐像素一致） |
 | `GITMON_USE_SCC` | `0` | 是否浅克隆 + scc 精确统计 |
 | `GITMON_STATIC_DIR` | 自动探测 `../dist` | 前端构建产物目录 |

@@ -93,21 +93,27 @@ def parse_trending(html_text: str) -> list[dict[str, Any]]:
     return out
 
 
-def _fetch_search_fallback(since: str, language: str = "") -> list[dict[str, Any]]:
+def _fetch_search_fallback(since: str, language: str = "", token: str = "") -> list[dict[str, Any]]:
     """抓取失败时的兜底：GitHub Search API 找该时段内新建、Star 最多的仓库。
 
     github.com/trending 没有 API、偶发 504；Search API 独立且稳定。
     榜上的仓库都在所选时段内创建，其 Star 增量约等于总 Star，可以按新增展示。
+
+    token：登录会话 / 服务端兜底令牌。匿名 Search 只有 10 次/分钟，
+    排行榜又是高频页面 —— 带上令牌（30 次/分钟）别让它把整台机器的匿名配额烧穿。
     """
     days = {"daily": 1, "weekly": 7, "monthly": 30}.get(since, 7)
     since_date = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
     query = f"created:>{since_date}"
     if language:
         query += f" language:{language}"
+    headers = {"User-Agent": _UA, "Accept": "application/vnd.github+json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     resp = httpx.get(
         "https://api.github.com/search/repositories",
         params={"q": query, "sort": "stars", "order": "desc", "per_page": 30},
-        headers={"User-Agent": _UA, "Accept": "application/vnd.github+json"},
+        headers=headers,
         timeout=18.0,
     )
     resp.raise_for_status()
@@ -134,9 +140,10 @@ def _fetch_search_fallback(since: str, language: str = "") -> list[dict[str, Any
     return items
 
 
-def fetch_trending(since: str = "weekly", language: str = "") -> list[dict[str, Any]]:
+def fetch_trending(since: str = "weekly", language: str = "", token: str = "") -> list[dict[str, Any]]:
     """抓 GitHub 趋势榜；since ∈ daily/weekly/monthly；language 为空则全部语言。
 
+    token 用于 Search 兜底（登录会话优先，其次服务端兜底令牌）。
     来源会写进 last_source()：trending = 抓页面，search = 网页不可达时的近似榜单。
     """
     global _source
@@ -165,7 +172,7 @@ def fetch_trending(since: str = "weekly", language: str = "") -> list[dict[str, 
         if cached:  # 抖动 / 限流时先给上一次的榜单，比整页报错强
             _source = cached[2]
             return cached[1]
-        items = _fetch_search_fallback(since, language)
+        items = _fetch_search_fallback(since, language, token)
         _source = "search"
         if not items:
             raise
