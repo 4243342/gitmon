@@ -940,6 +940,17 @@
 
 .story-game-entry .primary-btn { flex: 0 0 auto; }
 
+/* 头部「进完整版游戏」：自带正片的包放在哪一步都能直接进 */
+.story-head-game {
+  border-color: rgba(255, 203, 5, .55) !important;
+  color: var(--st-gold);
+  background: rgba(255, 203, 5, .12);
+}
+
+.story-head-game:hover {
+  background: rgba(255, 203, 5, .22);
+}
+
 /* 包选择条上的「完整游戏」铭牌 */
 .story-pack-kind {
   align-self: flex-start;

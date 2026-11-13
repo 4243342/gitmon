@@ -1303,6 +1303,17 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
           )}
         </div>
         <div className="story-head-actions">
+          {/* 自带正片的包：不管走到哪一步（选主角 / 选对手 / 选剧本 / 已开局），
+              都留一个直接进正片的入口，不用退回去找 */}
+          {gamePacks.length > 0 && (
+            <button
+              className="ghost-btn story-head-game"
+              onClick={() => openPackGame(gamePacks[0])}
+              title={gamePacks[0].game.title || gamePacks[0].title}
+            >
+              {t('进完整版游戏', 'Full game')}
+            </button>
+          )}
           {(view === 'boss' || view === 'script') && (
             <button
               className="ghost-btn story-back"

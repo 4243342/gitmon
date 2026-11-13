@@ -3,6 +3,7 @@ import PixelSprite from './PixelSprite.jsx'
 import RadarChart from './RadarChart.jsx'
 import { hasCustomSprite, setCustomSprite, clearCustomSprite, onCustomSprite } from '../customSprite.js'
 import { MAX_STAGE, nextStage, stageInfo, stageProgress } from '../evolution.js'
+import { derivedFieldsOf } from '../engine.js'
 import { StarBadge } from '../starBadge.jsx'
 import ModelSeal from './ModelSeal.jsx'
 import { useI18n } from '../i18n.js'
@@ -168,6 +169,14 @@ export default function PetCard({ pet, revealed = false, readOnly = false }) {
     if (file && file.type.startsWith('image/')) setCustomSprite(pet, file)
   }
 
+  // 归一化口径：卡面上的条和雷达必须跟同屏数字用同一把尺子。
+  // 存档里的 statCap / hpCap 可能是旧版本按绝对制算出来的（Lv.999 会到 3916），
+  // 而六维其实是 AI 的 0–100 评分——用旧上限去画，条会缩成一根细丝、雷达缩成一个点，
+  // 看着就像「数值没了」。这里按当前六维重新判断尺度，只用于展示，不改存档。
+  const scale = useMemo(() => derivedFieldsOf(pet), [pet])
+  const statCap = Number(scale.statCap) || Number(pet.statCap) || 100
+  const hpCap = Number(scale.hpCap) || Number(pet.hpCap) || statCap
+
   const q = pet.quality
   const evo = stageInfo(pet.evolutionStage)
   const nextEvo = nextStage(pet.evolutionStage)
@@ -250,7 +259,7 @@ export default function PetCard({ pet, revealed = false, readOnly = false }) {
                 <div className="card-row">
                   <span className="lv">Lv.{pet.level}</span>
                   <div className="hp-bar">
-                    <div className="hp-fill" style={{ width: `${Math.min(100, ((pet.maxHp || 0) / (pet.hpCap || pet.statCap || 100)) * 100)}%` }} />
+                    <div className="hp-fill" style={{ width: `${Math.min(100, ((pet.maxHp || 0) / hpCap) * 100)}%` }} />
                   </div>
                   <span className="hp-num">HP {pet.maxHp}</span>
                 </div>
@@ -276,13 +285,13 @@ export default function PetCard({ pet, revealed = false, readOnly = false }) {
                 </div>
 
                 <div className="card-body">
-                  <RadarChart stats={pet.stats} color={pet.element.color} size={120} compact max={pet.statCap || 100} />
+                  <RadarChart stats={pet.stats} color={pet.element.color} size={120} compact max={statCap} />
                   <div className="stats-list">
                     {pet.stats.map((s) => (
                       <div key={s.name} className="stat-row">
                         <span className="stat-name">{s.name}</span>
                         <div className="stat-bar">
-                          <div className="stat-fill" style={{ width: `${Math.min(100, (s.value / (pet.statCap || 100)) * 100)}%`, background: pet.element.color }} />
+                          <div className="stat-fill" style={{ width: `${Math.min(100, (s.value / statCap) * 100)}%`, background: pet.element.color }} />
                         </div>
                         <span className="stat-val">{s.value}</span>
                         <span className={`stat-grade g-${s.grade}`}>{s.grade}</span>
