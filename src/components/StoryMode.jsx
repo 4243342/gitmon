@@ -210,8 +210,9 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
   const [scriptNote, setScriptNote] = useState('')
   // 03 步三选一：'' 未选 / system 内置剧本 / custom 自定义 / ai 模型生成
   const [scriptMode, setScriptMode] = useState('')
-  // 仓可梦 = 完整版《口袋精灵2》整包嵌入（public/petgame/）：全屏 iframe 开关
-  const [gameOpen, setGameOpen] = useState(false)
+  // 包自带正片（仓可梦 = 完整版《口袋精灵2》）：选中这一包就直接进游戏，
+  // 不再走占位 VN 剧情。入口写在包元信息 game.entry 里，前端不写死包 id。
+  const [gamePack, setGamePack] = useState(null)
   // 系统剧本包清单（斗码苍穹等）。玩家在系统剧本里先选包，再选包里的方案
   const [packs, setPacks] = useState([])
   const [packPick, setPackPick] = useState('')
@@ -617,6 +618,34 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
   )
   const packTitle = (packId) => packs.find((p) => p.id === packId)?.title || packId || ''
 
+  // 自带正片的包（仓可梦）：包里声明了 game.entry，选中即进游戏
+  const gamePacks = useMemo(() => packs.filter((p) => p?.game?.entry), [packs])
+
+  const openPackGame = useCallback((pack) => {
+    if (!pack?.game?.entry) return
+    sfx.blip()
+    // 游戏自带音乐：先把远征曲收掉，别两首叠着放
+    bgm.stop()
+    setPackPick(pack.id)
+    setGamePack(pack)
+  }, [])
+
+  const closePackGame = useCallback(() => {
+    setGamePack(null)
+    // 退出游戏按原来的场景把远征曲接回去
+    if (!bgmOn) return
+    if (runRef.current) bgm.startBattle()
+    else bgm.startStory()
+  }, [bgmOn])
+
+  // Esc 退出游戏：iframe 里拿不到宿主键盘，只能在这里兜
+  useEffect(() => {
+    if (!gamePack) return undefined
+    const onKey = (e) => { if (e.key === 'Escape') closePackGame() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [gamePack, closePackGame])
+
   // 系统剧本的方案数按包走：斗码苍穹只留《三年之约》一案，通用包有三套。
   // 写死「三套模板」会对只提供一案的包说谎。
   const systemPackCount = currentPack?.variant_count || 0
@@ -773,6 +802,10 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
     }
   }, [])
 
+  // 01 步就要能看见「自带正片」的包（仓可梦 → 完整版游戏），
+  // 所以进剧情模式先拉一次清单：纯本地读 meta.json，不调模型、不花钱。
+  useEffect(() => { loadPacks() }, [loadPacks])
+
   const useSystemScripts = async () => {
     if (!bossPick) return
     sfx.blip()
@@ -805,8 +838,14 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
     }
   }
 
-  // 换剧本包：换包等于换一条路线，方案必须重新取
+  // 换剧本包：换包等于换一条路线，方案必须重新取。
+  // 例外是「自带正片」的包（仓可梦）：它没有方案卡要选，选中就直接进游戏。
   const choosePack = async (packId) => {
+    const picked = packs.find((p) => p.id === packId)
+    if (picked?.game?.entry) {
+      openPackGame(picked)
+      return
+    }
     if (!bossPick) return
     sfx.blip()
     setPackPick(packId)
@@ -1319,6 +1358,19 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
             <h3><span className="step-plate">01</span>{t('选主角', 'Pick the protagonist')}</h3>
             <span>{t('只有通过 AI 认证的精灵能当主角', 'Only AI-certified sprites can star')}</span>
           </div>
+          {/* 自带正片的包（仓可梦 = 完整版《口袋精灵2》）：不用选主角、不用过 AI 认证，
+              点进去就是这个包的正片本身 */}
+          {gamePacks.map((p) => (
+            <div className="story-game-entry" key={p.id}>
+              <div className="story-game-entry-text">
+                <b>{p.game.title || `${p.title} · 完整版`}</b>
+                <span>{p.game.desc || p.tagline}</span>
+              </div>
+              <button className="primary-btn" onClick={() => openPackGame(p)}>
+                {t('直接进游戏', 'Play the full game')}
+              </button>
+            </div>
+          ))}
           {storyCast.length === 0 ? (
             <p className="story-empty">{t('还没有 AI 认证精灵：先在高级模式里完成一次模型评测。', 'No AI-certified sprite yet — run one model evaluation in AI Pro mode first.')}</p>
           ) : (
@@ -1415,23 +1467,6 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
           </div>
           <p className="story-rationale">{t('对手：', 'Rival: ')}{bossPick?.full_name}</p>
 
-          {/* 仓可梦 = 完整版《口袋精灵2》（public/petgame/ 整包嵌入）。
-              进入这一包就是进完整游戏，全屏 iframe 开局；下面的剧本流程仍可走占位主线。 */}
-          {currentPack?.id === 'default' && (
-            <div className="story-petgame-cta">
-              <b>{t('仓可梦 · 完整版《口袋精灵2》', 'Cangke Meng · full Pocket Pets 2')}</b>
-              <span>
-                {t(
-                  '这一包就是完整版口袋精灵剧情：捕捉、养成、进化、对战、图鉴全在里面，进游戏直接开玩。',
-                  'This pack is the full game: catching, raising, evolving, battling and the atlas — jump in and play.',
-                )}
-              </span>
-              <button className="primary-btn" disabled={Boolean(busy)} onClick={() => setGameOpen(true)}>
-                {t('进入完整版游戏', 'Enter the full game')}
-              </button>
-            </div>
-          )}
-
           {/* 三选一：不再一进来就花一次模型调用。谁来写剧本，玩家自己定 */}
           <div className="story-src-grid" role="radiogroup" aria-label={t('剧本来源', 'Script source')}>
             {[
@@ -1494,6 +1529,7 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
                   onClick={() => choosePack(p.id)}
                 >
                   <b>{p.title}</b>
+                  {p.game?.entry && <span className="story-pack-kind">{t('完整游戏 · 选中即开玩', 'Full game · opens on pick')}</span>}
                   {p.tagline && <span>{p.tagline}</span>}
                 </button>
               ))}
@@ -1805,17 +1841,41 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
 
       {view === 'loading' && <p className="story-busy">{t('读取剧情进度…', 'Loading your run…')}</p>}
 
-      {/* 完整版《口袋精灵2》全屏 iframe：整包静态托管在 /petgame/，原样运行不改玩法 */}
-      {gameOpen && (
-        <div className="story-petgame-overlay" role="dialog" aria-label={t('完整版口袋精灵2', 'Full Pocket Pets 2')}>
-          <div className="story-petgame-bar">
-            <b>{t('仓可梦 ·《口袋精灵2》完整版', 'Cangke Meng · Pocket Pets 2')}</b>
-            <button className="ghost-btn" onClick={() => setGameOpen(false)}>
-              {t('退出游戏', 'Exit game')}
-            </button>
+      {/* 包自带正片：仓可梦 = 完整版《口袋精灵2》。
+          选这一包就是进它的正片，所以这里铺满整屏，不再挂在旁边的按钮上。
+          入口取自包元信息 game.entry，整包静态托管在 /petgame/，原样运行不改玩法。 */}
+      {gamePack && (
+        <section
+          className="story-game"
+          role="dialog"
+          aria-modal="true"
+          aria-label={gamePack.game.title || `${gamePack.title} · 完整版`}
+        >
+          <div className="story-game-bar">
+            <b>{gamePack.game.title || `${gamePack.title} · 完整版`}</b>
+            <div className="story-game-actions">
+              {gamePack.game.atlas && (
+                <a className="ghost-btn" href={gamePack.game.atlas} target="_blank" rel="noreferrer">
+                  {t('图鉴站', 'Atlas')}
+                </a>
+              )}
+              {gamePack.game.docs && (
+                <a className="ghost-btn" href={gamePack.game.docs} target="_blank" rel="noreferrer">
+                  {t('游戏文档', 'Docs')}
+                </a>
+              )}
+              <button className="ghost-btn" onClick={closePackGame}>
+                {t('退出游戏 · Esc', 'Exit · Esc')}
+              </button>
+            </div>
           </div>
-          <iframe className="story-petgame-frame" src="/petgame/" title={t('口袋精灵2 完整版', 'Pocket Pets 2 full game')} />
-        </div>
+          <iframe
+            className="story-game-frame"
+            src={gamePack.game.entry}
+            title={gamePack.game.title || t('口袋精灵2 完整版', 'Pocket Pets 2 full game')}
+            allow="autoplay; fullscreen"
+          />
+        </section>
       )}
     </main>
   )

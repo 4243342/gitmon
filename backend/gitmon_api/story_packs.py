@@ -30,11 +30,19 @@ DEFAULT_PACK = "default"
 _FALLBACK_META: dict[str, Any] = {
     "id": DEFAULT_PACK,
     "title": "仓可梦",
-    "tagline": "占位包 · 主线待定稿",
+    "tagline": "完整版《口袋精灵2》· 选它直接进游戏",
     "world": "",
     "style": "",
     "bgs": {},
     "endings": {},
+    # 游戏入口：包自带正片时声明在这里，前端不写死「default 就是那个包」
+    "game": {
+        "title": "仓可梦 ·《口袋精灵2》完整版",
+        "entry": "/petgame/",
+        "desc": "这一包的正片就是完整版《口袋精灵2》：捕捉、养成、进化、对战、图鉴全在里面，选它直接开玩。",
+        "atlas": "/petgame/atlas/",
+        "docs": "/petgame/docs/",
+    },
     "variants": [
         {
             "title": "《仓可梦（占位）》",
@@ -110,6 +118,7 @@ def list_packs() -> list[dict[str, Any]]:
         packs = {DEFAULT_PACK: _FALLBACK_META}
     out = []
     for pack_id, meta in packs.items():
+        game = meta.get("game") or None
         out.append({
             "id": pack_id,
             "title": str(meta.get("title") or pack_id),
@@ -118,6 +127,15 @@ def list_packs() -> list[dict[str, Any]]:
             "style": str(meta.get("style") or ""),
             "endings": dict(meta.get("endings") or {}),
             "variant_count": len(meta.get("variants") or []),
+            # 包自带正片（整包嵌入的游戏）：入口写在包元信息里，
+            # 前端据此决定「选中这一包就直接进游戏」，而不是写死某个包 id。
+            "game": {
+                "title": str(game.get("title") or ""),
+                "entry": str(game.get("entry") or ""),
+                "desc": str(game.get("desc") or ""),
+                "atlas": str(game.get("atlas") or ""),
+                "docs": str(game.get("docs") or ""),
+            } if isinstance(game, dict) and game.get("entry") else None,
         })
     # default 排最后：它是 AI / 自定义剧本的兜底路线，不是给玩家挑的正经剧本
     out.sort(key=lambda item: (item["id"] == DEFAULT_PACK, item["id"]))

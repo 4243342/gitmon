@@ -1,9 +1,16 @@
 {
   "id": "default",
   "title": "仓可梦",
-  "tagline": "占位包 · 主线待定稿",
+  "tagline": "完整版《口袋精灵2》· 选它直接进游戏",
   "world": "",
   "style": "",
+  "game": {
+    "title": "仓可梦 ·《口袋精灵2》完整版",
+    "entry": "/petgame/",
+    "desc": "这一包的正片就是完整版《口袋精灵2》：捕捉、养成、进化、对战、图鉴全在里面，选它不用再走占位剧情，直接开玩。",
+    "atlas": "/petgame/atlas/",
+    "docs": "/petgame/docs/"
+  },
   "bgs": {
     "dawn": ["黎明", "DAWN"],
     "street_night": ["夜街", "NIGHT STREET"],

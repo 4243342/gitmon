@@ -903,39 +903,58 @@
 .story-pack b { font-size: 13px; font-weight: 400; color: #fff; letter-spacing: .4px; }
 .story-pack span { font-size: 11px; line-height: 1.6; color: #93a1b8; }
 
-/* 仓可梦 = 完整版《口袋精灵2》整包嵌入：03 步的直达入口 */
-.story-petgame-cta {
+/* 仓可梦 = 完整版《口袋精灵2》：包自带正片，01 步就有直达条 */
+.story-game-entry {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 14px;
-  margin: 0 0 16px;
-  padding: 12px 14px;
+  gap: 10px 16px;
+  margin: 0 0 18px;
+  padding: 14px 16px;
   border: 2px solid var(--st-line);
   border-left-width: 4px;
-  border-left-color: var(--st-cyan);
-  background: rgba(56, 224, 255, .06);
+  border-left-color: var(--st-gold);
+  background: linear-gradient(100deg, rgba(255, 203, 5, .1), rgba(56, 224, 255, .05) 60%, transparent);
 }
 
-.story-petgame-cta b {
+.story-game-entry-text {
+  flex: 1 1 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.story-game-entry-text b {
   font-family: var(--font-arcade, monospace);
   font-size: 11px;
   letter-spacing: .12em;
-  color: var(--st-cyan);
+  color: var(--st-gold);
   text-transform: uppercase;
 }
 
-.story-petgame-cta span {
-  flex: 1 1 240px;
+.story-game-entry-text span {
   font-size: 12px;
   line-height: 1.7;
   color: #93a1b8;
 }
 
-.story-petgame-cta .primary-btn { flex: 0 0 auto; }
+.story-game-entry .primary-btn { flex: 0 0 auto; }
 
-/* 完整版游戏全屏层：iframe 原样跑 /petgame/，不嵌进 VN 舞台 */
-.story-petgame-overlay {
+/* 包选择条上的「完整游戏」铭牌 */
+.story-pack-kind {
+  align-self: flex-start;
+  padding: 0 6px;
+  border: 1px solid rgba(255, 203, 5, .45);
+  background: rgba(255, 203, 5, .12);
+  color: var(--st-gold);
+  font-family: var(--font-arcade, monospace);
+  font-size: 8px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+/* 正片层：整包静态托管在 /petgame/，铺满整屏原样运行，不嵌进 VN 舞台 */
+.story-game {
   position: fixed;
   inset: 0;
   z-index: 320;
@@ -944,7 +963,7 @@
   background: #010409;
 }
 
-.story-petgame-bar {
+.story-game-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -954,7 +973,7 @@
   background: #0d1829;
 }
 
-.story-petgame-bar b {
+.story-game-bar b {
   font-family: var(--font-arcade, monospace);
   font-size: 11px;
   letter-spacing: .14em;
@@ -962,7 +981,10 @@
   text-transform: uppercase;
 }
 
-.story-petgame-frame {
+.story-game-actions { display: flex; align-items: center; gap: 8px; }
+.story-game-actions .ghost-btn { text-decoration: none; }
+
+.story-game-frame {
   flex: 1;
   width: 100%;
   border: 0;

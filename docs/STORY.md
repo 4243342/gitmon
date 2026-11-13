@@ -287,7 +287,7 @@ src/story/packs/<id>/
 
 | 包 id | 名称 | 定位 |
 |---|---|---|
-| `default` | 仓可梦 | 兜底包。AI 生成与自定义剧本走它；老存档也走它。完整版《口袋精灵2》单机游戏整包嵌入 `public/petgame/`（含图鉴站 /docs、/atlas），03 步提供「进入完整版游戏」全屏入口；另随包带 383 只精灵立绘 + `roster.json` 图鉴，主角/引路人挂精灵立绘，Boss 用剧情选中的那只 |
+| `default` | 仓可梦 | 兜底包，也是**自带正片的包**：包元信息声明 `game.entry = /petgame/`，选它直接进完整版《口袋精灵2》单机游戏（整包静态嵌入 `public/petgame/`，含图鉴站 `/petgame/atlas/`、游戏文档 `/petgame/docs/`），不再走占位剧情；AI 生成与自定义剧本也落在这条兜底路线，老存档同理。另随包带 383 只精灵立绘 + `roster.json` 图鉴，主角/引路人挂精灵立绘，Boss 用剧情选中的那只 |
 | `douma` | 斗码苍穹 | 第一条专属包。斗破苍穹骨架 + 三年之约主线：项目即宗门，star 是香火，fork 是分家，release 是境界 |
 
 `default` 不是「没人要的包」，它是**兼容层**：所有非系统剧本的路径都落到它，
@@ -323,12 +323,15 @@ src/story/packs/<id>/
 > 它的三个角度（《三年之约》/《焚决》/《名碑》）本来讲的是同一条线的不同侧面，
 > 拆成三张卡只会让玩家以为能选三条路线，实际正片一模一样。
 >
-> 通用包（`default`）现在是「仓可梦」包——它是 AI / 自定义剧本的兜底路线，
-> 通用远征的三张模板已删，先只放一张占位卡，主线内容待定稿。
-> **完整版《口袋精灵2》（pet-atlas-game）整包原样嵌入**：静态资源放 `public/petgame/`
-> （游戏本体在根、图鉴站在 `atlas/`、游戏文档在 `docs/`，按上游 nginx.conf 的路由语义
-> 重写到 `/petgame/` 基路径），03 步选中仓可梦包时给「进入完整版游戏」入口，
-> 全屏 iframe 原样运行，不改玩法、不写剧情。素材来源与许可见 `THIRD-PARTY.md`。
+> 通用包（`default`）现在是「仓可梦」包——它自带正片，同时也是 AI / 自定义剧本的兜底路线。
+> **完整版《口袋精灵2》（pet-atlas-game）整包原样嵌入，并且就是这一包的正片**：
+> 静态资源放 `public/petgame/`（游戏本体在根、图鉴站在 `atlas/`、游戏文档在 `docs/`，
+> 按上游 nginx.conf 的路由语义重写到 `/petgame/` 基路径），入口写在包元信息
+> `meta.json` 的 `game.entry` 里——前端不写死「`default` 就是那个包」，包删了入口就没了。
+> 交互上不是「旁边的按钮」：01 步选主角时就有一条直达条（不需要 AI 认证精灵），
+> 03 步在剧本包清单里选中仓可梦也会**直接切进游戏**（`choosePack` 见到 `game.entry` 就
+> 不进方案卡流程），全屏 iframe 原样运行，不改玩法、不写剧情，Esc 或「退出游戏」回到原步骤。
+> 素材来源与许可见 `THIRD-PARTY.md`。
 > 另外口袋宝贝素材已移植进包：`roster.json` 收全量 383 只精灵（五行 / 六维 / 成长率 / 进化链 / 图鉴文案），
 > `art/` 下 `bb<id>.webp` 立绘 + `bb<id>_face.webp` 头像（由原素材 GIF 转动态 WebP）。
 > 角色立绘只挂精灵图（主角=金波姆、引路人=黄金鸟），**Boss 不配静态立绘**——
@@ -336,6 +339,11 @@ src/story/packs/<id>/
 >
 > 方案卡数量按包走，界面不能写死「三套模板」：`/api/story/packs` 的 `variant_count`
 > 告诉前端这个包有几张，系统剧本那张卡的描述按它显示。
+
+> **静态目录索引的坑**：`vite dev` / `preview` 的 SPA 兜底会把 `/petgame/` 也返回成宿主
+> `index.html`，iframe 里看到的就成了 GitMon 自己（看着像「游戏没接进去」）。
+> `vite.config.js` 的 `petgame-directory-index` 插件把 `/petgame`、`/petgame/atlas`、
+> `/petgame/docs` 补成 `index.html`，和 nginx / GitHub Pages 的行为对齐。
 
 #### 单一真相源
 
