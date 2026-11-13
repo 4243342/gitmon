@@ -903,6 +903,72 @@
 .story-pack b { font-size: 13px; font-weight: 400; color: #fff; letter-spacing: .4px; }
 .story-pack span { font-size: 11px; line-height: 1.6; color: #93a1b8; }
 
+/* 仓可梦 = 完整版《口袋精灵2》整包嵌入：03 步的直达入口 */
+.story-petgame-cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 2px solid var(--st-line);
+  border-left-width: 4px;
+  border-left-color: var(--st-cyan);
+  background: rgba(56, 224, 255, .06);
+}
+
+.story-petgame-cta b {
+  font-family: var(--font-arcade, monospace);
+  font-size: 11px;
+  letter-spacing: .12em;
+  color: var(--st-cyan);
+  text-transform: uppercase;
+}
+
+.story-petgame-cta span {
+  flex: 1 1 240px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #93a1b8;
+}
+
+.story-petgame-cta .primary-btn { flex: 0 0 auto; }
+
+/* 完整版游戏全屏层：iframe 原样跑 /petgame/，不嵌进 VN 舞台 */
+.story-petgame-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 320;
+  display: flex;
+  flex-direction: column;
+  background: #010409;
+}
+
+.story-petgame-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 2px solid var(--st-line);
+  background: #0d1829;
+}
+
+.story-petgame-bar b {
+  font-family: var(--font-arcade, monospace);
+  font-size: 11px;
+  letter-spacing: .14em;
+  color: var(--st-gold);
+  text-transform: uppercase;
+}
+
+.story-petgame-frame {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: #010409;
+}
+
 /* 方案卡上的所属包铭牌 */
 .story-script-pack {
   align-self: flex-start;

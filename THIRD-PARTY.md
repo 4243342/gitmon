@@ -59,3 +59,10 @@
 - 许可证：**上游未声明开源许可证**（默认保留全部权利）；上游 README 声明「仅供个人学习使用，素材内容来源网络」，精灵美术素材疑为官方宝可梦系素材的同人沿用。
 - 引入方式：**素材移植（转码，不引代码）**。`bb` 表 383 只精灵的名称 / 五行 / 六维 / 成长率 / 抗性 / 进化链 / 图鉴文案整理为 `src/story/packs/default/roster.json`；站立图（`z*.gif`）与头像（`t*.gif`）转为动态 WebP，放入 `src/story/packs/default/art/bb<id>.webp` / `bb<id>_face.webp`，由 `characters.json` 挂到剧本角色立绘槽（Boss 槽不挂图，用剧情选中的仓库精灵）。
 - 使用范围：剧情模式「仓可梦」包（`docs/STORY.md`）的精灵立绘与随包图鉴。**对外分发前请自行清理或替换该批素材**；如需合规替代，可用本项目种子像素系统（monstrjs）重出立绘。
+
+## pet-atlas-game（《口袋精灵2》免费单机网页版，整包嵌入）
+
+- 来源：<https://github.com/laerpeeK/pet-atlas-game>（`client/` 游戏本体 + `atlas/` 图鉴站 + `docs/` 游戏文档；上游 `README.md` / `nginx.conf` 原文留档在 [`third-party/pet-atlas-game/`](third-party/pet-atlas-game/)）
+- 许可证：**上游未声明开源许可证**（默认保留全部权利）；上游 README 声明「仅供个人学习使用，不涉及任何商业用途。素材内容来源网络，不承担任何法律责任」，内含的精灵美术素材疑为官方宝可梦系素材的同人沿用。
+- 引入方式：**整包静态嵌入（不引源码、不改玩法）**。Vue 打包成品（`index.html` + `js/` + `css/` + `img/` + `images/`）原样拷贝到 `public/petgame/`，`atlas/`、`docs/` 按上游 `nginx.conf` 的路由语义挂到 `/petgame/atlas/`、`/petgame/docs/`。仅做三类路径适配：① `index.html` / CSS / webpack publicPath 的绝对路径（`/js`、`/css`、`/img`、`/favicon.ico`、`/`）改写到 `/petgame/` 前缀；② 上游写死的 `http://127.0.0.1:12000/{docs,atlas}` 链接改写为 `/petgame/{docs,atlas}/`；③ 删除随包的 `.js.gz`/`.css.gz` 预压缩副本与页面里的华为 APM 遥测脚本。游戏 JS 为混淆成品，逻辑未动。
+- 使用范围：剧情模式「仓可梦」包（`default`）的完整版入口——`StoryMode.jsx` 03 步提供「进入完整版游戏」，全屏 iframe 载入 `/petgame/` 原样游玩；随包图鉴站（`/petgame/atlas/`）与游戏文档（`/petgame/docs/`）一并可用。**对外分发前请自行清理或替换该批素材**，或改为仅本机自用。

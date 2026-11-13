@@ -210,6 +210,8 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
   const [scriptNote, setScriptNote] = useState('')
   // 03 步三选一：'' 未选 / system 内置剧本 / custom 自定义 / ai 模型生成
   const [scriptMode, setScriptMode] = useState('')
+  // 仓可梦 = 完整版《口袋精灵2》整包嵌入（public/petgame/）：全屏 iframe 开关
+  const [gameOpen, setGameOpen] = useState(false)
   // 系统剧本包清单（斗码苍穹等）。玩家在系统剧本里先选包，再选包里的方案
   const [packs, setPacks] = useState([])
   const [packPick, setPackPick] = useState('')
@@ -1413,6 +1415,23 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
           </div>
           <p className="story-rationale">{t('对手：', 'Rival: ')}{bossPick?.full_name}</p>
 
+          {/* 仓可梦 = 完整版《口袋精灵2》（public/petgame/ 整包嵌入）。
+              进入这一包就是进完整游戏，全屏 iframe 开局；下面的剧本流程仍可走占位主线。 */}
+          {currentPack?.id === 'default' && (
+            <div className="story-petgame-cta">
+              <b>{t('仓可梦 · 完整版《口袋精灵2》', 'Cangke Meng · full Pocket Pets 2')}</b>
+              <span>
+                {t(
+                  '这一包就是完整版口袋精灵剧情：捕捉、养成、进化、对战、图鉴全在里面，进游戏直接开玩。',
+                  'This pack is the full game: catching, raising, evolving, battling and the atlas — jump in and play.',
+                )}
+              </span>
+              <button className="primary-btn" disabled={Boolean(busy)} onClick={() => setGameOpen(true)}>
+                {t('进入完整版游戏', 'Enter the full game')}
+              </button>
+            </div>
+          )}
+
           {/* 三选一：不再一进来就花一次模型调用。谁来写剧本，玩家自己定 */}
           <div className="story-src-grid" role="radiogroup" aria-label={t('剧本来源', 'Script source')}>
             {[
@@ -1785,6 +1804,19 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
       )}
 
       {view === 'loading' && <p className="story-busy">{t('读取剧情进度…', 'Loading your run…')}</p>}
+
+      {/* 完整版《口袋精灵2》全屏 iframe：整包静态托管在 /petgame/，原样运行不改玩法 */}
+      {gameOpen && (
+        <div className="story-petgame-overlay" role="dialog" aria-label={t('完整版口袋精灵2', 'Full Pocket Pets 2')}>
+          <div className="story-petgame-bar">
+            <b>{t('仓可梦 ·《口袋精灵2》完整版', 'Cangke Meng · Pocket Pets 2')}</b>
+            <button className="ghost-btn" onClick={() => setGameOpen(false)}>
+              {t('退出游戏', 'Exit game')}
+            </button>
+          </div>
+          <iframe className="story-petgame-frame" src="/petgame/" title={t('口袋精灵2 完整版', 'Pocket Pets 2 full game')} />
+        </div>
+      )}
     </main>
   )
 }
