@@ -115,8 +115,8 @@ export function toCombatant(pet, slot = 0) {
     const found = (pet.stats || []).find((s) => s.name === name)
     return Number(found?.value) || 40
   }
-  const hpStat = statOf('HP')
-  const maxHp = Math.round(60 + hpStat * 1.3)
+  // 最大 HP 直接采用判定引擎算出的数值（已随等级缩放），与卡片展示保持一致
+  const maxHp = Number(pet.maxHp) || Math.round(60 + statOf('HP') * 1.3)
   const element = pet.element || ELEMENTS.normal
   const secondary = pet.elementSecondary || null
   const types = [element.key, secondary?.key].filter(Boolean)
@@ -148,6 +148,7 @@ export function toCombatant(pet, slot = 0) {
     key: `${pet.fullName || pet.repo || 'unknown'}#${slot}`,
     name: pet.repo || pet.name || '未知精灵',
     fullName: pet.fullName || pet.repo || '',
+    platform: pet.platform || 'github', // 自定义形象的键要用，不影响战斗数值
     level: Number(pet.level) || 1,
     qualityKey: pet.qualityKey || pet.quality?.key || 'N',
     spriteSeed: pet.spriteSeed || 1,
@@ -156,6 +157,7 @@ export function toCombatant(pet, slot = 0) {
     species: pet.species || { name: '元素型', body: 'slime' },
     evolutionStage: pet.evolutionStage || 1,
     quality: pet.quality || { key: 'N', name: '普通', color: '#9e9e9e' },
+    combatPower: Number(pet.combatPower) || 0,
     types,
     passive: PASSIVES[element.key] ? PASSIVES[element.key].key : 'adapt',
     passiveInfo: PASSIVES[element.key] || PASSIVES.normal,
@@ -178,7 +180,9 @@ export function toCombatant(pet, slot = 0) {
 }
 
 export function toTeam(pets, sideKey = 'team') {
-  return (pets || []).slice(0, 3).map((pet, i) => toCombatant(pet, sideKey === 'team' ? i : i))
+  // 不裁人数：整仓对战要让账号下的全部项目一起上。以前这里 slice(0, 3)，
+  // 上层就算传进十几只也会被引擎默默截成 3 只。
+  return (pets || []).map((pet, i) => toCombatant(pet, sideKey === 'team' ? i : i))
 }
 
 // ---------- 数值读取（含能力等级 / 状态 / 特性修正） ----------
@@ -207,7 +211,9 @@ export function calcDamage(attacker, defender, move, rng = () => 0.925, opts = {
   const dKey = physical ? 'def' : 'spd'
   const A = statValue(attacker, aKey)
   const D = statValue(defender, dKey)
-  const base = Math.floor((Math.floor((Math.floor((2 * BATTLE_LEVEL) / 5 + 2) * move.power * A) / D) / 50) + 2)
+  // 等级取自出手方（真实等级）；对拍脚本的测试单位没有 level 字段，回落到常量 50 保证一致
+  const L = attacker.level || BATTLE_LEVEL
+  const base = Math.floor((Math.floor((Math.floor((2 * L) / 5 + 2) * move.power * A) / D) / 50) + 2)
 
   const stab = attacker.types.includes(move.type) ? (attacker.passive === 'adapt' ? 1.6 : 1.5) : 1
   const crit = opts.crit ?? false
@@ -299,7 +305,9 @@ export function battleTurn(state, action) {
   s.log = s.log || []
   const events = []
 
-  const playerAction = normalizeAction(action, s)
+  const playerAction = action?.type === 'auto' || !action
+    ? chooseAutoAction(s)
+    : normalizeAction(action, s)
   const enemyAction = chooseAction(s, 'enemy')
 
   const switches = []
@@ -618,6 +626,37 @@ export function chooseAction(state, side) {
     }
   }
   return { type: 'move', index: bestIndex }
+}
+
+// 自动托管（玩家侧）：按估伤 × 命中挑最优招式，残血且替补属性更优时自动换人。
+// 与对手 AI 分开：不受难度随机扰动，也不推进 state.rng，保证同一状态必定复现。
+export function chooseAutoAction(state) {
+  const me = activeOf(state, 'player')
+  const foe = activeOf(state, 'enemy')
+  if (!me || !foe) return { type: 'move', index: 0 }
+
+  const bench = state.sides.player.team
+    .map((u, i) => ({ u, i }))
+    .filter(({ u, i }) => i !== state.sides.player.active && !u.fainted)
+  if (bench.length && me.hp / me.maxHp < 0.3) {
+    const best = bench.reduce((a, b) => (matchupScore(b.u, foe) > matchupScore(a.u, foe) ? b : a))
+    if (matchupScore(best.u, foe) - matchupScore(me, foe) > 0.2) {
+      return { type: 'switch', index: best.i }
+    }
+  }
+
+  const usable = me.moves.map((m, i) => ({ m, i })).filter(({ m }) => m.unlocked && m.pp > 0)
+  if (!usable.length) return { type: 'move', index: 0 } // 交由 runMove 走「挣扎」
+  let best = usable[0]
+  let bestScore = -Infinity
+  for (const pick of usable) {
+    const { damage, mult } = estimate(me, foe, pick.m)
+    if (mult === 0) continue
+    let score = damage * (pick.m.acc / 100)
+    if (damage >= foe.hp) score += 600
+    if (score > bestScore) { bestScore = score; best = pick }
+  }
+  return { type: 'move', index: best.i }
 }
 
 // ---------- 给 UI 用的查询 ----------

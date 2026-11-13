@@ -99,12 +99,137 @@ body::after {
   background: none; border: 2px solid var(--px-line); color: var(--dim);
   font-family: var(--font-pixel); font-size: 12px; padding: 5px 11px;
   cursor: pointer; margin-right: 10px;
+  white-space: nowrap; flex: none;
 }
 .mute-btn:hover { color: var(--accent); border-color: var(--accent); }
 
-/* ---------- 像素面板：hero / howto / grow ---------- */
+/* ---------- 设置页（经典游戏 OPTIONS 菜单） ---------- */
+.settings-wrap { padding: clamp(14px, 3vh, 30px) clamp(12px, 4vw, 40px) 48px; }
+.settings-page {
+  max-width: 860px; margin: 0 auto;
+  animation: set-page-in .32s ease-out both;
+}
+@keyframes set-page-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+.set-page-head {
+  display: flex; align-items: baseline; gap: 14px;
+  padding: 14px 4px 12px; border-bottom: 3px solid var(--px-line);
+}
+.set-page-head h1 {
+  margin: 0; font-family: var(--font-pixel); font-size: clamp(22px, 4vw, 30px);
+  color: var(--accent); letter-spacing: 4px;
+  text-shadow: 3px 3px 0 rgba(0, 0, 0, .5);
+}
+.set-page-sub { font-family: var(--font-pixel); font-size: 11px; color: var(--dim); letter-spacing: 3px; }
+.set-page-body {
+  display: grid; grid-template-columns: 132px 1fr; gap: 18px;
+  margin-top: 20px; align-items: start;
+}
+@media (max-width: 640px) { .set-page-body { grid-template-columns: 1fr; } }
+
+/* 左侧分组标签 */
+.set-tabs { display: flex; flex-direction: column; gap: 8px; position: sticky; top: 74px; }
+@media (max-width: 900px) { .set-tabs { top: 112px; } /* 窄屏顶栏折成两行，跟随下移 */ }
+@media (max-width: 640px) { .set-tabs { flex-direction: row; flex-wrap: wrap; position: static; } }
+.set-tab {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 10px 12px; cursor: pointer; text-align: left;
+  background: var(--panel, rgba(24, 32, 51, .6));
+  border: 2px solid var(--px-line); color: var(--dim);
+  font-family: var(--font-pixel); box-shadow: 4px 4px 0 rgba(0, 0, 0, .35);
+}
+.set-tab b { font-size: 14px; letter-spacing: 3px; font-weight: 400; }
+.set-tab i { font-style: normal; font-size: 9px; letter-spacing: 1.5px; opacity: .7; }
+.set-tab:hover { border-color: var(--accent); color: var(--accent); }
+.set-tab.active {
+  background: var(--accent); border-color: var(--accent); color: var(--bg, #0d1117);
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, .5), inset 0 0 0 2px rgba(255, 255, 255, .25);
+}
+
+/* 右侧选项面板 */
+.set-panel {
+  background: var(--panel, rgba(24, 32, 51, .55));
+  border: 2px solid var(--px-line); border-radius: 12px;
+  padding: 20px 22px 18px; min-height: 320px;
+  box-shadow: 6px 6px 0 rgba(0, 0, 0, .3);
+}
+.anim-rise { animation: set-rise .3s ease-out both; }
+@keyframes set-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+/* 同一个分组页里有两块内容（声音 / 语音朗读）时拉开距离，别粘成一坨 */
+.set-block + .set-block {
+  margin-top: 26px;
+  padding-top: 22px;
+  border-top: 2px solid rgba(150, 170, 205, .18);
+}
+.set-block-title {
+  display: flex; align-items: baseline; gap: 10px;
+  margin: 0 0 6px; font-family: var(--font-pixel); font-size: 15px;
+  color: var(--text); letter-spacing: 3px;
+}
+.set-block-title em {
+  font-style: normal; font-size: 10px; color: var(--dim); letter-spacing: 2px;
+}
+.opt-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 13px 2px; border-top: 1px dashed rgba(150, 170, 205, .22);
+}
+.opt-text { min-width: 0; }
+.opt-label { display: block; font-family: var(--font-pixel); font-size: 13px; color: var(--text); letter-spacing: 1px; }
+.opt-hint { display: block; font-size: 11px; color: var(--dim); margin-top: 4px; line-height: 1.5; font-style: normal; }
+.opt-ctrl { display: flex; align-items: center; gap: 10px; flex: none; }
+
+/* 像素滑条 */
+.px-range {
+  -webkit-appearance: none; appearance: none;
+  width: 170px; height: 10px; cursor: pointer;
+  background: linear-gradient(90deg, var(--accent) var(--fill, 100%), rgba(150, 170, 205, .25) var(--fill, 100%));
+  border: 2px solid var(--px-line); border-radius: 0; outline: none;
+}
+.px-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 22px; margin-top: -1px;
+  background: var(--text); border: 2px solid var(--px-line); border-radius: 2px;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, .45);
+}
+.px-range::-moz-range-thumb {
+  width: 14px; height: 20px;
+  background: var(--text); border: 2px solid var(--px-line); border-radius: 2px;
+}
+.vol-num { font-family: var(--font-pixel); font-size: 12px; color: var(--accent); min-width: 40px; text-align: right; }
+
+/* 试听与小按钮 */
+.set-test { display: flex; align-items: center; gap: 8px; padding: 12px 2px 0; border-top: 1px dashed rgba(150, 170, 205, .22); margin-top: 4px; }
+.mini-btn {
+  padding: 6px 12px; cursor: pointer;
+  background: none; border: 2px solid var(--px-line); color: var(--dim);
+  font-family: var(--font-pixel); font-size: 11px; letter-spacing: 1px;
+}
+.mini-btn:hover { color: var(--accent); border-color: var(--accent); }
+.mini-btn.danger:hover { color: #ff6b6b; border-color: #ff6b6b; }
+.set-note { font-size: 11.5px; color: var(--dim); line-height: 1.7; margin: 12px 0 0; padding-top: 10px; border-top: 1px dashed rgba(150, 170, 205, .22); }
+.about-val { font-family: var(--font-pixel); font-size: 13px; color: var(--accent); letter-spacing: 1px; }
+
+.set-toggle {
+  flex: none; min-width: 56px; padding: 5px 10px;
+  border: 2px solid var(--px-line); background: none;
+  color: var(--dim); font-family: var(--font-pixel); font-size: 11px;
+  letter-spacing: 1px; cursor: pointer;
+}
+.set-toggle:hover { border-color: var(--accent); color: var(--accent); }
+.set-toggle.on {
+  background: var(--accent); border-color: var(--accent);
+  color: var(--bg, #0d1117);
+}
+
+/* ---------- 像素面板：hero / grow / arena / 说明书 ---------- */
 .hero,
-.howto-grid > div,
+.manual-page,
+.manual-tab,
 .grow,
 .arena-entry {
   border-radius: 0 !important;
@@ -334,42 +459,81 @@ body::after {
 }
 .pet-name { font-size: 18px; letter-spacing: .5px; }
 
-/* 品质盾徽 */
+/* 品质徽章：六边形宝石牌，只显示字母（不再叠中文名，也不用盾牌贴图） */
 .quality-badge {
   border: none;
   border-radius: 0;
   background: none;
   box-shadow: none;
-  width: 56px; height: 62px;
+  width: 44px; height: 50px;
   padding: 0;
   position: relative;
   flex: none;
-}
-.quality-badge::before {
-  content: '';
-  position: absolute; inset: 0;
-  background: var(--shield-url) center / contain no-repeat;
-  image-rendering: pixelated;
-  filter: drop-shadow(2px 3px 0 rgba(0, 0, 0, .45));
+  filter: drop-shadow(2px 3px 0 rgba(0, 0, 0, .5)) drop-shadow(0 0 7px var(--q-glow));
   animation: badge-bob 2.8s ease-in-out infinite;
 }
 @keyframes badge-bob { 0%, 100% { translate: 0 0; } 50% { translate: 0 -3px; } }
-.quality-SSR .quality-badge { --shield-url: url('./assets/kenney/tiles/shield-ssr.png'); }
-.quality-SR .quality-badge { --shield-url: url('./assets/kenney/tiles/shield-sr.png'); }
-.quality-R .quality-badge { --shield-url: url('./assets/kenney/tiles/shield-r.png'); }
-.quality-N .quality-badge { --shield-url: url('./assets/kenney/tiles/shield-n.png'); }
+.quality-badge::before {
+  content: '';
+  position: absolute; inset: 0;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  background: linear-gradient(180deg, #fff 4%, var(--q-color) 34%, color-mix(in srgb, var(--q-color) 45%, #05070d) 100%);
+}
+.quality-badge::after {
+  content: '';
+  position: absolute; inset: 2.5px;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  /* 宝石内里：锥形切面 + 顶部受光 + 品质色内晕 + 内凹阴影 */
+  background:
+    conic-gradient(from 210deg at 50% 44%,
+      rgba(255, 255, 255, .11), rgba(255, 255, 255, 0) 24%,
+      rgba(255, 255, 255, .07) 50%,
+      rgba(0, 0, 0, .2) 74%, rgba(255, 255, 255, .11)),
+    linear-gradient(180deg, rgba(255, 255, 255, .18), rgba(255, 255, 255, 0) 52%),
+    radial-gradient(85% 62% at 50% 28%, color-mix(in srgb, var(--q-color) 26%, transparent), transparent 72%),
+    linear-gradient(180deg, #18203a, #0a0e1a 78%);
+  box-shadow:
+    inset 0 2px 2px rgba(255, 255, 255, .09),
+    inset 0 -5px 7px rgba(0, 0, 0, .6),
+    inset 0 0 14px color-mix(in srgb, var(--q-color) 16%, transparent);
+}
 .quality-badge span {
-  position: absolute;
-  top: 7px; left: 0; right: 0;
-  text-align: center;
-  display: block;
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
   font-family: var(--font-arcade);
-  font-size: 10px;
-  color: #fff;
-  text-shadow: 1px 1px 0 rgba(0, 0, 0, .65);
+  /* 字母本体：品质色纵向渐变 + 双层浮雕投影 */
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--q-color) 42%, #ffffff) 6%,
+    var(--q-color) 52%,
+    color-mix(in srgb, var(--q-color) 42%, #05070d) 100%);
+  background-size: 100% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter:
+    drop-shadow(0 1px 0 rgba(255, 255, 255, .22))
+    drop-shadow(0 2px 1px rgba(0, 0, 0, .8));
   z-index: 1;
 }
-.quality-badge small { display: none; }
+/* 按字母数分档：单字母撑满，双/三字母缩排 */
+.quality-badge.len-1 span { font-size: 19px; }
+.quality-badge.len-2 span { font-size: 14px; letter-spacing: 1px; padding-left: 1px; }
+.quality-badge.len-3 span { font-size: 11.5px; letter-spacing: .5px; padding-left: .5px; }
+/* N 灰色换银白渐变，在深底上提亮 */
+.quality-N .quality-badge span {
+  background-image: linear-gradient(180deg, #f4f7ff 6%, #c6cddb 48%, #7d879e 100%);
+}
+/* SSR 字母走金箔流光 */
+.quality-SSR .quality-badge span {
+  background-image: linear-gradient(100deg,
+    #a06a12, #ffe27a 16%, #fffbe0 30%, #ffc63d 44%,
+    #fff3b0 58%, #b87d16 78%, #ffe27a);
+  background-size: 220% 100%;
+  filter:
+    drop-shadow(0 1px 0 rgba(255, 240, 180, .3))
+    drop-shadow(0 2px 2px rgba(0, 0, 0, .85));
+  animation: supreme-shine 2.8s linear infinite;
+}
 
 /* 分段像素条：HP / EXP / 六维 / 品质细分 */
 .hp-bar, .evo-bar, .stat-bar, .qd-bar, .exp-bar, .foundation-bar {
@@ -451,12 +615,28 @@ body::after {
 .task button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .task button:disabled { opacity: .5; }
 
-/* ---------- 判定说明 ---------- */
-.howto h3 { font-size: 16px; color: var(--text); }
-.howto h3::before { content: '📖 '; }
-.howto-grid > div { filter: drop-shadow(4px 4px 0 rgba(0, 0, 0, .4)); }
-.howto-grid b { font-size: 14px; }
-.howto-grid span { font-size: 13.5px; line-height: 1.9; }
+/* ---------- 使用说明书 ---------- */
+.manual-head h3 { font-size: 16px; color: var(--text); }
+.manual-head h3::before { content: '▣ '; color: var(--accent); }
+.manual-title small { font-family: var(--font-arcade); font-size: 8px; }
+.manual-head, .manual-peek { border-radius: 0; border: 2px solid var(--px-line); }
+.manual-head { box-shadow: 4px 4px 0 var(--px-shadow); }
+.manual-toggle, .manual-peek { font-family: var(--font-pixel); }
+.manual-peek { border-style: dashed; }
+.manual-page { filter: drop-shadow(5px 5px 0 var(--px-shadow)); }
+.manual-tab {
+  border-width: 2px !important;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, .45);
+  font-family: var(--font-pixel);
+}
+.manual-tab.active { box-shadow: 3px 3px 0 rgba(0, 0, 0, .55); }
+.manual-page-head span { font-family: var(--font-arcade); }
+.manual-page-head h4 { font-family: var(--font-pixel); }
+.manual-page h4 { font-family: var(--font-pixel); }
+.manual-page p, .manual-page li { font-size: 13px; line-height: 1.9; }
+.manual-tiers > div { border-radius: 0; border-width: 2px; box-shadow: 3px 3px 0 rgba(0, 0, 0, .4); }
+.manual-tiers b { font-family: var(--font-arcade); }
+.manual-tip { border-radius: 0; font-size: 12px !important; }
 
 /* ---------- 战斗（沿用像素化基调） ---------- */
 .battle-field { border-radius: 0; border-width: 2px; }
@@ -474,6 +654,8 @@ body::after {
 .battle-result { border-radius: 0; border-width: 2px; }
 .battle-result h2 { font-family: var(--font-arcade); font-size: 20px; }
 .bench-card, .diff-btn, .picker-card { border-radius: 0; }
+.battle-stage .auto-status { border-radius: 0; border-width: 2px; box-shadow: 3px 3px 0 rgba(0, 0, 0, .45); }
+.battle-stage .auto-pulse, .battle-stage .auto-vs { border-radius: 0; }
 
 /* ---------- 挑战方式 / 选对手 ---------- */
 .mode-card {
@@ -523,6 +705,11 @@ body::after {
 @media (max-width: 460px) {
   .hero-deco.d2, .hero-deco.d3 { display: none; }
   .hero-deco.d1 { width: 90px !important; height: 90px !important; right: 12px; top: 10px; }
+  /* 标题让开右上角吉祥物，正文收回桌面端为吉祥物预留的右侧留白 */
+  .hero h2 { padding-right: 96px; }
+  .hero p { padding-right: 0; }
+  /* 任务「完成」按钮加大点按热区 */
+  .task button { padding: 7px 12px; }
 }
 
 /* ============================================================
@@ -532,6 +719,7 @@ body::after {
 .pet-card {
   width: min(360px, 92vw);
   aspect-ratio: 63 / 88;
+  margin: 0 auto;
   padding: 12px 13px;
   display: flex;
   flex-direction: column;
@@ -549,8 +737,7 @@ body::after {
 }
 .pet-card .pet-sub { font-size: 10px; line-height: 1.4; margin-top: 2px; }
 .pet-card .sleep-tag { font-size: 9px; padding: 0 4px; }
-.pet-card .quality-badge { width: 40px; height: 46px; }
-.pet-card .quality-badge span { font-size: 10px; margin-top: 3px; }
+.pet-card .quality-badge { width: 42px; height: 48px; }
 
 /* 立绘区 */
 .pet-card .sprite-frame {
@@ -604,7 +791,8 @@ body::after {
 }
 .pet-card .skill { padding: 2px 6px; font-size: 9px; gap: 4px; min-width: 0; }
 .pet-card .skill-dot { width: 10px; height: 10px; flex: none; }
-.pet-card .skill-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pet-card .skill-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pet-card .skill-power { font-size: 8px; }
 
 /* 词条 */
 .pet-card .traits { flex: none; margin-top: 0; gap: 4px; flex-wrap: nowrap; overflow: hidden; }
@@ -640,11 +828,11 @@ body::after {
   gap: 6px;
 }
 
-/* 卡片紧凑版盾徽文字 */
-.pet-card .quality-badge span { top: 6px; font-size: 9px; }
+/* 卡片紧凑版徽章：整体缩小一号 */
+.pet-card .quality-badge { width: 42px; height: 48px; }
 
 /* ============================================================
-   卡箱（账号整箱孵化）—— 一个账号 N 个项目 = N 个卡包
+   卡箱（账号整箱抽卡）—— 一个账号 N 个项目 = N 个卡包
    ============================================================ */
 .box-stage {
   max-width: 880px;
@@ -1257,6 +1445,16 @@ body::after {
 .account-note { margin: 0; font-size: 11.5px; line-height: 1.8; color: var(--dim); }
 .account-note b { color: #8fb7ff; font-weight: 500; }
 
+/* 剧情模式进入条件清单 */
+.story-gate-list { list-style: none; margin: 2px 0 4px; padding: 0; display: grid; gap: 10px; }
+.story-gate-list li {
+  display: flex; align-items: flex-start; gap: 8px;
+  font-size: 13px; line-height: 1.7; color: var(--text);
+}
+.story-gate-list li > span:first-child { flex: none; width: 14px; font-weight: 700; }
+.story-gate-list .ok { color: #57d68a; }
+.story-gate-list .no { color: #ff9f6b; }
+
 @media (max-width: 640px) {
   .account-hero { padding: 18px 16px; }
   .account-actions > button { flex: 1 1 auto; }
@@ -1363,4 +1561,68 @@ body::after {
 @media (max-width: 640px) {
   .auth-token-row { flex-direction: column; }
   .auth-token-row button { padding: 10px 0; }
+}
+
+/* ============================================================
+   星级段位徽章：GitHub / Gitee star → 卡面右上角
+   1–9 金星 × N；10 炫彩星；100 月亮；1000 地球；
+   1万 太阳；10万 黑太阳；100万 宇宙；1000万 至高（文字）
+   ============================================================ */
+.star-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  gap: 1px;
+  filter: drop-shadow(1px 2px 0 rgba(0, 0, 0, .55));
+}
+.star-rank svg { display: block; }
+/* 同档图标并排时留 2px 缝，避免月亮/地球连成一片 */
+.star-rank[class*="tier-"] { gap: 2px; }
+.star-rank.tier-rainbow svg {
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, .75));
+  animation: star-hue 4s linear infinite;
+}
+@keyframes star-hue {
+  to { filter: hue-rotate(360deg) drop-shadow(0 0 3px rgba(255, 255, 255, .75)); }
+}
+.star-rank.tier-moon svg { filter: drop-shadow(0 0 2.5px rgba(190, 205, 245, .8)); }
+.star-rank.tier-earth svg { filter: drop-shadow(0 0 3px rgba(110, 190, 255, .8)); }
+.star-rank.tier-sun svg { filter: drop-shadow(0 0 3.5px rgba(255, 170, 50, .85)); }
+.star-rank.tier-eclipse svg { filter: drop-shadow(0 0 3.5px rgba(255, 90, 40, .85)); }
+.star-rank.tier-universe svg { filter: drop-shadow(0 0 3.5px rgba(150, 110, 255, .85)); }
+
+/* 至高：唯一的文字位，金箔流光 */
+.star-supreme {
+  flex: none;
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  line-height: 1;
+  padding: 2px 5px 2px 7px;
+  border: 1px solid rgba(255, 208, 90, .6);
+  background: linear-gradient(100deg, #8a5c14, #ffe27a 22%, #fff8d0 38%, #ffb02e 55%, #8a5c14 78%, #ffe27a);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  box-shadow: 0 0 7px rgba(255, 190, 60, .35), inset 0 0 6px rgba(255, 190, 60, .18);
+  filter: drop-shadow(1px 2px 0 rgba(0, 0, 0, .55));
+  animation: supreme-shine 2.8s linear infinite;
+}
+@keyframes supreme-shine { to { background-position: -220% 0; } }
+
+/* 卡面：星级放在头部，品质盾徽仍是右上角收边 */
+.pet-card .star-rank { margin-right: 2px; }
+.pet-card .card-head { flex-wrap: nowrap; }
+
+/* 图鉴小格子：右上角一枚段位图标 */
+.collection-item { position: relative; }
+.ci-star {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+  pointer-events: none;
 }

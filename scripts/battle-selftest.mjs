@@ -2,7 +2,7 @@
 //   node scripts/battle-selftest.mjs
 // 覆盖：属性表合法性、伤害不变量、战斗必然收敛、同种子可复现、AI 合法性
 
-import { ELEMENTS } from '../src/engine.js'
+import { ELEMENTS, statCapAtLevel } from '../src/engine.js'
 import { rivalPets, pickRivalTeam } from '../src/rivals.js'
 import {
   TYPE_CHART,
@@ -54,7 +54,10 @@ const pets = rivalPets()
 console.log(`内置对手 ${pets.length} 只：${pets.map((p) => `${p.repo}(Lv${p.level})`).slice(0, 6).join(' ')}…`)
 for (const pet of pets) {
   const unit = toCombatant(pet)
-  check(`${pet.repo} HP 合理`, unit.maxHp > 60 && unit.maxHp < 400, String(unit.maxHp))
+  // HP 上限是「无词条理论最大值」；词条按百分比加成，允许在基准上限之上浮动
+  const hpBonus = (pet.traits || []).reduce((a, t) => a + (t.effect?.statsPct || 0) + (t.effect?.HP || 0), 0)
+  const hpCap = Math.round(statCapAtLevel(pet.level, true) * (1 + hpBonus / 100))
+  check(`${pet.repo} HP 合理`, unit.maxHp > 60 && unit.maxHp <= hpCap, String(unit.maxHp))
   check(`${pet.repo} 四技能`, unit.moves.length === 4)
   check(`${pet.repo} 技能已解锁标记`, unit.moves.filter((m) => m.unlocked).length >= 2)
 }
@@ -64,6 +67,8 @@ const mockPet = (key) => ({
   repo: key, fullName: `mock/${key}`, platform: 'mock', level: 500, qualityKey: 'SR', spriteSeed: 7,
   element: ELEMENTS[key], elementSecondary: null,
   species: { name: '元素型', body: 'slime' }, evolutionStage: 2,
+  // 与判定引擎同款的 HP 成长（Lv.500、种族值≈80）→ 约 1385，保证伤害不变量口径一致
+  maxHp: Math.floor((2 * 80 + 15) * 500 / 100) + 500 + 10,
   stats: [
     { name: '攻击', value: 80 }, { name: '防御', value: 80 }, { name: '速度', value: 80 },
     { name: '特攻', value: 80 }, { name: '特防', value: 80 }, { name: 'HP', value: 80 },
@@ -129,6 +134,34 @@ for (let i = 0; i < 120; i += 1) {
   stats.turns.push(turns)
   stats.longest = Math.max(stats.longest, turns)
   if (state.winner) stats.winner[state.winner] += 1
+}
+
+// ---------- 3b. 自动托管（UI 默认路径：battleTurn(state, { type: 'auto' })） ----------
+{
+  const autoRun = (seed, difficulty, size) => {
+    const teamA = pickRivalTeam(pets.slice(0, 4), seed, difficulty).slice(0, size)
+    const teamB = pickRivalTeam(pets.slice(4, 8), seed + 5, difficulty).slice(0, size)
+    let { state } = createBattle({ playerTeam: teamA, enemyTeam: teamB, seed, difficulty })
+    let guard = 0
+    while (!state.winner && guard < 200) {
+      state = battleTurn(state, { type: 'auto' }).state
+      guard += 1
+    }
+    return { state, turns: guard }
+  }
+  let longest = 0
+  for (let i = 0; i < 60; i += 1) {
+    const seed = 5000 + i * 53
+    const difficulty = ['easy', 'normal', 'hard'][i % 3]
+    const size = (i % 3) + 1
+    const { state, turns } = autoRun(seed, difficulty, size)
+    longest = Math.max(longest, turns)
+    check('自动对战会结束', !!state.winner, `seed ${seed} / ${turns} 回合`)
+  }
+  const a = JSON.stringify(autoRun(9182, 'hard', 3).state.sides)
+  const b = JSON.stringify(autoRun(9182, 'hard', 3).state.sides)
+  check('自动托管同种子结果完全一致', a === b)
+  console.log(`自动托管 60 场 · 最长 ${longest} 回合`)
 }
 
 // ---------- 4. 可复现 ----------

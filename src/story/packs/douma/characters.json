@@ -1,0 +1,48 @@
+{
+  "pet": {
+    "name": "主角",
+    "role": "protagonist",
+    "color": "#ffcb05",
+    "defaultSprite": "pet_determined",
+    "stages": {
+      "early": {
+        "art": "hero_early.png",
+        "face": "hero_early_face.png"
+      }
+    }
+  },
+  "narrator": {
+    "name": "旁白",
+    "role": "narrator",
+    "color": "#9aa7b8",
+    "defaultSprite": "narrator"
+  },
+  "scout": {
+    "name": "药老",
+    "role": "guide",
+    "color": "#6ee7b7",
+    "defaultSprite": "scout_neutral",
+    "art": "scout.png",
+    "face": "scout.png"
+  },
+  "soul": {
+    "name": "魂殿",
+    "role": "support",
+    "color": "#c084fc",
+    "defaultSprite": "boss_neutral",
+    "art": "soul.png",
+    "face": "soul.png"
+  },
+  "boss": {
+    "name": "云岚宗",
+    "role": "boss",
+    "color": "#f87171",
+    "defaultSprite": "boss_neutral",
+    "stages": {
+      "early": {
+        "art": "boss_early.png",
+        "face": "boss_early_face.png"
+      }
+    }
+  }
+}

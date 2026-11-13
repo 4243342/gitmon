@@ -139,15 +139,15 @@ const gradeOf = (v) => (v >= 90 ? 'S' : v >= 75 ? 'A' : v >= 60 ? 'B' : v >= 40 
 
 export function applyTraits(stats, traits) {
   const globalPct = traits.reduce((sum, t) => sum + (t.effect.statsPct || 0), 0)
-  const flat = {}
+  const pct = {}
   for (const t of traits) {
     for (const key of STAT_NAMES) {
-      if (t.effect[key]) flat[key] = (flat[key] || 0) + t.effect[key]
+      if (t.effect[key]) pct[key] = (pct[key] || 0) + t.effect[key]
     }
   }
   return stats.map((s) => {
-    const value = Math.round(clamp(s.value * (1 + globalPct / 100) + (flat[s.name] || 0), 5, 100))
-    return { ...s, value, grade: gradeOf(value) }
+    const value = Math.max(1, Math.round(s.value * (1 + (globalPct + (pct[s.name] || 0)) / 100)))
+    return { ...s, value }
   })
 }
 

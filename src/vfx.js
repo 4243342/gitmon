@@ -48,6 +48,14 @@ import * as plasmaExplosion from 'pixelfx/fx/explosions/plasma-explosion'
 import * as cartoonPow from 'pixelfx/fx/explosions/cartoon-pow'
 
 import * as energyDisc from 'pixelfx/fx/projectiles/energy-disc'
+
+// 近战系（physical 招式专用）：斩击 / 爪击 / 重锤 / 回旋，全部面向右，敌方出手时镜像
+import * as swordSlash from 'pixelfx/fx/melee/sword-slash'
+import * as clawSwipe from 'pixelfx/fx/melee/claw-swipe'
+import * as doubleSlash from 'pixelfx/fx/melee/double-slash'
+import * as hammerSmash from 'pixelfx/fx/melee/hammer-smash'
+import * as heavyCleave from 'pixelfx/fx/melee/heavy-cleave'
+import * as spinSlash from 'pixelfx/fx/melee/spin-slash'
 import * as poof from 'pixelfx/fx/spawn/poof'
 import * as spawnPortal from 'pixelfx/fx/spawn/spawn-portal'
 
@@ -67,6 +75,11 @@ const ELEMENT_FX = {
 
 const FALLBACK = ELEMENT_FX.normal
 
+// 物理招式四档：[先制, 主力, 重击, 终极] —— 挥砍类特效，出手方向由 flip 控制
+const PHYSICAL_FX = [swordSlash, clawSwipe, heavyCleave, spinSlash]
+// 重击/终极的可选替换（同档随机，避免连招重复感）
+const PHYSICAL_FX_ALT = [doubleSlash, hammerSmash]
+
 // 时长上限：战斗节奏不能被 5–7 秒的特效拖住，超出就加速播放
 const TIERS = [
   { cap: 1.1, scale: 0.85 },
@@ -84,9 +97,17 @@ export function tierOf(power = 65) {
   return 0
 }
 
-export function effectFor(element, power = 65) {
+export function effectFor(element, power = 65, opts = {}) {
+  const tier = tierOf(power)
+  // physical 走近战挥砍系；seed 变化让同档两招轮换特效，减少重复感
+  if (opts.physical) {
+    if (tier >= 2 && opts.seed && Math.floor(opts.seed / 7) % 2 && PHYSICAL_FX_ALT[tier - 2] != null) {
+      return PHYSICAL_FX_ALT[tier - 2]
+    }
+    return PHYSICAL_FX[tier] || PHYSICAL_FX[1]
+  }
   const set = ELEMENT_FX[element] || FALLBACK
-  return set[tierOf(power)] || set[1]
+  return set[tier] || set[1]
 }
 
 const live = new WeakMap()
@@ -120,7 +141,7 @@ export function clearFx(container) {
  */
 export function playAttack(container, targetEl, opts = {}) {
   if (!container || !targetEl) return null
-  const mod = effectFor(opts.element, opts.power ?? 65)
+  const mod = effectFor(opts.element, opts.power ?? 65, opts)
   return playEffect(container, targetEl, mod, opts)
 }
 
@@ -136,6 +157,9 @@ export function playEffect(container, targetEl, mod, opts = {}) {
   const cx = rect.left - base.left + rect.width / 2
   const cy = rect.top - base.top + rect.height * 0.62
   const scale = clamp((rect.width / 150) * (opts.scale ?? tier.scale), 0.55, 1.6)
+  // 近战特效默认面向右（从左往右打）；敌方（右侧）出手时水平镜像
+  const flip = !!opts.flip
+  const oxUse = flip ? w - ox : ox
 
   const wrap = document.createElement('div')
   wrap.className = 'vfx-fx'
@@ -143,10 +167,11 @@ export function playEffect(container, targetEl, mod, opts = {}) {
   canvas.width = w
   canvas.height = h
   canvas.className = 'vfx-canvas'
-  canvas.style.left = `${cx - ox * scale}px`
+  canvas.style.left = `${cx - oxUse * scale}px`
   canvas.style.top = `${cy - oy * scale}px`
   canvas.style.width = `${w * scale}px`
   canvas.style.height = `${h * scale}px`
+  if (flip) canvas.style.transform = 'scaleX(-1)'
 
   wrap.appendChild(canvas)
   container.appendChild(wrap)

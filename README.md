@@ -63,11 +63,35 @@
 - 🔊 **过场音效**：双层音轨——pack-opener-js 的礼成采样（指尖铝箔、掀盖、抽卡风声、落地一击，SSR 落得最重）+ WebAudio 合成的芯片音（卡包登场、整箱琶音、翻格连打、收图鉴铃音）
 - 📦 **整箱**：输入账号主页 = 该账号每个项目一包，一键全开、批量收图鉴
 - ⬆️ **养成**：commit +2 XP、合并 PR +10 XP、发 release +50 XP
-- 🧬 **进化**：幼体 → 成长体（Lv.150+）→ 完全体（Lv.500+）
+- 🧬 **进化**：8 个节点、9 个形态，Lv.10 起每跨一个台阶换一次外形，**Lv.500 起化为人形态**（详见下节）
 - ⚔️ **对战**：1–3 只组队上竞技场，属性克制 + 先制 + 异常状态 + 换人，3v3 回合制
+- 🏋️ **训练场**：竞技场下方的 AI 编程工具入口，六款软件点一下直达，去过自动打卡（详见下节）
 - 💥 **攻击特效**：pixelfx 代码绘制的像素特效——9 属性 × 4 档威力各有一套，会心有整屏冲击帧
 - 😴 **沉睡**：30 天不维护，精灵会睡过去 —— 别让它睡
+- 🖼️ **自定义形象**：不喜欢默认立绘？在卡片上直接上传 / 拖一张图（GIF 动图也行）换成你想要的形象，卡面、图鉴、对战、分享卡全场景生效，IndexedDB 本地保存，一键还原
+- 🏆 **排行榜**：拉取 GitHub Trending 热门仓库榜（今日 / 本周 / 本月 + 语言筛选），看谁在崛起；点「孵化」能直接把榜单上的仓库变成一只精灵
 - 📇 **图鉴**：收集你所有仓库的精灵
+
+## 进化系统
+
+进化**只看等级**，不看仓库大小也不看 star —— 养它就变强。8 个节点、9 个形态：
+
+| 阶段 | 起始等级 | 形态名 | 形态 |
+| --- | --- | --- | --- |
+| 1 | Lv.1 | 幼体 | 兽形 / 元素形（种族决定，见下） |
+| 2 | **Lv.10** | 初生体 | 同上，体型长大一号 |
+| 3 | **Lv.50** | 成长体 | 同上，长出耳 / 角 / 尾等特征 |
+| 4 | **Lv.100** | 成熟体 | 同上，配饰与花纹开始密集 |
+| 5 | **Lv.200** | 强化体 | 同上，体型接近成体 |
+| 6 | **Lv.300** | 完全体 | 同上，兽形最终阶 |
+| 7 | **Lv.500** | 人形态 | **开始直立人形**：人类身体 + 种族/属性特征（兽耳、龙角、羽翼、元素光环…） |
+| 8 | **Lv.800** | 人形态·觉醒 | 人形态 + 强化装束 / 光效 |
+| 9 | **Lv.999** | 人形态·神话 | 满级终形 |
+
+- **Lv.500 以上一律是人形态**，只有华丽度差异；**500 以下是自由形态**——具体长相由「种族 × 属性」组合决定（7 种族 × 9 属性，见 [`docs/ASSETS.md`](docs/ASSETS.md)），不逐阶固定
+- 卡片上的进化条显示 `当前阶/9` 与下一节点等级；进度条是**当前阶段内**的进度，不是全局等级
+- 立绘规则：自备素材按 `<种族>/<属性>-s<阶>.png` 命名，没有就逐级回落到通用图，再没有就用生成的像素精灵
+- 阶段只由等级推导（`src/evolution.js` / 后端 `engine.evolution_stage`），后端每日结算**只会升不会降**
 
 ## 快速开始
 
@@ -96,29 +120,44 @@ https://gitee.com/mirrors/vue          ← Gitee 也行
 |---|---|---|
 | **GitHub OAuth** | 后端配 `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`，点「用 GitHub 授权登录」 | 正式部署 / 任何设备 |
 | **GitHub 本机登录** | 本机已 `gh auth login` 且后端跑在 `127.0.0.1`，点「用本机已登录的 @xxx 直接进入」 | 本地开发，不用建 OAuth App |
-| **Gitee 授权 / 私人令牌** | 配了 `GITEE_CLIENT_ID` / `GITEE_CLIENT_SECRET` 就走 OAuth；没配则页签里直接给令牌输入框（[一分钟生成](https://gitee.com/profile/personal_access_tokens)） | Gitee 用户 |
+| **Gitee OAuth** | 后端配 `GITEE_CLIENT_ID` / `GITEE_CLIENT_SECRET`，点「用 Gitee 授权登录」 | Gitee 用户 |
+| **私人令牌（兜底）** | 平台没配 OAuth 应用时，页签里才出现令牌输入框（[一分钟生成](https://gitee.com/profile/personal_access_tokens)） | 没建应用时 |
 | **游客** | 直接进入，手填仓库 / 账号地址 | 只想试玩 |
 
 规则很简单：**配了 OAuth 就只走授权，没配才露出令牌输入框**，不会让人在两条路之间犹豫。
-Gitee 目前默认没配应用，所以那个页签显示的是私人令牌框 —— 贴一次就能登。
+本机 `backend/.env` 里 GitHub、Gitee 两个应用都已配好，所以两个页签现在都只有授权按钮。
+Gitee 的 `access_token` **只有 1 天有效期**：后端把 `refresh_token` 一起加密存库，
+取令牌时校验一次（缓存 10 分钟），过期就静默刷新；刷新不了才让你重新点一次授权。
 
-配 OAuth App 只需两分钟（<https://github.com/settings/developers> → New OAuth App）：
+GitHub 在 <https://github.com/settings/developers>，Gitee 在 <https://gitee.com/oauth/applications>。
+两个应用后台都有两栏，**只有「回调地址」这一栏有硬性要求**：
 
-```
-Homepage URL            http://127.0.0.1:8000
-Authorization callback  http://127.0.0.1:8000/api/auth/github/callback
-```
+| 平台 · 字段 | 填什么 |
+|---|---|
+| GitHub · Homepage URL | `http://127.0.0.1:8000`（填仓库地址也行，只是展示链接） |
+| GitHub · Authorization callback URL | `http://127.0.0.1:8000/api/auth/github/callback` |
+| Gitee · 应用主页 | `http://127.0.0.1:8000`（同样可填仓库地址） |
+| Gitee · 应用回调地址 | `http://127.0.0.1:8000/api/auth/gitee/callback` |
+| Gitee · 权限 | `user_info` + `projects` |
 
-Gitee 的 OAuth 应用在 <https://gitee.com/oauth/applications> 建，回调填
-`http://127.0.0.1:8000/api/auth/gitee/callback`（不建也能用私人令牌登录）。
+> ⚠️ **回调地址不能填 `https://github.com/4243342/gitmon` 这类仓库地址。** 授权成功后平台会跳到
+> 那个地址并附加 `?code=...&state=...`，仓库页面不会把授权码交回后端，code 直接丢失；而且平台
+> 做的是**整串精确匹配**（`localhost` ≠ `127.0.0.1`，多一个斜杠也不行），对不上就直接报
+> 「无效的登录回调地址 / redirect_uri_mismatch」。
+
+本机 `backend/.env` 已用 `GITHUB_CALLBACK_URL` / `GITEE_CALLBACK_URL` 把回调固定成上表两个值，
+所以用 `127.0.0.1` 还是 `localhost` 打开都不会漂移，登录页上显示的就是可直接复制的正确值。
+改完后台可以跑 `node scripts/check-oauth.mjs` 自检：它会比对后端报的回调地址与授权跳转实际带的
+`redirect_uri` 是否一致。部署到公网时把这两行换成 `https://你的域名/...`，并在两个平台后台同步改。
+（不建应用也能用私人令牌登录：把 `.env` 里该平台两行留空，页签会自动切回令牌框。）
 
 凭证写进 `backend/.env`（启动时自动加载，不用 export）：
 
 ```ini
 GITHUB_CLIENT_ID=...
 GITHUB_CLIENT_SECRET=...
-GITEE_CLIENT_ID=...        # 可选
-GITEE_CLIENT_SECRET=...    # 可选
+GITEE_CLIENT_ID=...        # 留空则页签回退到私人令牌
+GITEE_CLIENT_SECRET=...    # 同上
 ```
 
 登录后令牌分别写在 `localStorage['gitmon:gh_token']` / `['gitmon:gitee_token']`，
@@ -137,12 +176,14 @@ monstrjs 手绘部件拼装精灵（种子确定性）· 自研战斗引擎（�
 |---|---|
 | `src/auth.js` | 登录授权：GitHub / Gitee OAuth → 会话、令牌落地、离线降级 |
 | `src/components/AuthPage.jsx` | 首屏登录授权页（额度说明、双平台切换、游客入口） |
-| `src/engine.js` | 判定引擎：仓库地址 → 品种 / 品质 / 等级 / 六维 / 技能（纯函数，可复现） |
+| `src/engine.js` | 判定引擎：仓库地址 → 品种 / 品质 / 等级 / 六维（种族值 + 个体值 IV + 等级成长） / 战力 CP / 技能（纯函数，可复现） |
 | `src/battle.js` | 战斗引擎：属性克制 / 伤害公式 / 状态 / 先制 / AI（纯函数 + 显式种子，可复现） |
 | `src/rivals.js` | 内置 36 个知名仓库的离线快照 → 对手精灵；在线扫描 / 同类型 / 随机三种挑选 |
 | `src/vfx.js` | 攻击特效层：按属性×威力选 [pixelfx](https://github.com/patch-gg/pixelfx) 特效并贴到精灵身上（懒加载分包） |
 | `src/sprite.js` | 种子 → 像素精灵（[monstrjs](https://github.com/vcgtz/monstrjs) 手绘部件拼装：8 体型 × 眼嘴腮红耳尾四肢配饰，双属性配色 + 进化阶段配饰） |
-| `src/components/` | 卡包、精灵卡片、雷达图、竞技场 |
+| `src/customSprite.js` | 每只精灵的自定义形象：上传 / 拖拽 → 方形裁剪 → IndexedDB，全场景优先显示 |
+| `src/assets/species/` | 种族立绘素材（可选）：`<种族>/<属性>.png` 放进去自动生效，规格见 [`docs/ASSETS.md`](docs/ASSETS.md) |
+| `src/components/` | 卡包、精灵卡片、雷达图、竞技场、训练场 |
 
 > 每个库与每份素材的出处、许可证、以及"取了哪一部分"都在下方 [参考与借鉴（来源总表）](#参考与借鉴来源总表) 里逐条列出。
 
@@ -166,12 +207,52 @@ curl -X POST localhost:8000/api/hatch/sync -H 'content-type: application/json' \
 - 判定：语言占比定属性、依赖/结构定生态类型、五维加权定品质、对数归一化定等级
 - 养成：commit/issue/PR/release/star → XP，Lv.999 上限，30 天不动会沉睡
 - 立绘：种子确定性 PNG（零依赖自写编码器）+ README 徽章 SVG + 分享卡片
+- 排行榜：`GET /api/trending` 抓取 GitHub Trending 热门仓库榜（daily / weekly / monthly + 语言筛选，进程内缓存 30 分钟），前端排行榜页可一键把仓库孵化为精灵
 
 端点清单、判定口径、部署与前端接入见 [`backend/README.md`](backend/README.md)。
 
 ## 竞技场对战
 
 三种挑战：**在线对手**（单项目 1v1：填对方仓库按真实强度打；整仓：填对方账号让它的项目排队上，最多 3v3；命中内置快照可离线打）、**同类型对战**（只从和先发同属性的仓库里挑，克制关系清楚）、**随机宠物**（36 只内置对手随机抽）。后两种可调三档难度（对手六维 ×0.65 / ×1 / ×1.35）。9 元素克制表、Pokémon Showdown 同款伤害公式与能力等级、灼烧/中毒/麻痹/沉睡、先制技与换人、PP 用尽自动"挣扎"。机制细节与借鉴边界见 [`docs/BATTLE.md`](docs/BATTLE.md)。
+
+### 架构与流程
+
+竞技场刻意做成**三层分离**：React 只管表现与阶段切换，所有战斗规则都在一个不依赖 DOM 的纯函数引擎里，因此能被单测完整覆盖、且能与 Showdown 对拍。
+
+```mermaid
+flowchart TB
+  subgraph UI["表现层 · Battle.jsx（React 四阶段状态机）"]
+    direction LR
+    M["mode 选模式"] --> S["select 选阵容"]
+    S --> F["fight 自动对战"]
+    F --> R["result 结算发 EXP"]
+  end
+  subgraph ENG["规则引擎 · battle.js（纯函数 + 显式种子，可复现）"]
+    direction LR
+    CB["createBattle 建场"] --> BT["battleTurn 回合"]
+    BT --> CD["calcDamage 伤害"]
+    BT --> CA["chooseAction / chooseAutoAction AI"]
+  end
+  subgraph DATA["数据源 · rivals.js + engine.js"]
+    direction LR
+    RV["内置 40+ 仓库快照"] --> SC["在线扫描 / 同类型 / 随机"]
+    EJ["judge 判定 · ELEMENTS · TYPE_CHART"]
+  end
+  UI -->|阶段推进与事件回放| ENG
+  ENG -->|toCombatant 映射 + 对手生成| DATA
+```
+
+单场战斗是一个「状态进、状态出」的纯函数回合机；UI 从 `battleTurn` 拿回 `events` 数组，再按事件顺序排演出手、伤害飘字、倒地特效。
+
+```mermaid
+flowchart TB
+  A["createBattle 建场（seed 初始化 rng）"] --> B["battleTurn(state, action)"]
+  B --> C["换人先结算 → 先制/速度/种子排序 → 依次 runMove"]
+  C --> D["endOfTurn 状态伤害/自愈 → checkFaints"]
+  D --> E{"分出胜负?"}
+  E -- "否，同一 state 继续" --> B
+  E -- "是" --> F["结算 + 发 EXP（onReward）"]
+```
 
 引擎自检（不依赖浏览器）：
 
@@ -181,6 +262,21 @@ npm run test:parity   # 与官方 Showdown 引擎逐项对拍：81 组克制 + 1
 ```
 
 > `test:parity` 用 `@pkmn/sim`（Pokémon Showdown 官方模拟器，MIT）当标准答案：把我们的属性表和自定义种族/招式灌进它的 Dex 跑真实对局，再把同样输入喂给 `src/battle.js` 比对。它只在 devDependencies 里，不进前端包体——Showdown 解包 46MB，作为运行时引擎无法接受（原因见 `docs/BATTLE.md` §0）。
+
+## 训练场
+
+首页「竞技场」入口正下方的功能区：把常用的 AI 编程工具当成教练，点卡片在**新标签页**直达对应软件。不消耗体力、不写入对战战绩；点过的工具会在本机 `localStorage` 记一次打卡，页面顶部显示 `已打卡 N / 6`。
+
+| 工具 | 厂商 | 形态 | 直达地址 |
+| --- | --- | --- | --- |
+| Trae | 字节跳动 | AI IDE（国内版） | `https://www.trae.cn/`（卡片附国际版） |
+| WorkBuddy | 腾讯 | AI 工作台 | `https://www.workbuddy.cn/`（附产品文档） |
+| Codex | OpenAI | 编程智能体 | `https://chatgpt.com/codex`（附产品页） |
+| Cursor | Anysphere | AI 编辑器 | `https://www.cursor.com/` |
+| Claude Code | Anthropic | 终端 Agent | `https://claude.ai/code`（附官方文档） |
+| Grok Bot | xAI | 云端 Bot | `https://x.ai/bot`（附上手指南） |
+
+实现：`src/training-tools.js`（链接清单，改地址只动这一个文件）、`src/components/Training.jsx`、`src/training.css`；`src/App.jsx` 增加 `training` 视图与首页入口。所有外链都带 `target="_blank" rel="noopener noreferrer"`。
 
 ## 离线 AI 味检测（aitrace）
 
@@ -210,13 +306,16 @@ AI 味 ≥50 → 词条「根基不稳」，≥75 → 「生成体」；根基�
 - [x] 根基与性格词条（含"根基不稳"减益与修复提示）
 - [x] 离线 AI 味检测 CLI + 扫描钩子
 - [x] 竞技场对战：在线对手 / 同类型 / 随机宠物三种挑战 + 三档难度（`docs/BATTLE.md`）
+- [x] 训练场：六款 AI 编程工具直达入口 + 本机打卡（`src/training-tools.js`）
 - [x] GitHub 登录授权：首屏授权页 + OAuth / 本机 gh 登录态（60 → 5000 次/小时）
 - [x] 三选一登录：GitHub / Gitee / 游客；登录后自动读账号全部项目开除整箱，不再手填仓库
 - [ ] 前端切到真实 API（判定仍在前端跑，扫描已用真实数据）
-- [ ] Gitee OAuth 应用（当前已接，未配置时用私人令牌登录）
+- [x] Gitee OAuth 应用已配置：授权码换 token + refresh_token 静默续期（1 天有效期）
 - [ ] 精灵成长与每日同步的前端展示
 - [ ] AI 率按最近 90 天提交加权，让"补课"真能把词条洗掉
-- [ ] 全服排行榜页面
+- [ ] 全服玩家排行榜页面（玩家宠物强弱排名；区别于已上线的 GitHub Trending 仓库榜）
+- [x] GitHub 排行榜：拉取 GitHub Trending 热门仓库榜（今日 / 本周 / 本月 + 语言筛选），点「孵化」直接把榜单仓库孵成精灵（后端 /api/trending + 前端排行榜页）
+- [ ] AI 深度审计：真实审计 2–5 分钟（里程碑弹幕 + 属性/进化弹窗 + 等级 Lv.1 滚到终值 + 进化演出），设计已定稿见 [`docs/AI-AUDIT.md`](docs/AI-AUDIT.md)
 
 ## 参考与借鉴（来源总表）
 
@@ -239,14 +338,16 @@ AI 味 ≥50 → 词条「根基不稳」，≥75 → 「生成体」；根基�
 | [scc](https://github.com/boyter/scc) | 后端浅克隆后统计 LOC / 注释行 / **圈复杂度** / COCOMO → 喂给工程量与「特防（可维护性）」维度 | `backend/`（`GITMON_USE_SCC=1`） | MIT |
 | [@pkmn/sim](https://www.npmjs.com/package/@pkmn/sim) | **只在测试里用**：把我们的属性表与自定义种族灌进官方 Dex 当"标准答案"，对拍 81 组克制 + 178 次伤害样本 | [`scripts/showdown-parity.mjs`](scripts/showdown-parity.mjs)（devDependency） | MIT |
 
-### 二、只借思路，代码全部自研
+### 二、只借思路，代码自研（唯一例外：GPL 的 pokemon-cards-css 源码内置）
 
 | 来源 | 借了什么 | 边界 | 协议 |
 |---|---|---|---|
 | [Pokémon Showdown](https://github.com/smogon/pokemon-showdown) | **战斗系统骨架**：Gen5 伤害公式、能力等级 −6..+6 分数表、先制 → 速度的行动顺序、灼烧 / 麻痹 / 睡眠的处理方式、PP 与「挣扎」、STAB 与会心框架 | 图鉴数据与招式全自研；机制按其实现重写，未引入代码（原因见 [`docs/BATTLE.md` §0](docs/BATTLE.md)） | MIT |
 | 《赛尔号》(Seer) | 「克制 / 微弱 / 无效」三档克制呈现、以属性技能为核心的直球节奏 | 商业作品，零素材零代码 | — |
-| [pokemon-cards-css](https://github.com/simeydotme/pokemon-cards-css) ⚠️ | **全息闪卡的视觉语言**：多层渐变 + `blend-mode` + 滤镜，高光随指针位置移动 | GPL-3.0 有传染性 → 仅作视觉参考，CSS 全自研（`PetCard.jsx` 的 `--mx` / `--my` / `--rx` / `--ry` + `.holo-layer` / `.glare`） | GPL-3.0 |
+| [pokemon-cards-css](https://github.com/simeydotme/pokemon-cards-css) ✅ 已采用 | **全息闪卡的视觉语言**：多层渐变 + `blend-mode` + 滤镜，高光随指针位置移动 | **GPL-3.0 → 源码内置**：拼接为 [`src/vendor/pokemon-cards.css`](src/vendor/pokemon-cards.css)（同目录附 LICENSE），卡面材质由其接管，分发时须同开源（见"协议与合规"） | GPL-3.0 |
 | [hover-tilt](https://github.com/simeydotme/hover-tilt) | 指针归一化到 −0.5..0.5 再映射倾斜角的换算方式与阻尼手感 | 自研 `useState` 实现，**未装依赖** | MIT |
+| [tcg-portfolio](https://github.com/dim4k/tcg-portfolio) | **稀有度材质分级的视觉范本**：foil（金箔）/ glitter（闪粉）/ glare（高光）三层叠加，鼠标或陀螺仪倾斜触发；rare ★ / gold ★★ / secret ★★★ 各自一套 finish，开包逐张翻飞 | 仅作材质与稀有度映射参考（N/R/SR/SSR → 哑光/微光/镭射/金卡），CSS 全自研 | MIT |
+| [Holographic Card 3D (effect-labs)](https://effect-labs.com/en/effects/cards/holographic-card-3d.html) | **零 JS 全息方案**：`::after` 用 `repeating-linear-gradient` 做镭射颗粒 + `conic-gradient` 走彩虹虹彩，配 `mix-blend-mode: overlay/color-dodge`；纯 CSS 倾斜，`will-change` 上 GPU | 顶层层叠思路（scanline 颗粒 + conic 虹彩 + color-dodge）借来强化 SR/SSR | 站点示例（自有许可） |
 | [pixel-sprite-monster-generator](https://github.com/sempitern0/pixel-sprite-monster-generator) | **种子确定性立绘**：体型族 × 调色板 × 变体（心情 / 史诗）的三层生成结构 | v0.5 前的立绘方案（32×32 程序化绘制）；观感不佳，已被 monstrjs 部件拼装替代（见上表），保留致谢 | MIT |
 | [gen_me_a_pixamon](https://github.com/pixmusix/gen_me_a_pixamon) | 单 u64 种子 → 确定性 PNG 的极简路线（服务端预生成的取舍依据） | 未移植代码，只定架构方向 | MIT |
 | [github-readme-stats](https://github.com/anuraghazra/github-readme-stats) | 无状态 SVG 卡片端点架构：纯函数渲染 + 缓存头 + 主题参数 | SVG 渲染自研 | MIT |
@@ -254,6 +355,7 @@ AI 味 ≥50 → 词条「根基不稳」，≥75 → 「生成体」；根基�
 | Repup / cli-pet / pixel-tamagotchi | 极简养成循环的可行性、"状态 ↔ 工程信号"的四维映射、git hook 即时同步 | 工程信号口径与数值全自定 | 参考 |
 | PokeToken | 性格 / 个体值 / 闪光率的数值设计与孵蛋加权 | 替换为「根基 + 词条」双轨，弱化随机 | 参考 |
 | [Platane/snk](https://github.com/Platane/snk) / [GitHub Skyline](https://skyline.github.com/) / [github-profile-trophy](https://github.com/ryo-ma/github-profile-trophy) | README 游戏化的表达方式：Action 定时生成 + 稳定 URL、年度仪式感、成就墙 | 徽章与卡片端点自研 | 参考 |
+| [GitHub Trending](https://github.com/trending) | **排行榜数据源**：直接抓取 trending 页面，正则解析名次 / 语言 / 总 Star / 本期新增 Star / Fork，不引入任何第三方库 | 后端 `trending.py` 自研 `parse_trending`（纯函数，便于单测）+ 30 分钟进程内缓存；前端 `Leaderboard.jsx` 展示，每行带「孵化」按钮 | 数据来自 GitHub 公开页面 |
 
 ### 三、调研过、最终没有采用
 
@@ -268,17 +370,126 @@ AI 味 ≥50 → 词条「根基不稳」，≥75 → 「生成体」；根基�
 | [procedural-pixel-creatures](https://github.com/idlerunner00/procedural-pixel-creatures) | Godot / C# 耦合重，立绘质量虽高但移植成本不划算 | 待核实 |
 | [github-readme-streak-stats](https://github.com/DenverCoder1/github-readme-streak-stats) | 连续贡献卡片的展示形式参考，暂未实现 | MIT |
 
+### 四、AI 深度审计演出（已落地，效果复刻对标）
+
+AI 模式「真实审计 2–5 分钟」演出（中央光团 → 属性确定显形宠物、等级随勘测实时滚动、跨阶进化动画、里程碑弹幕，设计见 [`docs/AI-AUDIT.md`](docs/AI-AUDIT.md)）的效果对标以下高星开源仓库复刻——**只借思路 / 算法，零运行时依赖，CSS / WAAPI 自研**：
+
+| 效果 | 参考仓库 | 复刻什么 | 落点 | 协议 |
+|---|---|---|---|---|
+| 里程碑弹幕 | [jabbany/CommentCoreLibrary](https://github.com/jabbany/CommentCoreLibrary) ⭐约1.9k · [zerosoul/rc-bullets](https://github.com/zerosoul/rc-bullets) | 弹幕轨道分配与防重叠调度（经典 CCL 算法）、CSS3 Animation 弹幕的组件化封装方式 | `src/components/AuditStage.jsx` 弹幕层 | MIT |
+| 等级数字滚动 | [inorganik/countUp.js](https://github.com/inorganik/countUp.js) ⭐约8k | rAF 计数 + easeOutExpo 缓动：里程碑加级 320–700ms 小滚、M5 台内 `finalRollDuration` 大滚到终值，撕卡时等级已落定 | `AuditStage.jsx` 等级大字（随勘测实时滚动） | MIT |
+| 进化白闪登场 | [daneden/animate.css](https://github.com/daneden/animate.css) ⭐约82.9k | `flash` / `zoomIn` / `bounceIn` 关键帧思路 → 跨进化阶时的白光爆闪 + 立绘 brightness/blur 登场 + 阶段名大字弹入 | `.audit-evolve-flash` / `.audit-evolve-tag` / `.audit-pet` | MIT |
+| 进化序列时间轴 | [greensock/GSAP](https://github.com/greensock/GSAP) ⭐约26.4k | timeline 分段编排思路 → 进化演出拆成「白闪 → 形态切换 → 阶段名定格 → 自收」四拍串行 | 跨阶检测 + 演出自收两段 effect | 附带标准（免费使用，仅转售受限） |
+| 演出节拍编排 | [juliangarnier/anime](https://github.com/juliangarnier/anime) ⭐约70k | timeline + stagger 的多阶段动画编排思路 → 里程碑节拍控制器 | `AuditStage.jsx` 节拍调度 | MIT |
+| 弹窗进出场 | [motiondivision/motion](https://github.com/motiondivision/motion) ⭐约32k（原 framer-motion） | 发现属性 / 种族判定弹窗的 spring 进出场节奏 | 弹窗组件 | MIT |
+| 光团灵体化 | [jolaleye/cssfx](https://github.com/jolaleye/cssfx) ⭐约6.1k | 纯 CSS 辉光特效的多层渐变组合思路 → 勘测初始光团重做为虚幻灵体能量球：冰蓝紫多层径向内核 + conic 幻彩能量流环绕 + 模糊灵雾漂移 + 3D 倾斜虚线轨道 + 星尘上浮（氛围取意表一 tsParticles，纯 CSS 实现零依赖） | `src/audit.css` `.audit-orb` 光团（haze / core / orbit / 双环 / 四粒星尘） | MIT |
+
+> 进化与里程碑的礼花闪光不新增来源，复用表一已在用的 tsParticles；弹窗皮肤复用 Kenney Pixel UI。
+
 ### 协议与合规
 
 - 本项目自身以 **MIT** 发布（见 [`LICENSE`](LICENSE)）。
-- **GPL 项目零代码复用**：`pokemon-cards-css` 只提供视觉参考，仓库内没有任何其代码片段；如未来需要可原地替换掉自研全息层。
+- **GPL-3.0 源码内置（唯一例外）**：`pokemon-cards-css` 已拼接 vendored 至 [`src/vendor/pokemon-cards.css`](src/vendor/pokemon-cards.css)，许可证原文见 [`src/vendor/LICENSE-pokemon-cards-css`](src/vendor/LICENSE-pokemon-cards-css)，贴图在 `public/pkcss/img/`（声明见 [`THIRD-PARTY.md`](THIRD-PARTY.md)）。本项目自身以 MIT 发布，但**分发该衍生 CSS 时须遵循 GPL-3.0 同开源**；不接受时可删除该 vendor 文件与 `PetCard.jsx` 中的 `.card` 结构回退。
 - **素材许可原文随仓库**：[`src/assets/kenney/LICENSE.txt`](src/assets/kenney/LICENSE.txt)（CC0）、[`src/assets/fonts/LICENSE-fusion-pixel.txt`](src/assets/fonts/LICENSE-fusion-pixel.txt)（OFL-1.1）。
-- **复制的第三方代码**单独声明在 [`THIRD-PARTY.md`](THIRD-PARTY.md)（当前为 pixelfx 与 monstrjs，含打包范围说明）。
+- **复制的第三方代码**单独声明在 [`THIRD-PARTY.md`](THIRD-PARTY.md)（当前为 pixelfx、monstrjs 与 pokemon-cards-css，含打包范围说明）。
 - 更细的选型评估见 [`docs/DESIGN.md` §10 开源资源调研](docs/DESIGN.md)，竞品分析见 §11，对战借鉴边界见 [`docs/BATTLE.md` §0](docs/BATTLE.md)。
+
+## 对战页视觉（掌机像素风）
+
+竞技场战斗页与结算页走**掌机像素风**（2026-11 设计决策，设计文档见 [`docs/superpowers/specs/2026-11-09-handheld-pixel-battle-design.md`](docs/superpowers/specs/2026-11-09-handheld-pixel-battle-design.md)）：CRT 扫描线 + 暗角的"掌机屏幕"隐喻、米白双线硬边框、GBA 式常驻 HP 角框与**分段像素血条**、底部像素对话框战报（最新行 ▼ 打字机）、回合招式横幅、方块像素粒子打击；结算页为像素徽章 + **S/A/B 评级**（按存活与回合数计算）+ 分段经验条 + MVP 展示 + 像素按键（按下下沉）+ 胜利五彩纸屑。
+
+### 调研过的参考仓库（视觉语言来源）
+
+| 仓库 | 给到我们的东西 |
+|---|---|
+| [shattered-pixel-dungeon](https://github.com/00-Evan/shattered-pixel-dungeon)（~7k★） | 像素面板与硬边描边质感：框体不用圆角渐变，而是描边 + 阴影双线的"卡带 UI" |
+| [smogon/pokemon-showdown](https://github.com/smogon/pokemon-showdown)（~9k★） | 对战信息分层原则：HP 常驻可视、日志独立成层、演出动效不遮挡关键信息 |
+| GBA 世代 HP 框设计语言 | 角落常驻 HP 框、分段血条逐格增减、像素对话框 + ▼ 翻页指示的播报交互 |
+
+实现位置：`src/battle-arena.css` 尾部「掌机像素风覆盖层」段 + `src/components/Battle.jsx`（分段 `HPBar`、招式横幅 `.move-banner`、结算 `battleGrade`/徽章/经验条）。字体复用仓库内置的 FusionPixel（OFL，`src/assets/fonts/`）。纯表现层覆盖，仅作用于 `.battle-stage`，不动 `styles.css` / 顶栏。
+
+---
+
+## 卡面材质（镭射 / 金卡 / 闪卡）
+
+卡面不是一张扁平图，而是按**品质分四档材质**的实体卡——越高稀有的仓库，卡面越"有东西"。这是 GitMon 把"品质"做成可感知质感的核心手段。
+
+### 调研过的参考仓库（视觉语言来源）
+
+| 仓库 | 给到我们的东西 | 协议 / 边界 |
+|---|---|---|
+| [simeydotme/pokemon-cards-css](https://github.com/simeydotme/pokemon-cards-css) | 全息闪卡"教科书"：多层渐变 + `blend-mode` + 滤镜，高光随指针移动；剑盾时代宝可梦卡面的镭射观感 | **GPL-3.0 → 已源码内置**（`src/vendor/pokemon-cards.css` + `public/pkcss/img/`，随附 LICENSE），N/R/SR/SSR 分四档材质 |
+| [hover-tilt](https://github.com/simeydotme/hover-tilt) | 指针→倾斜角的归一化换算与阻尼手感 | MIT，自研实现 |
+| [dim4k/tcg-portfolio](https://github.com/dim4k/tcg-portfolio) | **稀有度材质范本**：foil/glitter/glare 三层叠加，rare ★ / gold ★★ / secret ★★★ 各一套 finish | MIT，仅参考映射 |
+| [Holographic Card 3D (effect-labs)](https://effect-labs.com/en/effects/cards/holographic-card-3d.html) | 零 JS 全息：`repeating-linear-gradient` 颗粒 + `conic-gradient` 虹彩 + `color-dodge` | 站点示例，借层叠思路 |
+
+> 卡面材质直接采用 pokemon-cards-css（GPL-3.0，源码内置见 `src/vendor/`，声明见"协议与合规"）；品质映射与指针跟随换算自研。
+
+### 材质分级（品质 → 卡面材质）
+
+| 品质 | 材质（`data-rarity`） | 观感 |
+|---|---|---|
+| **N** | `basic` | 哑光卡纸，无镭射，最朴素 |
+| **R** | `rare holo` | 经典横纹镭射，卡窗内流光随指针移动 |
+| **SR** | `rare holo cosmos` | 星空闪：星点 + 闪片贴图层（每张卡固定随机偏移） |
+| **SSR** | `rare rainbow` | 彩虹流光铺满整卡，最亮最强 |
+
+### 实现位置
+
+- `src/components/PetCard.jsx`：`.card > .card__translater > .card__rotator > .card__front`（内容层 + `.card__shine` + `.card__glare`），`data-rarity` 由品质 N/R/SR/SSR 映射；内容层原生监听 `pointermove` / `pointerleave`，换算出 `--pointer-x` / `--rotate-x/y` / `--background-x/y` 等变量注入。
+- `src/vendor/pokemon-cards.css`：材质本体（拼接自 pokemon-cards-css，GPL-3.0，同目录附 LICENSE），`src/styles.css` 的 `.gm-holo` 段控制卡尺寸与覆盖；贴图在 `public/pkcss/img/`。
+- 分享卡（`src/share.js`，Canvas 1:1 复刻）同步带品质色描边与流光，但材质镭射仅在网页卡面做动态呈现。
+
+---
+
+## 剧情模式：开源组件选型
+
+剧情模式（[`docs/STORY.md`](docs/STORY.md)）的原则是**能直接套的通用件就不自研**。下表为已落地的选型，
+依赖已安装，许可证见 [`THIRD-PARTY.md`](THIRD-PARTY.md)。
+
+| 环节 | 选型 | 版本 / 协议 | 套用方式 |
+|---|---|---|---|
+| 场景图运行时（节点、选项、变量、条件） | [inkjs](https://github.com/y-lohse/inkjs) | 2.4.0 / MIT | **直接依赖**：路线写在 [`src/story/story.ink`](src/story/story.ink)，`npm run story:build` 编译成 `story.json`，浏览器端由 inkjs 执行 |
+| 存档 / 回滚 | inkjs `state.ToJson()` / `LoadJson()` | 同上 | **直接用**：快照写入 `story_runs.ink_state` 与 `story_saves` |
+| 内容结构校验 | [ajv](https://github.com/ajv-validator/ajv) | 8.20 / MIT | **直接依赖**：构建期校验 `characters.json` / `lines.json`，缺 fallback、缺角色直接报错 |
+| 台词实时生成 | 自研 [`src/llm.js`](src/llm.js) + 后端代理 | — | 经 ink 的 `EXTERNAL say(key)` 回注；模型超时走 `lines.json` 的 fallback |
+| Boss 检索 | 自研 [`src/scan.js`](src/scan.js) + GitHub Search | — | 模型出检索条件，后端执行；断网退内置池 |
+| 剧情 UI（对话框 / 立绘 / 选项） | 自研 [`src/components/StoryMode.jsx`](src/components/StoryMode.jsx) | — | 仅参考 [Monogatari](https://github.com/Monogatari/monogatari) 的 JSON 结构 |
+| 短剧节拍库 | 自建 | — | 无可引用的高星中文库 |
+
+取舍说明：
+
+- **不整套引入 Monogatari**：它把剧本、UI、存档全包了，会替换掉现有大厅、卡面与像素风；只取 headless 的 inkjs 运行时
+- **不引入 json-logic-js**：条件与变量改用 ink 原生语法后，自研求值器与它一起省掉
+- 动态章节数（差距越大关卡越多）用 ink 的循环 knot 表达，不需要额外引擎
+
+代码入口：
+
+| 文件 | 职责 |
+|---|---|
+| [`src/story/story.ink`](src/story/story.ink) | 离线路线唯一真相源：场景、选项、变量、战斗分支、多结局 |
+| [`src/story/runtime.js`](src/story/runtime.js) | inkjs 运行时：场景渲染、选项、存档快照、战斗后跳转 |
+| [`scripts/story-build.mjs`](scripts/story-build.mjs) | 编译 `.ink` → `story.json` / `story-data.js`，并用 ajv 做内容校验 |
+| [`src/components/StoryMode.jsx`](src/components/StoryMode.jsx) | 选主角 → 选 Boss → 选剧本 → 场景 / 战斗 / 存档 |
+| [`backend/gitmon_api/story.py`](backend/gitmon_api/story.py) | 检索、剧本、建线、状态裁决、结局收集 |
+
+```bash
+npm run story:build   # 改完 .ink 后重新编译 + 校验（vite build 前会自动跑）
+npm run test:story    # 路线自检：选项 / 变量 / 章节数 / 存档回滚 / 多结局
+```
+
+
+---
 
 ## 设计文档
 
-完整的产品设计（判定公式、玩法数值、架构、竞品分析）见 [`docs/DESIGN.md`](docs/DESIGN.md)。
+| 文档 | 内容 |
+|---|---|
+| [`docs/DESIGN.md`](docs/DESIGN.md) | 产品设计：判定公式、玩法数值、架构、竞品分析 |
+| [`docs/STORY.md`](docs/STORY.md) | 剧情模式：单线约束、Boss/剧本选择、galgame 场景图、离线路线 + 实时文本、组件选型 |
+| [`docs/QUEST.md`](docs/QUEST.md) | 任务模式：AI 指出代码问题 → 玩家修复 → 复审发奖 |
+| [`docs/BATTLE.md`](docs/BATTLE.md) | 对战机制：伤害公式、属性表、与 Showdown 的对拍 |
+| [`docs/SSOT.md`](docs/SSOT.md) | 前后端同步契约：SQLite 为唯一真相源 |
 
 ---
 

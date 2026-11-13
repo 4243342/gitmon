@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
-from . import auth, engine, growth, services
+from . import auth, engine, growth, services, trending
 from .badge import badge_svg, card_svg, placeholder_badge
 from .config import settings
 from .errors import PetNotFound, ScanError
@@ -22,8 +22,11 @@ router = APIRouter()
 _USER_RE = re.compile(r"[^A-Za-z0-9_-]")
 
 
-def owner_key(x_gitmon_user: str | None = Header(default=None, alias="X-Gitmon-User")) -> str:
-    """匿名用户标识：前端 localStorage 生成的设备 ID，没有就落到公共图鉴。"""
+def owner_key(request: Request, x_gitmon_user: str | None = Header(default=None, alias="X-Gitmon-User")) -> str:
+    """归属标识：登录会话优先（跨设备一致），其次设备 ID 头，最后公共图鉴。"""
+    user = auth.resolve_session(request.cookies.get(auth.SESSION_COOKIE, ""))
+    if user and user.get("login"):
+        return f"user:{user.get('provider') or 'github'}:{user['login']}"
     if not x_gitmon_user:
         return "public"
     cleaned = _USER_RE.sub("", x_gitmon_user)[:64]
@@ -34,6 +37,20 @@ def session_token(request: Request) -> str:
     """登录用户的 GitHub 令牌；未登录返回空串，退回服务端兜底令牌。"""
     user = auth.resolve_session(request.cookies.get(auth.SESSION_COOKIE, ""))
     return (user or {}).get("token", "") if user else ""
+
+
+def session_tokens(request: Request) -> dict[str, str]:
+    """登录会话里的令牌，按平台分桶：``{"github": "...", "gitee": "..."}``。
+
+    一个会话只对应一个平台（GitHub OAuth 或 Gitee OAuth），所以只填自己那一格。
+    任务验真按目标仓库所在平台取令牌 —— 拿 Gitee 令牌去问 GitHub 是问不出结果的。
+    """
+    user = auth.resolve_session(request.cookies.get(auth.SESSION_COOKIE, ""))
+    token = str((user or {}).get("token") or "")
+    if not token:
+        return {}
+    provider = str((user or {}).get("provider") or "github").lower()
+    return {provider: token}
 
 
 class HatchRequest(BaseModel):
@@ -54,6 +71,10 @@ class JobResponse(BaseModel):
     pet: dict[str, Any] | None = None
     error: str = ""
     hint: str = ""
+
+
+class SyncRequest(BaseModel):
+    items: list[Any] = Field(default_factory=list, max_length=60, description="完整前端 pet 对象列表")
 
 
 def _svg(content: str, max_age: int = 21600) -> Response:
@@ -134,6 +155,13 @@ def list_collection(
     return services.collection(user, limit, offset)
 
 
+@router.put("/api/pets", tags=["pets"])
+def upsert_collection(payload: SyncRequest, user: str = Depends(owner_key)) -> dict[str, Any]:
+    """批量 upsert 本地图鉴（SSOT 契约 §4）：推送即覆盖，缺必填的条目跳过。"""
+    items, saved = services.upsert_many(user, payload.items)
+    return {"items": items, "saved": saved}
+
+
 @router.get("/api/pets/{pet_id}", tags=["pets"])
 def pet_detail(pet_id: str) -> dict[str, Any]:
     return services.detail(pet_id)
@@ -163,6 +191,33 @@ def pet_growth(pet_id: str, limit: int = Query(default=20, ge=1, le=100)) -> dic
 @router.get("/api/leaderboard", tags=["pets"])
 def leaderboard(limit: int = Query(default=20, ge=1, le=100)) -> dict[str, Any]:
     return services.leaderboard(limit)
+
+
+@router.get("/api/trending", tags=["meta"])
+def github_trending(
+    since: str = Query(default="weekly", pattern="^(daily|weekly|monthly)$"),
+    language: str = Query(default=""),
+    limit: int = Query(default=30, ge=1, le=50),
+    token: str = Depends(session_token),
+) -> dict[str, Any]:
+    """GitHub 趋势榜：把 github.com/trending 的排行榜拉成结构化数据。
+
+    页面抓取本身不占 API 配额；但网页挂掉会走 Search API 兜底 ——
+    登录会话 / 服务端兜底令牌优先，别让兜底请求按匿名（10 次/分钟）烧配额。
+    """
+    try:
+        items = trending.fetch_trending(since, language, token=token or settings.github_token)
+    except Exception as exc:  # 网络抖动 / 匿名限流都归一成 502，前端统一报错
+        raise ScanError(f"GitHub 趋势榜拉取失败：{exc}", hint="GitHub 可能对匿名请求限流，稍后重试")
+    return {
+        "items": items[:limit],
+        "since": since,
+        "language": language,
+        "count": min(len(items), limit),
+        "total": len(items),
+        "source": trending.last_source(),
+        "fetched_at": int(time.time()),
+    }
 
 
 # ---------------------------------------------------------------- 立绘与卡片
@@ -213,6 +268,10 @@ def repo_card(platform: str, owner: str, repo: str, token: str = Depends(session
 # ---------------------------------------------------------------- 错误处理
 
 def install_error_handlers(app) -> None:
+    from .inventory import InventoryError
+    from .quest import QuestError
+    from .story import StoryError
+
     @app.exception_handler(ScanError)
     async def _scan_error(request: Request, exc: ScanError) -> JSONResponse:
         headers = {}
@@ -222,6 +281,24 @@ def install_error_handlers(app) -> None:
             status_code=getattr(exc, "status_code", 502),
             content={"error": exc.message, "hint": exc.hint},
             headers=headers,
+        )
+
+    @app.exception_handler(StoryError)
+    async def _story_error(request: Request, exc: StoryError) -> JSONResponse:
+        return JSONResponse(status_code=exc.status_code, content={"error": exc.message, "hint": exc.hint})
+
+    @app.exception_handler(InventoryError)
+    async def _inventory_error(request: Request, exc: InventoryError) -> JSONResponse:
+        return JSONResponse(
+            status_code=getattr(exc, "status_code", 400),
+            content={"error": exc.message, "hint": exc.hint},
+        )
+
+    @app.exception_handler(QuestError)
+    async def _quest_error(request: Request, exc: QuestError) -> JSONResponse:
+        return JSONResponse(
+            status_code=getattr(exc, "status_code", 400),
+            content={"error": exc.message, "hint": exc.hint},
         )
 
     @app.exception_handler(InvalidRepo)

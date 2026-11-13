@@ -6,6 +6,7 @@ API 层只负责参数校验与序列化，所有业务动作都收在这里。
 from __future__ import annotations
 
 import hashlib
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -26,7 +27,7 @@ from .db import (
 )
 from .db import utcnow_iso
 from .errors import PetNotFound
-from .repo import RepoRef, parse_repo
+from .repo import InvalidRepo, RepoRef, parse_repo, ref_from_parts
 from .scanner import scan as scan_remote
 from .scanner.snapshot import RepoSnapshot
 
@@ -108,7 +109,7 @@ def pet_to_api(pet: dict[str, Any]) -> dict[str, Any]:
         else {"key": "unknown", "name": "未评估", "min": 0}
     )
 
-    return {
+    api: dict[str, Any] = {
         "id": pet["id"],
         "platform": pet["platform"],
         "owner": pet["owner"],
@@ -142,6 +143,8 @@ def pet_to_api(pet: dict[str, Any]) -> dict[str, Any]:
         "traitSummary": trait_mod.summary(pet.get("traits") or []),
         "aiRate": pet.get("ai_rate"),
         "bond": int(pet.get("bond") or 0),
+        "battles": int(pet.get("battles") or 0),
+        "wins": int(pet.get("wins") or 0),
         "status": pet.get("status") or "active",
         "description": pet.get("description") or "",
         "createdAt": pet.get("created_at"),
@@ -150,6 +153,8 @@ def pet_to_api(pet: dict[str, Any]) -> dict[str, Any]:
         "notes": pet.get("notes") or [],
         "degraded": bool(pet.get("degraded")),
     }
+    # 契约 §3 出站合并：client_state 先展开，列字段（含派生字段）优先
+    return {**(pet.get("client_state") or {}), **api}
 
 
 def _compose(existing: dict[str, Any] | None, spec: dict[str, Any], ref: RepoRef,
@@ -311,6 +316,129 @@ def _apply_sync(conn, pet: dict[str, Any], snapshot: RepoSnapshot) -> dict[str, 
     return api
 
 
+# ---------------------------------------------------------------- 批量同步
+
+# 入站忽略：服务端管理的字段（契约 §3）+ 条目自带的归属字段（归属一律用请求者，契约 §4）
+_SYNC_IGNORED = {"id", "createdAt", "syncedAt", "spriteUrl", "htmlUrl", "ownerKey", "owner_key"}
+
+# 前端字段 → 落列字段；不在此表且不被忽略的字段合并进 client_state（契约 §3）
+_SYNC_COLUMNS: dict[str, str] = {
+    "platform": "platform", "owner": "owner", "repo": "repo", "fullName": "full_name",
+    "seed": "seed", "spriteSeed": "sprite_seed",
+    "qualityScore": "quality_score", "qualityDims": "quality_dims",
+    "engineeringScore": "engineering_score", "level": "level", "exp": "exp",
+    "evolutionStage": "evolution_stage", "stats": "stats", "skills": "skills",
+    "hp": "hp", "foundation": "foundation", "foundationDims": "foundation_dims",
+    "traits": "traits", "aiRate": "ai_rate", "bond": "bond", "status": "status",
+    "description": "description", "notes": "notes", "metrics": "metrics",
+    "degraded": "degraded", "battles": "battles", "wins": "wins",
+}
+
+# 复合对象只取 .key 落列，对象本身不进 client_state；qualityKey 同时落 quality 列并 round-trip
+_SYNC_OBJECT_KEYS = {"element", "elementSecondary", "species", "quality"}
+
+_INT_FIELDS = {"seed", "spriteSeed", "level", "exp", "evolutionStage", "hp", "bond", "battles", "wins"}
+_FLOAT_FIELDS = {"qualityScore", "engineeringScore", "foundation"}
+# 缺任一必填（NOT NULL 列）的条目整条跳过，不整体 4xx
+_REQUIRED_INPUT = ("seed", "spriteSeed", "qualityScore", "engineeringScore", "level")
+
+
+def _sync_value(key: str, value: Any) -> Any:
+    if key in _INT_FIELDS:
+        return int(value)
+    if key in _FLOAT_FIELDS:
+        return float(value)
+    if key == "degraded":
+        return bool(value)
+    return value
+
+
+def _object_key(value: Any) -> str:
+    """复合对象取 .key 落列；非 dict 视为缺失。"""
+    if isinstance(value, dict):
+        return str(value.get("key") or "")
+    return ""
+
+
+def _row_from_item(conn, item: dict[str, Any], owner_key: str) -> dict[str, Any] | None:
+    """单条入站 pet → 待落库行；缺必填或类型非法时返回 None（跳过该条）。"""
+    platform = str(item.get("platform") or "").strip().lower()
+    full_name = str(item.get("fullName") or "").strip()
+    if platform not in {"github", "gitee"} or "/" not in full_name:
+        return None
+    owner_name, _, repo_name = full_name.partition("/")
+    element_key = _object_key(item.get("element"))
+    species_key = _object_key(item.get("species"))
+    quality_key = _object_key(item.get("quality")) or str(item.get("qualityKey") or "")
+    if not (owner_name and repo_name and element_key and species_key and quality_key):
+        return None
+    if any(item.get(key) is None for key in _REQUIRED_INPUT):
+        return None
+    try:
+        ref = ref_from_parts(platform, owner_name, repo_name)
+        converted = {
+            key: _sync_value(key, value)
+            for key, value in item.items()
+            if key in _SYNC_COLUMNS and value is not None
+        }
+    except (InvalidRepo, TypeError, ValueError):
+        return None
+
+    existing = find_pet(conn, ref.platform, ref.full_name, owner_key)
+    now = utcnow_iso()
+    pet = dict(existing) if existing else {
+        "id": _pet_id(ref, owner_key),
+        "owner_key": owner_key,
+        "created_at": now,
+        "synced_at": now,
+        "sprite_path": "",
+        "exp": 0, "evolution_stage": 1, "hp": 0, "foundation": 0.0,
+        "bond": 0, "status": "active", "description": "",
+        "battles": 0, "wins": 0, "element_secondary": None, "ai_rate": None,
+    }
+    for key, column in _SYNC_COLUMNS.items():
+        if key in converted:
+            pet[column] = converted[key]
+    # 行定位键以 (platform, fullName) 解析结果为准，归属一律用请求者身份
+    pet.update({
+        "platform": ref.platform,
+        "owner": ref.owner,
+        "repo": ref.repo,
+        "full_name": ref.full_name,
+        "owner_key": owner_key,
+        "element_key": element_key,
+        "species_key": species_key,
+        "quality": quality_key,
+    })
+    if item.get("elementSecondary") is not None:
+        pet["element_secondary"] = _object_key(item.get("elementSecondary")) or None
+    state = dict(pet.get("client_state") or {})
+    state.update({
+        key: value for key, value in item.items()
+        if key not in _SYNC_IGNORED and key not in _SYNC_COLUMNS and key not in _SYNC_OBJECT_KEYS
+    })
+    pet["client_state"] = state
+    return pet
+
+
+def upsert_many(owner_key: str, items: list[Any]) -> tuple[list[dict[str, Any]], int]:
+    """按 (platform, full_name, owner_key) 批量 upsert（契约 §4），推送即覆盖。
+
+    返回 (出站权威版本列表, 成功条数)；非法条目跳过，不整体报错。
+    """
+    pets: list[dict[str, Any]] = []
+    with db.connect() as conn:
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            pet = _row_from_item(conn, item, owner_key)
+            if pet is None:
+                continue
+            save_pet(conn, pet)
+            pets.append(pet)
+    return [pet_to_api(pet) for pet in pets], len(pets)
+
+
 # ---------------------------------------------------------------- 查询
 
 def collection(owner_key: str, limit: int = 60, offset: int = 0) -> dict[str, Any]:
@@ -337,6 +465,16 @@ def remove(pet_id: str) -> None:
             raise PetNotFound()
         conn.execute("DELETE FROM pets WHERE id=?", (pet_id,))
         conn.execute("DELETE FROM growth_log WHERE pet_id=?", (pet_id,))
+        # 精灵没了，以它为主角的剧情线就没法推进了（设计 §8）：
+        # 当场结案，别留一条「桌宠还锁着、主角却不存在」的空壳线。
+        # pet_key 的口径与 story.start 一致："{platform}-{full_name}"
+        pet_key = f"{pet.get('platform') or 'github'}-{pet.get('full_name') or ''}"
+        now = time.time()
+        conn.execute(
+            "UPDATE story_runs SET status='abandoned', closed_at=?, updated_at=? "
+            "WHERE pet_key=? AND owner_key=? AND status='active'",
+            (now, now, pet_key, pet.get("owner_key") or "public"),
+        )
 
 
 def leaderboard(limit: int = 20) -> dict[str, Any]:

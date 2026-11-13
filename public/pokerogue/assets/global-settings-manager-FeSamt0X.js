@@ -1,0 +1,1 @@
+import{n as e,t}from"./global-settings-manager-BQ3lgk8P.js";e();export{t as initSettingsManager};

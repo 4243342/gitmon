@@ -1,0 +1,46 @@
+{
+  "id": "default",
+  "title": "仓可梦",
+  "tagline": "开源宝可梦 · 整包嵌入可玩",
+  "world": "",
+  "style": "",
+  "game": {
+    "title": "仓可梦 · 宝可梦 Roguelike",
+    "entry": "/pokerogue/",
+    "desc": "开源宝可梦同人游戏 PokéRogue 整包嵌入：像素风、草丛遇敌、打残扔球收服、升级进化，道具一层层叠、生态区一路往下打。",
+    "atlas": "",
+    "docs": ""
+  },
+  "bgs": {
+    "dawn": [
+      "黎明",
+      "DAWN"
+    ],
+    "street_night": [
+      "夜街",
+      "NIGHT STREET"
+    ],
+    "summit": [
+      "山巅",
+      "SUMMIT"
+    ]
+  },
+  "endings": {
+    "ending_trust": "内应线 · 有人替你开门",
+    "ending_scarred": "伤痕线 · 一路硬扛",
+    "ending_alone": "独行线 · 无人送行",
+    "ending_standard": "正线 · 各走各路"
+  },
+  "variants": [
+    {
+      "title": "《仓可梦（占位）》",
+      "logline": "仓可梦主线的占位方案：先把系统剧本的位置占住，内容待定稿。",
+      "bridge": "",
+      "beats": [
+        "开局：（占位）",
+        "中段：（占位）",
+        "收束：（占位）"
+      ]
+    }
+  ]
+}

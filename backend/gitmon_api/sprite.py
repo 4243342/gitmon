@@ -76,7 +76,15 @@ def _blank(size: int) -> Grid:
 
 # ---------------------------------------------------------------- classic：16×16（与前端一致）
 
+def _stage_tier(stage: int) -> int:
+    """把 1–9 阶压成 1/2/3 档装饰密度：1 阶朴素，2–4 阶有耳/冠，5 阶起装饰拉满。"""
+    st = int(stage) if stage else 1
+    if st >= 5:
+        return 3
+    return 2 if st >= 2 else 1
+
 def render_classic(*, sprite_seed: int, color: str, body: str, stage: int = 1) -> Grid:
+    stage = _stage_tier(stage)
     size = CLASSIC_SIZE
     grid = _blank(size)
     rng = make_rng(sprite_seed)
@@ -284,6 +292,7 @@ def _rich_outline(grid: Grid, color: RGB) -> None:
 
 def _rich_eyes(grid: Grid, body: str, stage: int, eye_pos: tuple[int, int],
                palette: dict[str, RGB]) -> None:
+    stage = _stage_tier(stage)
     ex, ey = eye_pos
     big = stage >= 2
     mouth = palette["dark"]
@@ -313,6 +322,7 @@ def _rich_eyes(grid: Grid, body: str, stage: int, eye_pos: tuple[int, int],
 
 
 def _rich_decor(grid: Grid, body: str, stage: int, palette: dict[str, RGB]) -> None:
+    stage = _stage_tier(stage)
     if stage >= 2:
         y = RICH_CROWN_Y.get(body)
         if y is not None:

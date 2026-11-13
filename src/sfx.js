@@ -3,6 +3,9 @@
 
 let ctx = null
 let muted = localStorage.getItem('gitmon:muted') === '1'
+const rawVolume = localStorage.getItem('gitmon:volume')
+let volume = rawVolume === null ? 1 : Number(rawVolume)
+if (!Number.isFinite(volume) || volume < 0) volume = 1
 
 function ac() {
   if (!ctx) {
@@ -25,7 +28,7 @@ function tone({ type = 'square', freq = 440, dur = 0.08, vol = 0.16, slide = 0, 
   osc.type = type
   osc.frequency.setValueAtTime(freq, t0)
   if (slide) osc.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t0 + dur)
-  g.gain.setValueAtTime(vol, t0)
+  g.gain.setValueAtTime(vol * volume, t0)
   g.gain.exponentialRampToValueAtTime(0.001, t0 + dur)
   osc.connect(g).connect(c.destination)
   osc.start(t0)
@@ -54,7 +57,7 @@ function noise({ dur = 0.18, vol = 0.1, delay = 0, filter = 'highpass', freq = 9
   bq.Q.value = q
   if (to) bq.frequency.exponentialRampToValueAtTime(Math.max(80, to), t0 + dur)
   const g = c.createGain()
-  g.gain.setValueAtTime(vol, t0)
+  g.gain.setValueAtTime(vol * volume, t0)
   g.gain.exponentialRampToValueAtTime(0.001, t0 + dur)
   src.connect(bq).connect(g).connect(c.destination)
   src.start(t0)
@@ -69,11 +72,17 @@ function thud({ delay = 0, vol = 0.16, freq = 120 }) {
 
 export const sfx = {
   get muted() { return muted },
-  toggleMute() {
-    muted = !muted
+  // 设置页：音效独立开关（背景音乐在 bgm 自己的开关）
+  setMuted(value) {
+    muted = !!value
     localStorage.setItem('gitmon:muted', muted ? '1' : '0')
     if (!muted) sfx.blip()
     return muted
+  },
+  get volume() { return volume },
+  set volume(v) {
+    volume = Math.max(0, Math.min(1, Number(v) || 0))
+    localStorage.setItem('gitmon:volume', String(volume))
   },
   // 悬停：短促嘀
   tick() { tone({ freq: 880, dur: 0.03, vol: 0.05 }) },
@@ -162,4 +171,49 @@ export const sfx = {
   },
   // 错误：低音双降
   error() { tone({ type: 'triangle', freq: 220, dur: 0.12, vol: 0.15 }); tone({ type: 'triangle', freq: 165, dur: 0.16, vol: 0.15, delay: 0.12 }) },
+
+  // ——— 战斗音效 ———
+
+  // 出招：物理=挥击风切+轻金属味，特殊=按属性给音色；威力越大声音越厚
+  attack({ physical = false, element = 'normal', power = 65 } = {}) {
+    const heavy = power >= 95
+    if (physical) {
+      // 挥空的风切：带通扫频，短促利落
+      noise({ dur: heavy ? 0.22 : 0.15, vol: heavy ? 0.13 : 0.09, filter: 'bandpass', freq: 700, q: 1.1, to: heavy ? 3400 : 2600 })
+      // 刃口刮擦：锯齿波下滑，重击加一层低八度
+      tone({ type: 'sawtooth', freq: heavy ? 520 : 760, slide: heavy ? -320 : -420, dur: 0.1, vol: 0.075, delay: 0.03 })
+      if (heavy) tone({ type: 'square', freq: 260, slide: -160, dur: 0.16, vol: 0.06, delay: 0.05 })
+      return
+    }
+    // 特殊招：属性音色表（频率基调 + 气声点缀）
+    const spell = {
+      fire: () => { noise({ dur: 0.3, vol: 0.1, filter: 'lowpass', freq: 480, to: 1600 }); tone({ type: 'sawtooth', freq: 220, slide: 300, dur: 0.24, vol: 0.07 }) },
+      water: () => { tone({ type: 'sine', freq: 620, slide: -360, dur: 0.2, vol: 0.09 }); noise({ dur: 0.14, vol: 0.05, filter: 'bandpass', freq: 1800, q: 1.4, to: 700 }) },
+      thunder: () => { noise({ dur: 0.1, vol: 0.11, filter: 'highpass', freq: 3200 }); tone({ type: 'square', freq: 1480, slide: -900, dur: 0.1, vol: 0.07, delay: 0.04 }); tone({ type: 'square', freq: 980, slide: -500, dur: 0.12, vol: 0.06, delay: 0.1 }) },
+      steel: () => { tone({ type: 'triangle', freq: 1560, slide: -200, dur: 0.12, vol: 0.08 }); tone({ type: 'triangle', freq: 2080, dur: 0.08, vol: 0.05, delay: 0.06 }) },
+      earth: () => { thud({ vol: 0.13, freq: 150 }); noise({ dur: 0.2, vol: 0.07, filter: 'lowpass', freq: 700 }) },
+      rock: () => { thud({ vol: 0.15, freq: 120 }); for (let i = 0; i < 3; i++) noise({ dur: 0.08, vol: 0.05, delay: 0.1 + i * 0.07, filter: 'highpass', freq: 1400 }) },
+      wind: () => noise({ dur: 0.34, vol: 0.09, filter: 'bandpass', freq: 500, q: 0.9, to: 3000 }),
+      grass: () => { tone({ type: 'triangle', freq: 740, slide: 240, dur: 0.18, vol: 0.07 }); noise({ dur: 0.16, vol: 0.05, filter: 'highpass', freq: 2400, to: 4800 }) },
+      normal: () => { noise({ dur: 0.16, vol: 0.1, filter: 'bandpass', freq: 900, q: 1, to: 2400 }); tone({ type: 'square', freq: 440, slide: -180, dur: 0.1, vol: 0.07 }) },
+    }
+    ;(spell[element] || spell.normal)()
+    if (heavy) thud({ vol: 0.1, freq: 160, delay: 0.06 })
+  },
+
+  // 命中：短促撞击 + 落点闷响；暴击加重并带一声上行"劈啪"
+  hit({ crit = false, value = 0 } = {}) {
+    if (crit) {
+      noise({ dur: 0.16, vol: 0.16, filter: 'highpass', freq: 1600 })
+      tone({ type: 'square', freq: 340, slide: -180, dur: 0.14, vol: 0.13 })
+      thud({ vol: 0.18, freq: 110 })
+      // 暴击的"劈啪"上行两连
+      tone({ type: 'square', freq: 880, dur: 0.05, vol: 0.09, delay: 0.1 })
+      tone({ type: 'square', freq: 1320, dur: 0.06, vol: 0.09, delay: 0.16 })
+      return
+    }
+    const big = value >= 38
+    noise({ dur: big ? 0.12 : 0.08, vol: big ? 0.11 : 0.07, filter: 'highpass', freq: big ? 1200 : 1800 })
+    tone({ type: 'triangle', freq: big ? 180 : 260, slide: big ? -90 : -130, dur: big ? 0.12 : 0.08, vol: big ? 0.1 : 0.07 })
+  },
 }

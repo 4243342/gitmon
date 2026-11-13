@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPackOpener } from 'pack-opener-js'
 import { packArtwork, cardArtwork } from '../sprite.js'
 import { sfx } from '../sfx.js'
+import { useI18n } from '../i18n.js'
 import RevealBurst from './RevealBurst.jsx'
 
 // 品质 → 开包库的落档位（决定"落地"这一击有多重）
@@ -15,6 +16,7 @@ const BADGE = { SSR: 'Grail', SR: 'Epic', R: 'Rare' }
 //  2. 项目自己的芯片音（sfx）—— 只补库里没有的时刻：卡包浮现、开包页进场、
 //     撤退、以及揭晓页的结算音。
 export default function PackOpening({ pet, onReveal, muted }) {
+  const { t } = useI18n()
   const stageRef = useRef(null)
   const openerRef = useRef(null)
   const mutedRef = useRef(muted ?? sfx.muted)
@@ -41,7 +43,9 @@ export default function PackOpening({ pet, onReveal, muted }) {
     ;(async () => {
       try {
         const pack = packArtwork(pet)
-        const card = cardArtwork(pet)
+        // 等立绘解码完成再交给开包库：卡面必须和揭晓页的正式卡片是同一只角色
+        const card = await cardArtwork(pet)
+        if (cancelled) return
         // 这套选项要留着：改静音时 setOptions 是整体替换，不能只传 sound 那一小块
         const options = {
           variant: 'slice',
@@ -126,10 +130,11 @@ export default function PackOpening({ pet, onReveal, muted }) {
     } catch { /* 拿不到坐标就算了，声音会静默降级 */ }
   }
 
-  const autoOpen = () => {
+  const kick = (opener) => {
+    if (!opener?.autoSlice) { sfx.rip(); finish(); return }
     try {
       unlockAudio()
-      openerRef.current?.autoSlice?.()
+      opener.autoSlice()
       // 不设固定跳转：整段撕膜→掀盖→抽卡→落地演完由 revealed 事件接管。
       // 只留一个兜底，防止演出意外卡死（正常情况下 finish 先触发，这里不会走到）
       setTimeout(() => { if (!doneRef.current) { sfx.rip(); finish() } }, 12000)
@@ -137,6 +142,16 @@ export default function PackOpening({ pet, onReveal, muted }) {
       sfx.rip()
       finish()
     }
+  }
+
+  const autoOpen = () => {
+    // 库的 ready 事件可能早于 createPackOpener 返回，此时 ref 还没挂上实例。
+    // 等一拍再踢，避免「按钮已经能点，点了却没有任何反应」。
+    if (!openerRef.current?.autoSlice) {
+      setTimeout(() => { if (!doneRef.current) kick(openerRef.current) }, 150)
+      return
+    }
+    kick(openerRef.current)
   }
 
   const fallbackOpen = () => {
@@ -160,17 +175,18 @@ export default function PackOpening({ pet, onReveal, muted }) {
         <div className="pack-fallback" onClick={fallbackOpen}>
           <div className="pack-fallback-inner">
             <div className="pf-title">GITMON</div>
-            <div className="pf-sub">点击开包</div>
+            <div className="pf-sub">{t('点击开包', 'Click to open')}</div>
           </div>
         </div>
       )}
 
       <p className="pack-hint">
-        拖动划过封口撕开卡包，或
-        <span className="hint-arrow" />
+        {ready || failed
+          ? <>{t('拖动划过封口撕开卡包，或', 'Drag across the seal to rip the pack open, or')}<span className="hint-arrow" /></>
+          : t('正在准备这只精灵的卡面立绘…', 'Preparing this pet’s card art…')}
       </p>
-      <button className="primary-btn" onClick={autoOpen} disabled={!ready && !failed}>
-        一键开包
+      <button className="primary-btn" onClick={failed ? fallbackOpen : autoOpen} disabled={!ready && !failed}>
+        {failed ? t('直接开包', 'Open Directly') : ready ? t('一键开包', 'Open in One Tap') : t('立绘准备中…', 'Preparing art…')}
       </button>
 
       {burst && <RevealBurst color={pet.quality.color} intensity={pet.quality.key === 'SSR' ? 1.6 : pet.quality.key === 'SR' ? 1.2 : 0.8} />}

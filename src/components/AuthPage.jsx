@@ -1,37 +1,36 @@
 import { useState } from 'react'
 import { loginLocal, loginWithToken, startLogin } from '../auth.js'
+import { useI18n } from '../i18n.js'
 
 // 首页登录授权页：GitHub / Gitee 二选一 + 游客
 // 为什么要登录：匿名 60 次/小时 ≈ 扫 4 个仓库；登录之后自动把你名下所有项目开成一整箱。
 // 优先走平台授权（OAuth）+ 本机登录；只有平台没配 OAuth 应用时才露出"令牌登录"，
 // 这样 Gitee 不用先注册应用也能登进来（否则那个页签就只剩禁用按钮）。
 
-const META = {
+const buildMeta = (t) => ({
   github: {
     name: 'GitHub',
-    title: '连上你的 GitHub',
-    env: 'GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET',
-    tokenLabel: '个人访问令牌（PAT）',
+    title: t('连上你的 GitHub', 'Connect your GitHub'),
+    tokenLabel: t('个人访问令牌（PAT）', 'Personal access token (PAT)'),
     placeholder: 'ghp_xxxxxxxxxxxxxxxx',
     steps: [
-      <>打开 <a href="https://github.com/settings/tokens/new?scopes=repo,read:user&description=GitMon" target="_blank" rel="noreferrer">GitHub → New personal access token</a></>,
-      <>勾选 <code>read:user</code>；要孵化私有仓库再加 <code>repo</code></>,
-      <>生成后复制 <code>ghp_</code> 开头那串，粘到上面</>,
+      <>{t('打开 ', 'Open ')}<a href="https://github.com/settings/tokens/new?scopes=repo,read:user&description=GitMon" target="_blank" rel="noreferrer">GitHub → New personal access token</a></>,
+      <>{t('勾选 ', 'Check ')}<code>read:user</code>{t('；要抽私有仓库的卡，还需勾选 ', '; to draw private repos, also check ')}<code>repo</code></>,
+      <>{t('生成后复制 ', 'Once generated, copy the string starting with ')}<code>ghp_</code>{t(' 开头那串，粘到上面', ' and paste it above')}</>,
     ],
   },
   gitee: {
     name: 'Gitee',
-    title: '连上你的 Gitee',
-    env: 'GITEE_CLIENT_ID / GITEE_CLIENT_SECRET',
-    tokenLabel: '私人令牌（Private Token）',
-    placeholder: '32 位十六进制字符串',
+    title: t('连上你的 Gitee', 'Connect your Gitee'),
+    tokenLabel: t('私人令牌（Private Token）', 'Private Token'),
+    placeholder: t('32 位十六进制字符串', '32-character hex string'),
     steps: [
-      <>打开 <a href="https://gitee.com/profile/personal_access_tokens" target="_blank" rel="noreferrer">Gitee → 设置 → 私人令牌</a></>,
-      <>点「生成新令牌」，勾选 <code>user_info</code>、<code>projects</code></>,
-      <>复制生成的令牌（只显示一次），粘到上面</>,
+      <>{t('打开 ', 'Open ')}<a href="https://gitee.com/profile/personal_access_tokens" target="_blank" rel="noreferrer">{t('Gitee → 设置 → 私人令牌', 'Gitee → Settings → Private Tokens')}</a></>,
+      <>{t('点「生成新令牌」，勾选 ', 'Click “New token”, then check ')}<code>user_info</code>{t('、', ', ')}<code>projects</code></>,
+      <>{t('复制生成的令牌（只显示一次），粘到上面', 'Copy the token (shown only once) and paste it above')}</>,
     ],
   },
-}
+})
 
 function ProviderMark({ provider }) {
   if (provider === 'gitee') {
@@ -47,14 +46,15 @@ function ProviderMark({ provider }) {
 }
 
 export default function AuthPage({ online, providers, onAuthed, onGuest, notice }) {
+  const { t } = useI18n()
   const [provider, setProvider] = useState('github')
   const [token, setToken] = useState('')
   const [busy, setBusy] = useState('')
   const [error, setError] = useState(notice || '')
   const [showHelp, setShowHelp] = useState(false)
-  const [copied, setCopied] = useState('')
 
-  const meta = META[provider]
+  const metaMap = buildMeta(t)
+  const meta = metaMap[provider]
   const cfg = providers?.[provider] || {}
   const oauthReady = !!cfg.oauth
   const local = providers?.local || {}
@@ -68,22 +68,10 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
     setShowHelp(false)
   }
 
-  // 回调地址必须与平台后台登记的一字不差（Gitee 报「无效的登录回调地址」就是这个对不上）。
-  // 后端按当前浏览器地址生成，所以这里显示的就是马上会用的那一个。
-  const copyCallback = async (text) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(text)
-      setTimeout(() => setCopied(''), 1600)
-    } catch {
-      setError('复制失败，请手动选中地址复制')
-    }
-  }
-
   const startOAuth = () => {
     setError('')
     if (!oauthReady) {
-      setError(`后端还没配置 ${meta.name} 的 OAuth 应用（${meta.env}），先用下面的${meta.tokenLabel}登录`)
+      setError(t(`后端还没开通 ${meta.name} 授权登录，先用下面的${meta.tokenLabel}登录`, `Backend hasn’t enabled ${meta.name} sign-in yet — use the ${meta.tokenLabel} below`))
       document.getElementById('provider-token')?.focus()
       return
     }
@@ -99,7 +87,7 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
       const result = await loginLocal()
       onAuthed?.(result)
     } catch (e) {
-      setError(e?.message || '本机登录失败')
+      setError(e?.message || t('本机登录失败', 'Local sign-in failed'))
       setBusy('')
     }
   }
@@ -107,7 +95,7 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
   const submitToken = async () => {
     setError('')
     if (!token.trim()) {
-      setError('先粘贴令牌再登录')
+      setError(t('先粘贴令牌再登录', 'Paste your token first'))
       return
     }
     setBusy('token')
@@ -115,7 +103,7 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
       const result = await loginWithToken(token, provider)
       onAuthed?.(result)
     } catch (e) {
-      setError(e?.message || '登录失败')
+      setError(e?.message || t('登录失败', 'Sign-in failed'))
     } finally {
       setBusy('')
     }
@@ -125,17 +113,17 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
     <main className="auth-page">
       <section className="auth-card">
         <div className="auth-head">
-          <span className="auth-tag">登录授权</span>
-          <span className="auth-head-note">任选一种方式进入</span>
+          <span className="auth-tag">{t('登录授权', 'Sign In')}</span>
+          <span className="auth-head-note">{t('任选一种方式进入', 'Pick any method')}</span>
         </div>
 
         <h2>{meta.title}</h2>
         <p className="auth-lead">
-          登录后不用再填仓库地址 —— 你名下<b>每个项目自动生成一个卡包</b>，装成一整箱。
-          匿名接口只有 <b>{quota.quotaPerHour} 次/小时</b>，登录后额度高得多，私有仓库也能孵。
+          {t('登录后不用再填仓库地址 —— 你名下', 'No repo URLs to fill in after signing in — ')}<b>{t('每个项目自动抽成一包', 'every project of yours becomes a pack')}</b>{t('，装成一整箱。', ', filling a whole box.')}{' '}
+          {t('匿名接口只有 ', 'Anonymous API allows only ')}<b>{quota.quotaPerHour}{t(' 次/小时', ' per hour')}</b>{t('，登录后额度高得多，私有仓库也能抽。', ' — far more once signed in, private repos included.')}
         </p>
 
-        <div className="auth-tabs" role="tablist" aria-label="登录平台">
+        <div className="auth-tabs" role="tablist" aria-label={t('登录平台', 'Sign-in platform')}>
           {['github', 'gitee'].map((key) => (
             <button
               key={key}
@@ -145,14 +133,14 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
               onClick={() => switchProvider(key)}
             >
               <ProviderMark provider={key} />
-              {META[key].name}
+              {metaMap[key].name}
             </button>
           ))}
         </div>
 
         {online === false && (
           <p className="auth-warn">
-            后端没启动：登录不可用，但扫描仍然可以在浏览器里直接完成，先用游客进入即可。
+            {t('后端没启动：登录不可用，但扫描仍然可以在浏览器里直接完成，先用游客进入即可。', 'Backend is offline: sign-in unavailable, but scanning still runs right in the browser — enter as a guest for now.')}
           </p>
         )}
 
@@ -162,8 +150,8 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
               ? <img src={local.avatar} alt="" />
               : <span className="auth-local-dot" />}
             <span className="auth-local-text">
-              <b>{busy === 'local' ? '正在进入…' : `用本机已登录的 @${local.login} 直接进入`}</b>
-              <em>复用这台机器上 gh 的登录态，不用注册 OAuth App</em>
+              <b>{busy === 'local' ? t('正在进入…', 'Entering…') : t(`用本机已登录的 @${local.login} 直接进入`, `Continue as signed-in @${local.login}`)}</b>
+              <em>{t('复用这台机器上 gh 的登录态，不用注册 OAuth App', 'Reuses this machine’s gh login — no OAuth App needed')}</em>
             </span>
             <span className="auth-local-go">→</span>
           </button>
@@ -176,28 +164,17 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
             disabled={busy === 'oauth'}
           >
             <ProviderMark provider={provider} />
-            {busy === 'oauth' ? `正在跳转 ${meta.name}…` : `用 ${meta.name} 授权登录`}
+            {busy === 'oauth' ? t(`正在跳转 ${meta.name}…`, `Redirecting to ${meta.name}…`) : t(`用 ${meta.name} 授权登录`, `Sign in with ${meta.name}`)}
           </button>
-        )}
-
-        {oauthReady && cfg.callback && (
-          <div className="auth-callback">
-            <span>{meta.name} 应用后台要填的回调地址</span>
-            <code>{cfg.callback}</code>
-            <button type="button" onClick={() => copyCallback(cfg.callback)}>
-              {copied === cfg.callback ? '已复制' : '复制'}
-            </button>
-          </div>
         )}
 
         {/* 平台没配 OAuth 应用时的兜底：令牌直接登录（Gitee 现在走这里） */}
         {!oauthReady && (
           <>
             <p className="auth-hint">
-              后端还没配置 {meta.name} 的 OAuth 应用（{meta.env}），
-              先用{meta.tokenLabel}登录 —— 额度和授权一样，不用等应用审核。
+              {t(`后端还没开通 ${meta.name} 授权登录， 先用${meta.tokenLabel}登录 —— 额度和授权一样，不用等应用审核。`, `${meta.name} OAuth isn’t enabled on the backend yet — sign in with the ${meta.tokenLabel} instead; same quota, no app review wait.`)}
             </p>
-            <div className="auth-or"><span>或</span></div>
+            <div className="auth-or"><span>{t('或', 'or')}</span></div>
 
             <label className="auth-label" htmlFor="provider-token">{meta.tokenLabel}</label>
             <div className="auth-token-row">
@@ -212,12 +189,12 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
                 autoComplete="off"
               />
               <button onClick={submitToken} disabled={busy === 'token'}>
-                {busy === 'token' ? '校验中…' : '登录'}
+                {busy === 'token' ? t('校验中…', 'Checking…') : t('登录', 'Sign in')}
               </button>
             </div>
 
             <button className="auth-help-toggle" onClick={() => setShowHelp((v) => !v)}>
-              {showHelp ? '收起' : `怎么拿到${meta.tokenLabel}？三步`}
+              {showHelp ? t('收起', 'Hide') : t(`怎么拿到${meta.tokenLabel}？三步`, `How to get your ${meta.tokenLabel} — 3 steps`)}
             </button>
             {showHelp && (
               <ol className="auth-help">
@@ -230,25 +207,25 @@ export default function AuthPage({ online, providers, onAuthed, onGuest, notice 
         {error && <p className="auth-error">! {error}</p>}
 
         <div className="auth-foot">
-          <button className="auth-guest" onClick={onGuest}>游客进入（手填仓库，{quota.quotaPerHour} 次/小时）</button>
-          <span className="auth-security" title="授权走平台官方 OAuth，只读仓库信息；令牌加密存在本地">
-            只读授权，随时可退出
+          <button className="auth-guest" onClick={onGuest}>{t('游客进入（手填仓库，', 'Enter as guest (fill repos manually, ')}{quota.quotaPerHour}{t(' 次/小时）', ' per hour)')}</button>
+          <span className="auth-security" title={t('授权走平台官方 OAuth，只读仓库信息；令牌加密存在本地', 'OAuth via the official platform, read-only; token stored encrypted locally')}>
+            {t('只读授权，随时可退出', 'Read-only access, quit anytime')}
           </span>
         </div>
       </section>
 
       <section className="auth-points">
         <div>
-          <b>自动整箱</b>
-          <span>登录后直接读你自己的项目清单，点开就是一箱卡包</span>
+          <b>{t('自动整箱', 'Auto full box')}</b>
+          <span>{t('登录后直接读你自己的项目清单，点开就是一箱卡包', 'Sign in and it reads your own project list — one tap opens a full box of packs')}</span>
         </div>
         <div>
-          <b>私有仓库</b>
-          <span>授权后连私有项目也能孵出来</span>
+          <b>{t('私有仓库', 'Private repos')}</b>
+          <span>{t('授权后连私有项目也能抽出来', 'Draw private projects too once authorized')}</span>
         </div>
         <div>
-          <b>只读</b>
-          <span>只读仓库信息，不写代码、不改设置</span>
+          <b>{t('只读', 'Read-only')}</b>
+          <span>{t('只读仓库信息，不写代码、不改设置', 'Reads repo info only — no code writes, no settings changes')}</span>
         </div>
       </section>
     </main>
