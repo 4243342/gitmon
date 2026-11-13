@@ -709,6 +709,13 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
     } catch { /* 跨域或还没加载好：忽略，玩家仍可用真键盘 */ }
   }, [])
 
+  // 鼠标点一下 = 按一次回车。
+  // 整包游戏只有底部那条对话框接鼠标，点画面中间什么都不发生——而玩家第一反应就是点画面。
+  // 这里在 Title 阶段接管空白处的点击：事件照常给游戏（它认识的按钮自己会响应），
+  // 再补一次回车把「继续」走掉。进局后不补，免得点一下就把招式/道具确认了。
+  const phaseRef = useRef('')
+  useEffect(() => { phaseRef.current = gamePhase }, [gamePhase])
+
   // 游戏画面是 WebGL 画的，宿主拿不到像素（toDataURL 读出来全黑），
   // 所以只能按「引擎起来 + 给它几秒装载」来判断，再到点让玩家自己决定先不先看黑屏。
   const GAME_BOOT_MIN = 10
@@ -734,6 +741,16 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
         if (doc && doc !== document && !doc.__gitmonEsc) {
           doc.__gitmonEsc = true
           doc.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeGameRef.current() })
+          // 点击补回车：先让游戏处理它自己认识的控件，再补一次「继续」。
+          // 底部那条对话框自己接鼠标，点它已经算推进一次，这里就不再补，
+          // 否则一次点击会连跳两格（开场四条提示两下就没了）。
+          doc.addEventListener('pointerdown', (e) => {
+            if (phaseRef.current !== 'Title') return
+            if (e.button !== 0) return
+            const h = doc.documentElement?.clientHeight || win?.innerHeight || 1
+            if (e.clientY / h > 0.72) return
+            setTimeout(() => gameDrive('Enter'), 40)
+          }, true)
         }
       } catch { doc = null }
       hits = (canvas && mode) ? hits + 1 : 0
@@ -747,7 +764,7 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
     }
     tick()
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [gamePack])
+  }, [gamePack, gameDrive])
 
   // 「点一下继续」的提示只留一会儿，别一直压在游戏画面上
   useEffect(() => {
@@ -2056,8 +2073,8 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
                 <p className="story-game-pad-note">
                   {gamePhase === 'Title'
                     ? t(
-                      '这游戏靠键盘：开场和菜单用「继续」(回车)，选精灵用「选择」(Z)，返回用 X。点画面中间没用。',
-                      'Keyboard game: Continue = Enter, Select = Z, Back = X. Clicking mid-screen does nothing.',
+                      '点画面任意处 = 继续（也能按回车）。选精灵点一下再用「Z 选择」，返回按 X。',
+                      'Click anywhere to continue (or press Enter). Pick a starter, then Z; X for back.',
                     )
                     : t(
                       '方向键移动 · 回车 / Z 确认 · X 返回 · Esc 退出',
