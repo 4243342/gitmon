@@ -217,6 +217,13 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
   // 包自带正片（仓可梦 = 开源宝可梦 PokéRogue）：选中这一包就直接进游戏，
   // 不再走占位 VN 剧情。入口写在包元信息 game.entry 里，前端不写死包 id。
   const [gamePack, setGamePack] = useState(null)
+  // 整包游戏启动要读几十 MB 的 JS + 上千张图，黑屏十来秒是常态。
+  // 不给反馈的话，玩家看到的就是「点了没反应」，所以这里盯 iframe 的真实状态。
+  const [gameBoot, setGameBoot] = useState({ ready: false, waited: 0 })
+  const [gameHint, setGameHint] = useState(false)
+  const gameFrameRef = useRef(null)
+  // 玩家点了「不等了」就一直是就绪态，别被下一轮轮询改回去
+  const gameSkipRef = useRef(false)
   // 系统剧本包清单（斗码苍穹等）。玩家在系统剧本里先选包，再选包里的方案
   const [packs, setPacks] = useState([])
   const [packPick, setPackPick] = useState('')
@@ -625,22 +632,102 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
   // 自带正片的包（仓可梦）：包里声明了 game.entry，选中即进游戏
   const gamePacks = useMemo(() => packs.filter(packHasGame), [packs])
 
+  // 预热：进剧情页就把游戏入口和主包先拉进缓存。
+  // 整包游戏是几十 MB 的静态站，等到点进去才开始下载，黑屏会久到让人以为卡死。
+  useEffect(() => {
+    const entry = gamePacks[0]?.game?.entry
+    if (!entry || !/^https?:|^\//.test(entry)) return undefined
+    const made = []
+    const add = (rel, href, as) => {
+      const el = document.createElement('link')
+      el.rel = rel
+      el.href = href
+      if (as) el.as = as
+      document.head.appendChild(el)
+      made.push(el)
+    }
+    const abs = (p) => new URL(p, new URL(entry, location.href)).href
+    add('prefetch', abs(entry), 'document')
+    let dead = false
+    fetch(abs('asset-manifest.json'))
+      .then((r) => (r.ok ? r.json() : null))
+      .then((m) => {
+        if (!m || dead) return
+        ;[...(m.preloads || []), m.js].filter(Boolean).forEach((p) => add('prefetch', abs(p), 'script'))
+      })
+      .catch(() => {})
+    return () => { dead = true; made.forEach((el) => el.remove()) }
+  }, [gamePacks])
+
   const openPackGame = useCallback((pack) => {
     if (!packHasGame(pack)) return
     sfx.blip()
     // 游戏自带音乐：先把远征曲收掉，别两首叠着放
     bgm.stop()
     setPackPick(pack.id)
+    gameSkipRef.current = false
+    setGameBoot({ ready: false, waited: 0 })
+    setGameHint(false)
     setGamePack(pack)
   }, [])
 
   const closePackGame = useCallback(() => {
     setGamePack(null)
+    setGameHint(false)
     // 退出游戏按原来的场景把远征曲接回去
     if (!bgmOn) return
     if (runRef.current) bgm.startBattle()
     else bgm.startStory()
   }, [bgmOn])
+
+  // iframe 里挂的监听要拿到最新的关游戏回调（bgmOn 变化会换新函数）
+  const closeGameRef = useRef(closePackGame)
+  useEffect(() => { closeGameRef.current = closePackGame }, [closePackGame])
+
+  // 游戏画面是 WebGL 画的，宿主拿不到像素（toDataURL 读出来全黑），
+  // 所以只能按「引擎起来 + 给它几秒装载」来判断，再到点让玩家自己决定先不先看黑屏。
+  const GAME_BOOT_MIN = 6
+
+  // 盯 iframe 里游戏的真实启动状态：同一域下能直接读 contentWindow。
+  // 顺手把 Esc 挂到 iframe 文档上——焦点进游戏后宿主收不到键盘。
+  useEffect(() => {
+    if (!gamePack || gamePack.game.mode === 'pixel') return undefined
+    let timer = 0
+    let cancelled = false
+    let hits = 0
+    const startedAt = Date.now()
+    const tick = () => {
+      if (cancelled) return
+      let doc = null
+      let mode = ''
+      let canvas = null
+      try {
+        const win = gameFrameRef.current?.contentWindow
+        doc = win?.document || null
+        mode = win?.gameInfo?.gameMode || ''
+        canvas = doc?.querySelector('canvas') || null
+        if (doc && doc !== document && !doc.__gitmonEsc) {
+          doc.__gitmonEsc = true
+          doc.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeGameRef.current() })
+        }
+      } catch { doc = null }
+      hits = (canvas && mode) ? hits + 1 : 0
+      const waited = Math.round((Date.now() - startedAt) / 1000)
+      const ready = gameSkipRef.current || (hits >= 2 && waited >= GAME_BOOT_MIN)
+      setGameBoot({ ready, waited })
+      if (ready) { setGameHint(true); return }
+      timer = setTimeout(tick, 500)
+    }
+    tick()
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [gamePack])
+
+  // 「点一下继续」的提示只留一会儿，别一直压在游戏画面上
+  useEffect(() => {
+    if (!gameHint) return undefined
+    const timer = setTimeout(() => setGameHint(false), 12000)
+    return () => clearTimeout(timer)
+  }, [gameHint])
 
   // Esc 退出游戏：iframe 里拿不到宿主键盘，只能在这里兜
   useEffect(() => {
@@ -1886,12 +1973,49 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
               </button>
             </div>
           </div>
-          <iframe
-            className="story-game-frame"
-            src={gamePack.game.entry}
-            title={gamePack.game.title || `${gamePack.title} · 完整版`}
-            allow="autoplay; fullscreen"
-          />
+          <div className="story-game-body">
+            <iframe
+              ref={gameFrameRef}
+              className="story-game-frame"
+              src={gamePack.game.entry}
+              title={gamePack.game.title || `${gamePack.title} · 完整版`}
+              allow="autoplay; fullscreen"
+            />
+            {/* 游戏自己启动时是黑屏，这里替它把「在加载」说出口 */}
+            {!gameBoot.ready && (
+              <div className="story-game-boot" role="status" aria-live="polite">
+                <span className="story-game-boot-spin" aria-hidden="true" />
+                <b>{t('宝可梦正在启动…', 'Starting the game…')}</b>
+                <p>
+                  {t(
+                    '整包首次要读几十 MB 脚本和上千张图，黑屏十几秒是正常的。',
+                    'First load pulls tens of MB of scripts and sprites — ~10s of dark screen is normal.',
+                  )}
+                </p>
+                <span className="story-game-boot-time">{gameBoot.waited}s</span>
+                <div className="story-game-boot-acts">
+                  <button
+                    className="ghost-btn"
+                    onClick={() => {
+                      gameSkipRef.current = true
+                      setGameBoot({ ready: true, waited: gameBoot.waited })
+                      setGameHint(true)
+                    }}
+                  >
+                    {t('不等了，直接进', 'Skip the wait')}
+                  </button>
+                  <a className="ghost-btn" href={gamePack.game.entry} target="_blank" rel="noreferrer">
+                    {t('在新标签页打开', 'Open in a new tab')}
+                  </a>
+                </div>
+              </div>
+            )}
+            {gameBoot.ready && gameHint && (
+              <p className="story-game-hint">
+                {t('点一下画面或按回车继续 · Esc 退出', 'Click or press Enter to continue · Esc to exit')}
+              </p>
+            )}
+          </div>
         </section>
       )}
     </main>

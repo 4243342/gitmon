@@ -995,11 +995,89 @@
 .story-game-actions { display: flex; align-items: center; gap: 8px; }
 .story-game-actions .ghost-btn { text-decoration: none; }
 
+.story-game-body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
 .story-game-frame {
   flex: 1;
   width: 100%;
+  height: 100%;
   border: 0;
   background: #010409;
+}
+
+/* 启动遮罩：整包游戏黑屏十几秒，必须让玩家看见「在加载」而不是「没反应」 */
+.story-game-boot {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  background: #010409;
+}
+.story-game-boot-spin {
+  width: 34px;
+  height: 34px;
+  margin-bottom: 6px;
+  border: 3px solid rgba(255, 203, 5, .18);
+  border-top-color: var(--st-gold);
+  border-radius: 50%;
+  animation: story-boot-spin .9s linear infinite;
+}
+@keyframes story-boot-spin { to { transform: rotate(1turn); } }
+.story-game-boot b {
+  font-family: var(--font-arcade, monospace);
+  font-size: 12px;
+  letter-spacing: .16em;
+  color: var(--st-gold);
+  text-transform: uppercase;
+}
+.story-game-boot p {
+  max-width: 520px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--st-dim, #8b98a8);
+}
+.story-game-boot-time {
+  font-family: var(--font-arcade, monospace);
+  font-size: 11px;
+  letter-spacing: .12em;
+  color: var(--st-dim, #8b98a8);
+}
+.story-game-boot .ghost-btn { margin-top: 6px; text-decoration: none; }
+.story-game-boot-acts { display: flex; align-items: center; gap: 10px; }
+
+/* 就绪后的操作提示：游戏开场停在标题等一次点击，不点就像死了 */
+.story-game-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  z-index: 2;
+  margin: 0;
+  padding: 6px 14px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 203, 5, .35);
+  border-radius: 999px;
+  background: rgba(1, 4, 9, .82);
+  color: var(--st-gold);
+  font-size: 12px;
+  letter-spacing: .04em;
+  pointer-events: none;
+  animation: story-hint-in .25s ease-out;
+}
+@keyframes story-hint-in {
+  from { opacity: 0; transform: translate(-50%, 6px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
 }
 
 /* 方案卡上的所属包铭牌 */
