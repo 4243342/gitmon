@@ -1057,27 +1057,71 @@
 .story-game-boot .ghost-btn { margin-top: 6px; text-decoration: none; }
 .story-game-boot-acts { display: flex; align-items: center; gap: 10px; }
 
-/* 就绪后的操作提示：游戏开场停在标题等一次点击，不点就像死了 */
-.story-game-hint {
+/* 就绪后的操作条：整包游戏是键盘驱动的，开场提示只认键盘和底部对话框，
+   点画面中间不动。给一块能点的键帽，把「按回车」这件事变成看得见的按钮 */
+.story-game-pad {
   position: absolute;
-  left: 50%;
-  bottom: 18px;
+  left: 14px;
+  top: 12px;
   z-index: 2;
-  margin: 0;
-  padding: 6px 14px;
-  transform: translateX(-50%);
-  border: 1px solid rgba(255, 203, 5, .35);
-  border-radius: 999px;
-  background: rgba(1, 4, 9, .82);
-  color: var(--st-gold);
-  font-size: 12px;
-  letter-spacing: .04em;
-  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 203, 5, .3);
+  border-radius: 10px;
+  background: rgba(1, 4, 9, .86);
+  backdrop-filter: blur(3px);
   animation: story-hint-in .25s ease-out;
 }
+
+.story-game-pad.is-fresh {
+  border-color: rgba(255, 203, 5, .7);
+  box-shadow: 0 0 0 3px rgba(255, 203, 5, .12);
+}
+
+.story-game-pad-keys { display: flex; gap: 6px; }
+
+.story-game-pad-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid rgba(255, 203, 5, .45);
+  border-radius: 7px;
+  background: rgba(255, 203, 5, .12);
+  color: var(--st-gold);
+  font-family: var(--font-arcade, monospace);
+  font-size: 11px;
+  letter-spacing: .06em;
+  cursor: pointer;
+  transition: background .15s, transform .1s;
+}
+
+.story-game-pad-key:hover { background: rgba(255, 203, 5, .24); }
+.story-game-pad-key:active { transform: translateY(1px); }
+
+.story-game-pad-key kbd {
+  padding: 1px 5px;
+  border: 1px solid rgba(255, 203, 5, .5);
+  border-radius: 4px;
+  background: rgba(1, 4, 9, .7);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.story-game-pad-note {
+  max-width: 340px;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #93a1b8;
+}
+
 @keyframes story-hint-in {
-  from { opacity: 0; transform: translate(-50%, 6px); }
-  to   { opacity: 1; transform: translate(-50%, 0); }
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* 方案卡上的所属包铭牌 */

@@ -221,6 +221,9 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
   // 不给反馈的话，玩家看到的就是「点了没反应」，所以这里盯 iframe 的真实状态。
   const [gameBoot, setGameBoot] = useState({ ready: false, waited: 0 })
   const [gameHint, setGameHint] = useState(false)
+  // 游戏当前处在哪个阶段（Title / Classic …）。开场提示只认回车和底部对话框，
+  // 点画面中间没反应，所以要按阶段给玩家一块能点的操作条。
+  const [gamePhase, setGamePhase] = useState('')
   const gameFrameRef = useRef(null)
   // 玩家点了「不等了」就一直是就绪态，别被下一轮轮询改回去
   const gameSkipRef = useRef(false)
@@ -684,9 +687,31 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
   const closeGameRef = useRef(closePackGame)
   useEffect(() => { closeGameRef.current = closePackGame }, [closePackGame])
 
+  // 往 iframe 里补一个按键：整包游戏是键盘驱动的，开场提示和底部对话框以外的地方
+  // 根本不接鼠标，玩家照着「点一下」去点画面正中就永远停在第一条。
+  // 同域可以直接往 iframe 的 window 派发事件；发完把焦点还给游戏，
+  // 否则焦点留在宿主按钮上，之后按方向键就不动了。
+  const GAME_KEY_CODES = {
+    Enter: 13, Escape: 27, KeyZ: 90, KeyX: 88,
+    ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39,
+  }
+  const gameDrive = useCallback((key, code = key) => {
+    const win = gameFrameRef.current?.contentWindow
+    if (!win) return
+    try {
+      const kc = GAME_KEY_CODES[key] || 0
+      const make = (type) => new win.KeyboardEvent(type, {
+        key, code, keyCode: kc, which: kc, bubbles: true, cancelable: true,
+      })
+      win.dispatchEvent(make('keydown'))
+      win.dispatchEvent(make('keyup'))
+      win.focus()
+    } catch { /* 跨域或还没加载好：忽略，玩家仍可用真键盘 */ }
+  }, [])
+
   // 游戏画面是 WebGL 画的，宿主拿不到像素（toDataURL 读出来全黑），
   // 所以只能按「引擎起来 + 给它几秒装载」来判断，再到点让玩家自己决定先不先看黑屏。
-  const GAME_BOOT_MIN = 6
+  const GAME_BOOT_MIN = 10
 
   // 盯 iframe 里游戏的真实启动状态：同一域下能直接读 contentWindow。
   // 顺手把 Esc 挂到 iframe 文档上——焦点进游戏后宿主收不到键盘。
@@ -715,8 +740,10 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
       const waited = Math.round((Date.now() - startedAt) / 1000)
       const ready = gameSkipRef.current || (hits >= 2 && waited >= GAME_BOOT_MIN)
       setGameBoot({ ready, waited })
-      if (ready) { setGameHint(true); return }
-      timer = setTimeout(tick, 500)
+      setGamePhase(mode)
+      if (ready) { setGameHint(true) }
+      // 就绪后继续按慢节拍盯着阶段：开局后要把「开场操作条」收起来
+      timer = setTimeout(tick, ready ? 1200 : 500)
     }
     tick()
     return () => { cancelled = true; clearTimeout(timer) }
@@ -2010,10 +2037,34 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
                 </div>
               </div>
             )}
-            {gameBoot.ready && gameHint && (
-              <p className="story-game-hint">
-                {t('点一下画面或按回车继续 · Esc 退出', 'Click or press Enter to continue · Esc to exit')}
-              </p>
+            {gameBoot.ready && (
+              <div className={`story-game-pad${gameHint ? ' is-fresh' : ''}`}>
+                <div className="story-game-pad-keys">
+                  <button type="button" className="story-game-pad-key" onClick={() => gameDrive('Enter')}>
+                    <kbd>↵</kbd>
+                    {t('继续 / 确认', 'Continue')}
+                  </button>
+                  <button type="button" className="story-game-pad-key" onClick={() => gameDrive('KeyZ')}>
+                    <kbd>Z</kbd>
+                    {t('选择', 'Select')}
+                  </button>
+                  <button type="button" className="story-game-pad-key" onClick={() => gameDrive('KeyX')}>
+                    <kbd>X</kbd>
+                    {t('返回', 'Back')}
+                  </button>
+                </div>
+                <p className="story-game-pad-note">
+                  {gamePhase === 'Title'
+                    ? t(
+                      '这游戏靠键盘：开场和菜单用「继续」(回车)，选精灵用「选择」(Z)，返回用 X。点画面中间没用。',
+                      'Keyboard game: Continue = Enter, Select = Z, Back = X. Clicking mid-screen does nothing.',
+                    )
+                    : t(
+                      '方向键移动 · 回车 / Z 确认 · X 返回 · Esc 退出',
+                      'Arrows move · Enter / Z confirms · X back · Esc exit',
+                    )}
+                </p>
+              </div>
             )}
           </div>
         </section>
