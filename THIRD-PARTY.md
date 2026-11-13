@@ -63,6 +63,18 @@
 ## pet-atlas-game（《口袋精灵2》免费单机网页版，整包嵌入）
 
 - 来源：<https://github.com/laerpeeK/pet-atlas-game>（`client/` 游戏本体 + `atlas/` 图鉴站 + `docs/` 游戏文档；上游 `README.md` / `nginx.conf` 原文留档在 [`third-party/pet-atlas-game/`](third-party/pet-atlas-game/)）
-- 许可证：**上游未声明开源许可证**（默认保留全部权利）；上游 README 声明「仅供个人学习使用，不涉及任何商业用途。素材内容来源网络，不承担任何法律责任」，内含的精灵美术素材疑为官方宝可梦系素材的同人沿用。
+- 许可证：**上游未声明开源许可证**（默认保留全部权利）；上游 README 声明「仅供个人学习使用，不涉及任何商业用途。素材内容来源网络，不承担任何法律责任」。请注意：这款是独立的国产网页养成游戏（五行属性、波姆家族），**不是宝可梦，也不是宝可梦类游戏**，其精灵素材权属不明，不要当宝可梦素材处理。
 - 引入方式：**整包静态嵌入（不引源码、不改玩法）**。Vue 打包成品（`index.html` + `js/` + `css/` + `img/` + `images/`）原样拷贝到 `public/petgame/`，`atlas/`、`docs/` 按上游 `nginx.conf` 的路由语义挂到 `/petgame/atlas/`、`/petgame/docs/`。仅做三类路径适配：① `index.html` / CSS / webpack publicPath 的绝对路径（`/js`、`/css`、`/img`、`/favicon.ico`、`/`）改写到 `/petgame/` 前缀；② 上游写死的 `http://127.0.0.1:12000/{docs,atlas}` 链接改写为 `/petgame/{docs,atlas}/`；③ 删除随包的 `.js.gz`/`.css.gz` 预压缩副本与页面里的华为 APM 遥测脚本。游戏 JS 为混淆成品，逻辑未动。
-- 使用范围：剧情模式「仓可梦」包（`default`）的**正片本身**——入口写在包元信息 `meta.json` 的 `game.entry`，01 步选主角页有「直接进游戏」直达条，03 步在剧本包里选中仓可梦也会直接切进游戏；全屏 iframe 载入 `/petgame/` 原样游玩（不嵌进 VN 舞台、不建剧情线），Esc / 「退出游戏」回到原步骤。随包图鉴站（`/petgame/atlas/`）与游戏文档（`/petgame/docs/`）一并可用。**对外分发前请自行清理或替换该批素材**，或改为仅本机自用。
+- 使用范围：**已不是「仓可梦」的正片**（正片换成下面的 PokéRogue，`game.entry` 指向 `/pokerogue/`）。这份整包目前只是留档在 `public/petgame/`，界面不再引用它；**删掉 `public/petgame/` 不影响任何玩法**。对外分发前请自行清理或替换该批素材，或改为仅本机自用。
+
+## PokéRogue（开源宝可梦同人游戏，整包嵌入）
+
+- 来源：<https://github.com/pagefaultgames/pokerogue>（分支 `beta`，提交 `59a3eed012eb6de0a4b264f61b9fa9e38e62db38`，2026-11-12；素材子模块 `pagefaultgames/pokerogue-assets` 提交 `a971db88`，文案子模块 `pokerogue-locales` 提交 `159e9cb8`）
+- 许可证：**代码 AGPL-3.0-only**；**美术 / 音频 / 文案等素材 CC-BY-NC-SA-4.0**（assets 仓库自带 `LICENSES/`，逐文件许可见其 `REUSE.toml`，其中部分精灵图与音乐标注为 fair-use / NO-REUSE）；第三方鸣谢见上游 `CREDITS.md`。
+- 引入方式：**整包静态嵌入（构建成品，不引源码、不改玩法）**。在上游仓库内 `pnpm install && pnpm build` 出 `dist/`，再把素材子模块 `assets/` 原样并入（上游 `vite.config.ts` 里 `publicDir: false`，素材不会自动进 `dist`），一起落到 `public/pokerogue/`——`index.html`、打包后的 `js/` 与 `assets/` 层级与官方部署一致，`base` 为空（相对路径），因此能直接挂在 `/pokerogue/` 子路径下运行。**未做任何代码改动**。
+- 使用范围：剧情模式「仓可梦」包（`default`）的**正片本身**——入口写在包元信息 `meta.json` 的 `game.entry = "/pokerogue/"`，01 步选主角页的「直接进游戏」、03 步包清单里选中仓可梦、剧情页右上角常驻按钮，三处都直达；全屏 iframe 内原样游玩（不嵌进 VN 舞台、不写剧情），Esc / 「退出游戏」回到原步骤。
+- **构建参数**：只额外设了 `VITE_BYPASS_LOGIN=1`（上游自带的离线模式，写进构建机的 `.env.production.local`，不改代码）。默认构建会停在 Login / Register 并连 `api.pokerogue.net` 走官方账号体系——在 iframe 里跨站 cookie 基本拿不到，等于进不去。离线模式下存档走浏览器 `localStorage`，不需要任何外部服务。
+- **整包入库说明**：按项目所有者要求，构建成品连同素材整体提交进本仓库（约 800MB / 3.2 万个文件），因此 `clone` 会比较重；如果只想跑 GitMon 本体、不需要这份游戏，可以删掉 `public/pokerogue/`，或改用 `git clone --depth 1 --filter=blob:none --sparse`。
+- **License 影响（重要）**：
+  - AGPL-3.0 只在**分发**时生效。本项目把成品与源码一起放在同一个公开仓库里，分发即满足「提供对应源码」的要求；但**不能把这个包闭源分发**（例如打成私有安装包、放进闭源产品）。
+  - 素材是 **CC-BY-NC-SA-4.0：禁止商业使用、必须署名、衍生作品需同许可证**；其中夹带的宝可梦同人图与音乐属 fair-use 范畴，权属归原权利人。**对外商用前必须整包替换素材**，或直接删掉 `public/pokerogue/`。

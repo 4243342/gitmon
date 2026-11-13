@@ -11,6 +11,7 @@ import PetCard from './PetCard.jsx'
 import StoryProgress from './StoryProgress.jsx'
 import StoryOpening from './StoryOpening.jsx'
 import StoryTransform from './StoryTransform.jsx'
+import CangkeGame from '../cangke/CangkeGame.jsx'
 import { CHARACTERS, createStoryRuntime } from '../story/runtime.js'
 import { packArtUrl, packFaceUrl, packStageArtUrl } from '../story/packArt.js'
 import { packAudioUrl } from '../story/packAudio.js'
@@ -62,6 +63,9 @@ const CARD_DIMS = [
   { key: 'maintenance', zh: '维护健康度', en: 'Maintenance' },
   { key: 'community', zh: '社区认可', en: 'Community' },
 ]
+
+// 包自带正片：要么是整包静态页（entry），要么是内置的像素游戏（mode=pixel）
+const packHasGame = (pack) => Boolean(pack?.game && (pack.game.entry || pack.game.mode))
 
 // 与 engine.js computeStats 同一套阈值：按本等级理论上限归一化后分档
 const gradeOfRatio = (ratio) => (ratio >= 0.9 ? 'S' : ratio >= 0.72 ? 'A' : ratio >= 0.5 ? 'B' : ratio >= 0.3 ? 'C' : 'D')
@@ -210,7 +214,7 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
   const [scriptNote, setScriptNote] = useState('')
   // 03 步三选一：'' 未选 / system 内置剧本 / custom 自定义 / ai 模型生成
   const [scriptMode, setScriptMode] = useState('')
-  // 包自带正片（仓可梦 = 完整版《口袋精灵2》）：选中这一包就直接进游戏，
+  // 包自带正片（仓可梦 = 开源宝可梦 PokéRogue）：选中这一包就直接进游戏，
   // 不再走占位 VN 剧情。入口写在包元信息 game.entry 里，前端不写死包 id。
   const [gamePack, setGamePack] = useState(null)
   // 系统剧本包清单（斗码苍穹等）。玩家在系统剧本里先选包，再选包里的方案
@@ -619,10 +623,10 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
   const packTitle = (packId) => packs.find((p) => p.id === packId)?.title || packId || ''
 
   // 自带正片的包（仓可梦）：包里声明了 game.entry，选中即进游戏
-  const gamePacks = useMemo(() => packs.filter((p) => p?.game?.entry), [packs])
+  const gamePacks = useMemo(() => packs.filter(packHasGame), [packs])
 
   const openPackGame = useCallback((pack) => {
-    if (!pack?.game?.entry) return
+    if (!packHasGame(pack)) return
     sfx.blip()
     // 游戏自带音乐：先把远征曲收掉，别两首叠着放
     bgm.stop()
@@ -842,7 +846,7 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
   // 例外是「自带正片」的包（仓可梦）：它没有方案卡要选，选中就直接进游戏。
   const choosePack = async (packId) => {
     const picked = packs.find((p) => p.id === packId)
-    if (picked?.game?.entry) {
+    if (packHasGame(picked)) {
       openPackGame(picked)
       return
     }
@@ -1369,7 +1373,7 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
             <h3><span className="step-plate">01</span>{t('选主角', 'Pick the protagonist')}</h3>
             <span>{t('只有通过 AI 认证的精灵能当主角', 'Only AI-certified sprites can star')}</span>
           </div>
-          {/* 自带正片的包（仓可梦 = 完整版《口袋精灵2》）：不用选主角、不用过 AI 认证，
+          {/* 自带正片的包（仓可梦 = PokéRogue）：不用选主角、不用过 AI 认证，
               点进去就是这个包的正片本身 */}
           {gamePacks.map((p) => (
             <div className="story-game-entry" key={p.id}>
@@ -1540,7 +1544,7 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
                   onClick={() => choosePack(p.id)}
                 >
                   <b>{p.title}</b>
-                  {p.game?.entry && <span className="story-pack-kind">{t('完整游戏 · 选中即开玩', 'Full game · opens on pick')}</span>}
+                  {packHasGame(p) && <span className="story-pack-kind">{t('完整游戏 · 选中即开玩', 'Full game · opens on pick')}</span>}
                   {p.tagline && <span>{p.tagline}</span>}
                 </button>
               ))}
@@ -1852,10 +1856,12 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
 
       {view === 'loading' && <p className="story-busy">{t('读取剧情进度…', 'Loading your run…')}</p>}
 
-      {/* 包自带正片：仓可梦 = 完整版《口袋精灵2》。
-          选这一包就是进它的正片，所以这里铺满整屏，不再挂在旁边的按钮上。
-          入口取自包元信息 game.entry，整包静态托管在 /petgame/，原样运行不改玩法。 */}
-      {gamePack && (
+      {/* 包自带正片。两种形态：
+          mode=pixel → 跑内置像素游戏（src/cangke/，备用形态）；
+          否则按 game.entry 加载整包静态页（仓可梦 = /pokerogue/ 那份 PokéRogue）。 */}
+      {gamePack && gamePack.game.mode === 'pixel' && <CangkeGame onExit={closePackGame} />}
+
+      {gamePack && gamePack.game.mode !== 'pixel' && (
         <section
           className="story-game"
           role="dialog"
@@ -1883,7 +1889,7 @@ export default function StoryMode({ pets = [], llmConfig = null, onExit, onRewar
           <iframe
             className="story-game-frame"
             src={gamePack.game.entry}
-            title={gamePack.game.title || t('口袋精灵2 完整版', 'Pocket Pets 2 full game')}
+            title={gamePack.game.title || `${gamePack.title} · 完整版`}
             allow="autoplay; fullscreen"
           />
         </section>

@@ -131,11 +131,13 @@ def list_packs() -> list[dict[str, Any]]:
             # 前端据此决定「选中这一包就直接进游戏」，而不是写死某个包 id。
             "game": {
                 "title": str(game.get("title") or ""),
+                # mode = pixel → 前端跑内置像素游戏；留空则按 entry 加载整包静态页
+                "mode": str(game.get("mode") or ""),
                 "entry": str(game.get("entry") or ""),
                 "desc": str(game.get("desc") or ""),
                 "atlas": str(game.get("atlas") or ""),
                 "docs": str(game.get("docs") or ""),
-            } if isinstance(game, dict) and game.get("entry") else None,
+            } if isinstance(game, dict) and (game.get("entry") or game.get("mode")) else None,
         })
     # default 排最后：它是 AI / 自定义剧本的兜底路线，不是给玩家挑的正经剧本
     out.sort(key=lambda item: (item["id"] == DEFAULT_PACK, item["id"]))

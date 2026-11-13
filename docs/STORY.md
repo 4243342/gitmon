@@ -287,7 +287,7 @@ src/story/packs/<id>/
 
 | 包 id | 名称 | 定位 |
 |---|---|---|
-| `default` | 仓可梦 | 兜底包，也是**自带正片的包**：包元信息声明 `game.entry = /petgame/`，选它直接进完整版《口袋精灵2》单机游戏（整包静态嵌入 `public/petgame/`，含图鉴站 `/petgame/atlas/`、游戏文档 `/petgame/docs/`），不再走占位剧情；AI 生成与自定义剧本也落在这条兜底路线，老存档同理。另随包带 383 只精灵立绘 + `roster.json` 图鉴，主角/引路人挂精灵立绘，Boss 用剧情选中的那只 |
+| `default` | 仓可梦 | 兜底包，也是**自带正片的包**：包元信息声明 `game.entry = /pokerogue/`，选它直接进开源宝可梦同人游戏 **PokéRogue**（整包静态嵌入 `public/pokerogue/`，构建成品 + 素材一起入库），不再走占位剧情；AI 生成与自定义剧本也落在这条兜底路线，老存档同理。另随包带 383 只精灵立绘 + `roster.json` 图鉴，主角/引路人挂精灵立绘，Boss 用剧情选中的那只 |
 | `douma` | 斗码苍穹 | 第一条专属包。斗破苍穹骨架 + 三年之约主线：项目即宗门，star 是香火，fork 是分家，release 是境界 |
 
 `default` 不是「没人要的包」，它是**兼容层**：所有非系统剧本的路径都落到它，
@@ -324,14 +324,24 @@ src/story/packs/<id>/
 > 拆成三张卡只会让玩家以为能选三条路线，实际正片一模一样。
 >
 > 通用包（`default`）现在是「仓可梦」包——它自带正片，同时也是 AI / 自定义剧本的兜底路线。
-> **完整版《口袋精灵2》（pet-atlas-game）整包原样嵌入，并且就是这一包的正片**：
-> 静态资源放 `public/petgame/`（游戏本体在根、图鉴站在 `atlas/`、游戏文档在 `docs/`，
-> 按上游 nginx.conf 的路由语义重写到 `/petgame/` 基路径），入口写在包元信息
-> `meta.json` 的 `game.entry` 里——前端不写死「`default` 就是那个包」，包删了入口就没了。
-> 交互上不是「旁边的按钮」：01 步选主角时就有一条直达条（不需要 AI 认证精灵），
-> 03 步在剧本包清单里选中仓可梦也会**直接切进游戏**（`choosePack` 见到 `game.entry` 就
-> 不进方案卡流程），全屏 iframe 原样运行，不改玩法、不写剧情，Esc 或「退出游戏」回到原步骤。
-> 素材来源与许可见 `THIRD-PARTY.md`。
+>
+> **正片 = 开源宝可梦同人游戏 PokéRogue**（<https://github.com/pagefaultgames/pokerogue>）：
+> 整包静态嵌入 `public/pokerogue/`，构建成品（`index.html` + `assets/` 打包 JS + 素材目录）
+> 约 744MB / 3.4 万个文件，一起提交入库，入口写在包元信息 `game.entry = "/pokerogue/"`。
+> 全屏 iframe 内原样运行，不改玩法、不写剧情——它本身就是像素风、草丛遇敌、捕捉、进化、
+> 道具叠加、多生态区连打的 Roguelike。构建时只设 `VITE_BYPASS_LOGIN=1` 走上游自带的离线模式
+> （否则会停在 Login / Register 并连官方账号服务器，iframe 里跨站 cookie 拿不到就进不去），
+> 存档落 `localStorage`。来源、提交号、AGPL-3.0 / CC-BY-NC-SA-4.0 许可与分发限制见 `THIRD-PARTY.md`。
+>
+> **备用形态 = 内置像素版**（`src/cangke/`，纯 canvas，不依赖任何第三方素材）：走草丛遇野怪 →
+> 回合制对战 → 打残了扔球收服 → 升级进化，野生池用包内 `roster.json` 的 383 只精灵，
+> 精灵图由 `sprite.js` 按种族 id 生成。`meta.json` 里把 `game.mode` 设成 `"pixel"` 才会跑它；
+> 与 `game.entry` 那条 iframe 分支互斥。当前 `default` 包走的是 PokéRogue，所以它处于备用状态。
+>
+> 交互上不是「旁边的按钮」：01 步选主角时有直达条（不需要 AI 认证精灵），
+> 剧情页头部常驻「进游戏」，03 步在包清单里选中仓可梦也会**直接切进正片**
+> （`choosePack` 见到包自带游戏就不进方案卡流程）。
+>
 > 另外口袋宝贝素材已移植进包：`roster.json` 收全量 383 只精灵（五行 / 六维 / 成长率 / 进化链 / 图鉴文案），
 > `art/` 下 `bb<id>.webp` 立绘 + `bb<id>_face.webp` 头像（由原素材 GIF 转动态 WebP）。
 > 角色立绘只挂精灵图（主角=金波姆、引路人=黄金鸟），**Boss 不配静态立绘**——
@@ -339,11 +349,15 @@ src/story/packs/<id>/
 >
 > 方案卡数量按包走，界面不能写死「三套模板」：`/api/story/packs` 的 `variant_count`
 > 告诉前端这个包有几张，系统剧本那张卡的描述按它显示。
+>
+> **《口袋精灵2》（pet-atlas-game）已不再被引用**：它是一款独立的国产网页养成游戏
+> （五行属性、383 只波姆家族），和宝可梦没有任何关系。整包仍留在 `public/petgame/`
+> 作留档，唯一入口 `game.entry` 已经指向 `/pokerogue/`，删掉 `public/petgame/` 不影响任何玩法。
 
-> **静态目录索引的坑**：`vite dev` / `preview` 的 SPA 兜底会把 `/petgame/` 也返回成宿主
-> `index.html`，iframe 里看到的就成了 GitMon 自己（看着像「游戏没接进去」）。
-> `vite.config.js` 的 `petgame-directory-index` 插件把 `/petgame`、`/petgame/atlas`、
-> `/petgame/docs` 补成 `index.html`，和 nginx / GitHub Pages 的行为对齐。
+> **静态目录索引的坑**：`vite dev` / `preview` 的 SPA 兜底会把 `/pokerogue/` 这类子目录
+> 也返回成宿主 `index.html`，iframe 里看到的就成了 GitMon 自己（看着像「游戏没接进去」）。
+> `vite.config.js` 的 `static-app-directory-index` 插件把「`public/` 下确实有 `index.html` 的目录」
+> 补成 `index.html`，和 nginx / GitHub Pages 的行为对齐。
 
 #### 单一真相源
 
