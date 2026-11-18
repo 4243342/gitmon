@@ -5,10 +5,38 @@ import { elementLabel } from '../elementLabel.js'
 import { cardFoil, cloudCardTraits, isCloudCard } from '../cardTraits.js'
 import { groupIntoPacks } from '../packGroups.js'
 import { useI18n } from '../i18n.js'
+import '../holoPack/holoPack.css'
 
 // 整箱卡包：账号下的项目每 5 个装一包，品质由包里最好的那个决定外观
 const palette = { SSR: '#ffb300', SR: '#ab47bc', R: '#42a5f5', N: '#9e9e9e' }
 const RANK = { N: 1, R: 2, SR: 3, SSR: 4 }
+
+// 复用开包舞台的封口、印刷面与镀铬吉祥物；卡箱只展示静态包装。
+function PackCover({ count, index, opened }) {
+  const { t } = useI18n()
+  const print = (
+    <>
+      <span className="hp-tag">Tear here ⟶</span>
+      <b className="hp-mark">GITMON</b>
+      <span className="hp-series">PACK {String(index + 1).padStart(2, '0')}</span>
+      <span className="hp-orb">
+        <i className="hp-orb-body" />
+        <i className="hp-eye l"><i className="hp-pupil" /></i>
+        <i className="hp-eye r"><i className="hp-pupil" /></i>
+        <i className="hp-smile" />
+      </span>
+      <span className="hp-foot l">Card pack</span>
+      <span className="hp-foot r">{t(`${count} 张`, `${count} cards`)}</span>
+    </>
+  )
+  return (
+    <span className={`pack-cover${opened ? ' is-open' : ''}`} aria-hidden="true">
+      {opened && <span className="pack-cover-mouth" />}
+      <span className="hp-skin front pack-cover-body">{print}</span>
+      {opened && <span className="hp-skin front pack-cover-tear">{print}</span>}
+    </span>
+  )
+}
 
 export default function PackBox({
   box,
@@ -16,6 +44,7 @@ export default function PackBox({
   saved,
   revealedAll,
   onOpen,
+  onPickCard,
   onOpenAll,
   onSaveAll,
   onExit,
@@ -36,7 +65,10 @@ export default function PackBox({
     tallies.set(key, { ...tally, count: tally.count + 1 })
   }
 
-  const allRevealed = revealedAll || pets.every((pet) => opened.has(pet.id || pet.fullName))
+  const revealedPets = packs.flat().filter((pet) => revealedAll || opened.has(pet.id || pet.fullName))
+  const unopened = packs.filter((pack) => !revealedAll && !pack.every((pet) => opened.has(pet.id || pet.fullName))).length
+  const allRevealed = unopened === 0
+  const uncollected = revealedPets.filter((pet) => !saved.has(pet.id || pet.fullName)).length
   const remaining = pets.filter((pet) => !saved.has(pet.id || pet.fullName)).length
   const exitText = exitLabel ?? t('换个账号 / 仓库', 'Switch account / repo')
 
@@ -93,59 +125,97 @@ export default function PackBox({
         </div>
       )}
 
-      <div className="pack-grid">
-        {packs.map((pack, i) => {
-          // 包的外观取包里最好的品质
-          let best = null
-          for (const pet of pack) {
-            const foil = cardFoil(pet)
-            if (!best || (RANK[foil.effect] || 0) > (RANK[best.effect] || 0)) best = foil
-          }
-          const revealed = revealedAll || pack.every((pet) => opened.has(pet.id || pet.fullName))
-          const kept = pack.filter((pet) => saved.has(pet.id || pet.fullName)).length
-          return (
-            <button
-              key={`pack-${i}`}
-              className={`pack-tile q-${best.effect}${revealed ? ' is-revealed' : ''}`}
-              style={{ '--q-color': best.color, '--q-glow': best.glow, '--i': i }}
-              onClick={() => { sfx.swoosh(); onOpen(pack, i) }}
-              disabled={saving}
-              title={pack.map((pet) => `${pet.repo} · ${cardFoil(pet).label || cardFoil(pet).name || cardFoil(pet).key}`).join('\n')}
-            >
-              <span className="pt-foil" />
-              <span className="pt-brand">GITMON</span>
-              <span className="pt-shield" />
+      <section className="box-packs" aria-labelledby="box-packs-title">
+        <div className="box-section-head">
+          <h3 id="box-packs-title">{t('卡包', 'Packs')}</h3>
+          <span>{unopened > 0 ? t(`${unopened} 包待开启`, `${unopened} unopened`) : t('全部已开封', 'All opened')}</span>
+        </div>
+        <div className="pack-grid">
+          {packs.map((pack, i) => {
+            let best = null
+            for (const pet of pack) {
+              const foil = cardFoil(pet)
+              if (!best || (RANK[foil.effect] || 0) > (RANK[best.effect] || 0)) best = foil
+            }
+            const revealed = revealedAll || pack.every((pet) => opened.has(pet.id || pet.fullName))
+            const Tile = revealed ? 'div' : 'button'
+            return (
+              <Tile
+                key={`pack-${i}`}
+                className={`pack-tile${revealed ? ' is-open' : ''}`}
+                style={{ '--q-color': best.color, '--q-glow': best.glow, '--hp-pack': palette[best.effect] || best.color }}
+                type={revealed ? undefined : 'button'}
+                onClick={revealed ? undefined : () => { sfx.swoosh(); onOpen(pack, i) }}
+                disabled={revealed ? undefined : saving}
+                role={revealed ? 'img' : undefined}
+                aria-label={revealed ? t(`第 ${i + 1} 包 · 已开封`, `Pack ${i + 1} · opened`) : t(`打开第 ${i + 1} 包 · ${pack.length} 张卡片`, `Open pack ${i + 1} · ${pack.length} cards`)}
+                title={pack.map((pet) => `${pet.repo} · ${cardFoil(pet).label || cardFoil(pet).name || cardFoil(pet).key}`).join('\n')}
+              >
+                <PackCover count={pack.length} index={i} opened={revealed} />
+                <span className="pt-name">{t(`第 ${i + 1} 包`, `Pack ${i + 1}`)}</span>
+                <span className="pack-state">{revealed ? t('已开封', 'Opened') : t('点击开包', 'Open pack')}</span>
+              </Tile>
+            )
+          })}
+        </div>
+      </section>
 
-              <span className="pt-slots">
-                {pack.map((pet) => {
-                  const key = pet.id || pet.fullName
-                  const isKept = saved.has(key)
-                  return (
-                    <span key={key} className={`pt-slot${isKept ? ' is-kept' : ''}`}>
-                      {revealed
-                        ? <PixelSprite pet={pet} size={40} animate={false} src={pet.cardSpriteUrl} />
-                        : <span className="pt-seal">?</span>}
+      {revealedPets.length > 0 && (
+        <section className="box-cards" aria-labelledby="box-cards-title">
+          <div className="box-section-head">
+            <h3 id="box-cards-title">{t('开出的卡片', 'Revealed cards')}</h3>
+            <span aria-live="polite">{t(`${revealedPets.length} 张 · ${uncollected} 张待收下`, `${revealedPets.length} cards · ${uncollected} to collect`)}</span>
+          </div>
+          <div className="box-card-grid">
+            {revealedPets.map((pet, i) => {
+              const key = pet.id || pet.fullName
+              const isSaved = saved.has(key)
+              const foil = cardFoil(pet)
+              const traits = isCloudCard(pet) ? cloudCardTraits(pet) : null
+              return (
+                <button
+                  type="button"
+                  key={key}
+                  className={`box-card q-${foil.effect}${traits ? ' cloud-box-card' : ''}`}
+                  style={{ '--q-color': foil.color, '--q-glow': foil.glow, '--i': i }}
+                  onClick={() => { sfx.swoosh(); onPickCard(pet) }}
+                  disabled={saving}
+                  aria-label={t(`查看 ${pet.repo} 卡片 · ${isSaved ? '已收下' : '待收下'}`, `View ${pet.repo} card · ${isSaved ? 'collected' : 'not collected'}`)}
+                  title={traits ? pet.fullName : `${pet.fullName} · ${pet.quality.name} · Lv.${pet.level}`}
+                >
+                  <span className="pt-foil" />
+                  <span className="box-card-head">
+                    <span className="pt-brand">GITMON</span>
+                    <span className="box-card-rarity">{foil.key === 'pending' ? '—' : foil.key}</span>
+                  </span>
+                  <span className="pt-art">
+                    <PixelSprite pet={pet} size={112} animate={false} src={pet.cardSpriteUrl} />
+                  </span>
+                  <span className="pt-name">{pet.repo}</span>
+                  {traits ? (
+                    <span className="pt-meta cloud-mini-traits">
+                      {traits.map(({ key, label, value, color }) => (
+                        <span key={key} style={{ color }} title={`${label} · ${value}`}><b>{label}</b><span className="box-trait-value">{value}</span></span>
+                      ))}
                     </span>
-                  )
-                })}
-              </span>
-
-              <span className="pt-name">{t(`第 ${i + 1} 包`, `Pack ${i + 1}`)}</span>
-              <span className="pt-meta">
-                {revealed
-                  ? `${pack.length} ${t('只', 'pets')}${kept ? ` · ${t(`已收 ${kept}`, `${kept} kept`)}` : ''}`
-                  : `${pack.length} ${t('只', 'pets')} · ${best.label || best.name || best.key}`}
-              </span>
-              {revealed && <span className="pt-new">{kept === pack.length ? t('已收下', 'Kept') : 'NEW'}</span>}
-            </button>
-          )
-        })}
-      </div>
+                  ) : (
+                    <span className="pt-meta">{elementLabel(pet)} · Lv.{pet.level}</span>
+                  )}
+                  <span className="box-card-foot">
+                    <span className={`box-card-status${isSaved ? ' is-saved' : ''}`}>{isSaved ? t('已收下', 'Kept') : 'NEW'}</span>
+                    <span>{t('查看卡片', 'View card')} ↗</span>
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </section>
+      )}
 
       <div className="actions box-actions">
         {!allRevealed && packs.length > 1 && (
-          <button className="primary-btn" onClick={() => { sfx.tiles(packs.length); onOpenAll() }}>
-            {t(`一键全开（${packs.length} 包）`, `Open All (${packs.length})`)}
+          <button className="primary-btn" onClick={() => { sfx.tiles(unopened); onOpenAll() }} disabled={saving}>
+            {t(`一键全开（${unopened} 包）`, `Open All (${unopened})`)}
           </button>
         )}
         {/* 收下（保存）流程：已揭晓的包才可收入，剩下的还能补收 */}

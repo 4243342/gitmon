@@ -909,189 +909,190 @@ body::after {
 }
 .box-warn span { line-height: 1.7; }
 
-/* ---------- 卡包网格 ---------- */
-.pack-grid {
+/* ---------- 包装与开出的卡片独立陈列 ---------- */
+.box-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  max-width: 780px;
+  margin: 0 auto 18px;
+  text-align: left;
+}
+.box-section-head h3 { font-size: 15px; font-weight: 400; color: var(--text); }
+.box-section-head > span { font-size: 12px; color: var(--dim); }
+.box-cards {
+  margin-top: 30px;
+  padding-top: 22px;
+  border-top: 1px solid var(--px-line);
+}
+
+.pack-grid,
+.box-card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
-  gap: 15px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 124px), 1fr));
+  gap: 18px;
   max-width: 780px;
   margin: 0 auto;
-  perspective: 900px;
 }
+.box-card-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 156px), 1fr)); }
 
 .pack-tile {
-  --q-color: #9e9e9e;
-  --q-glow: rgba(158, 158, 158, .5);
-  --shield-url: url('./assets/kenney/tiles/shield-grey.png');
-  position: relative;
-  aspect-ratio: 63 / 88;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 7px 7px 9px;
+  min-width: 0;
+  padding: 10px 4px 4px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: translate .18s ease;
+}
+.pack-tile:not(.is-open):not(:disabled):hover { translate: 0 -5px; }
+.pack-tile.is-open { cursor: default; }
+.pack-state { margin-top: 4px; color: var(--q-color); font-size: 11px; }
+.pack-tile.is-open .pack-state { color: var(--dim); }
+.pack-tile > .pt-name { margin-top: 10px; }
+
+/* 与 HoloPack 共用 hp-skin / hp-orb，按网格宽度缩放；不运行拆包引擎。 */
+.pack-cover {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 69 / 100;
+  container-type: inline-size;
+  filter: drop-shadow(3px 5px 0 rgba(0, 0, 0, .35));
+}
+.pack-cover .hp-skin {
+  --hp-pw: 100cqw;
+  --hp-ph: calc(var(--hp-pw) / .69);
+  --hp-crimp: calc(var(--hp-ph) * .068);
+  --hp-d: 0px;
+  --hp-ease-out: ease;
+  --hp-spring: ease;
+  display: block;
+  transform: none;
+}
+.pack-cover.is-open .pack-cover-body {
+  clip-path: polygon(0 12%, 6% 9%, 12% 12%, 19% 10%, 26% 13%, 33% 9%, 40% 12%, 47% 10%, 54% 13%, 61% 9%, 68% 12%, 75% 10%, 82% 13%, 89% 9%, 95% 12%, 100% 10%, 100% 100%, 0 100%);
+}
+.pack-cover-mouth {
+  position: absolute;
+  top: 7%;
+  left: 3%;
+  width: 94%;
+  height: 7%;
+  border: 2px solid color-mix(in srgb, var(--q-color) 45%, #7d8ca5);
+  border-radius: 50%;
+  background: #05080e;
+  transform: rotate(-2deg);
+}
+.pack-cover .pack-cover-tear {
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(0 0, 100% 0, 100% 8%, 95% 10%, 89% 7%, 82% 11%, 75% 8%, 68% 10%, 61% 7%, 54% 11%, 47% 8%, 40% 10%, 33% 7%, 26% 11%, 19% 8%, 12% 10%, 6% 7%, 0 10%);
+  transform: translate(3%, -3%) rotate(-7deg);
+  transform-origin: 50% 6%;
+}
+
+/* 卡片有自己的边框、立绘和点击入口，不再嵌在包装里。 */
+.box-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  aspect-ratio: 63 / 88;
+  padding: 10px;
   border: 2px solid var(--q-color);
-  background:
-    radial-gradient(120% 60% at 50% 0%, color-mix(in srgb, var(--q-color) 16%, transparent), transparent 70%),
-    linear-gradient(165deg, #1c2740 0%, #121a2c 52%, #0a0f1c 100%);
-  box-shadow: 0 0 0 2px #070c16, 6px 6px 0 rgba(0, 0, 0, .5), 0 0 20px -8px var(--q-glow);
+  border-radius: 6px;
+  background: linear-gradient(155deg, #22314b, #101929 70%);
+  box-shadow: 4px 5px 0 var(--px-shadow);
+  color: var(--text);
+  font: inherit;
   cursor: pointer;
   overflow: hidden;
-  transition: translate .16s ease, box-shadow .2s ease, border-color .2s ease;
-  image-rendering: pixelated;
+  transition: translate .18s ease, box-shadow .18s ease;
+  animation: box-card-in .35s ease both;
+  animation-delay: calc(min(var(--i), 8) * 40ms);
 }
-.pack-tile:hover {
-  translate: 0 -5px;
-  box-shadow: 0 0 0 2px #070c16, 6px 10px 0 rgba(0, 0, 0, .5), 0 0 30px -4px var(--q-glow);
+.box-card:not(:disabled):hover { translate: 0 -4px; box-shadow: 4px 9px 0 var(--px-shadow); }
+.pack-tile:focus-visible,
+.box-card:focus-visible { outline: 3px solid var(--accent); outline-offset: 5px; }
+.pack-tile:disabled,
+.box-card:disabled { opacity: .6; cursor: wait; }
+@keyframes box-card-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
-.pack-tile:active { translate: 0 -1px; }
 
-/* 铝箔反光 */
 .pt-foil {
-  position: absolute; inset: 0;
-  background: linear-gradient(115deg,
-    transparent 26%,
-    color-mix(in srgb, var(--q-color) 40%, transparent) 46%,
-    rgba(255, 255, 255, .22) 50%,
-    color-mix(in srgb, var(--q-color) 30%, transparent) 54%,
-    transparent 74%);
-  mix-blend-mode: screen;
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 26%, color-mix(in srgb, var(--q-color) 16%, transparent) 50%, transparent 74%);
   opacity: .5;
-  transition: transform .5s ease, opacity .3s ease;
-  transform: translateX(-16%);
   pointer-events: none;
 }
-.pack-tile:hover .pt-foil { opacity: .85; transform: translateX(16%); }
-
-.pt-brand {
-  font-family: var(--font-arcade);
-  font-size: 8px;
-  letter-spacing: 1.5px;
-  color: color-mix(in srgb, var(--q-color) 70%, #ffffff);
-  padding-bottom: 4px;
-  border-bottom: 1px solid color-mix(in srgb, var(--q-color) 26%, transparent);
-  width: 100%;
-  z-index: 1;
-}
-
-.pt-shield {
-  position: absolute;
-  top: 6px; right: 6px;
-  width: 22px; height: 26px;
-  background: var(--shield-url) center / contain no-repeat;
-  image-rendering: pixelated;
-  filter: drop-shadow(0 0 5px var(--q-glow));
-  z-index: 2;
-}
-
-.pt-art {
-  flex: 1;
-  display: grid;
-  place-items: center;
-  width: 100%;
-  min-height: 0;
-  z-index: 1;
-}
-.pt-seal {
-  width: 40px; height: 40px;
-  display: grid; place-items: center;
-  font-family: var(--font-arcade);
-  font-size: 13px;
-  color: #10182a;
-  background: url('./assets/kenney/tiles/circle-dot-yellow.png') center / contain no-repeat;
-  image-rendering: pixelated;
-  opacity: .9;
-  filter: drop-shadow(0 0 4px var(--q-glow));
-  animation: seal-breathe 2.8s ease-in-out infinite;
-}
-@keyframes seal-breathe {
-  0%, 100% { opacity: .72; }
-  50% { opacity: 1; }
-}
-
-/* 一包里的 5 个项目：竖排的小卡位，未揭晓是封条，已揭晓是立绘 */
-.pt-slots {
-  flex: 1;
-  width: 100%;
-  min-height: 0;
+.box-card-head {
+  position: relative;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 2px;
-  z-index: 1;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
 }
-.pt-slot {
+.pt-brand { font-family: var(--font-arcade); font-size: 7px; letter-spacing: 1px; color: var(--dim); }
+.box-card-rarity { font-family: var(--font-arcade); font-size: 9px; color: var(--q-color); }
+.pt-art {
+  position: relative;
   display: grid;
   place-items: center;
+  flex: 1;
   width: 100%;
-  height: 20%;
   min-height: 0;
 }
-.pt-slot .pt-seal { width: 100%; height: 100%; max-width: 22px; max-height: 22px; font-size: 9px; }
-.pt-slot img { image-rendering: pixelated; }
-.pt-slot.is-kept { filter: drop-shadow(0 0 4px var(--accent)); }
-
+.box-card .pt-art .sprite {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 120px;
+  max-height: 120px;
+  min-height: 0;
+  object-fit: contain;
+}
 .pt-name {
-  font-size: 10.5px;
-  color: #e6edfb;
+  position: relative;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  z-index: 1;
+  font-size: 12px;
+  color: #e6edfb;
 }
-.pt-meta {
-  font-size: 9px;
+.pt-meta { position: relative; font-size: 10px; color: var(--dim); }
+.box-trait-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.box-card-foot {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding-top: 6px;
+  border-top: 1px solid color-mix(in srgb, var(--q-color) 24%, transparent);
+  font-size: 10px;
   color: var(--dim);
-  margin-top: 2px;
-  z-index: 1;
 }
+.box-card-status { font-size: 9px; color: var(--accent); }
+.box-card-status.is-saved { color: #7bcfa5; }
 
-.pt-new {
-  position: absolute;
-  left: 4px; top: 4px;
-  font-family: var(--font-arcade);
-  font-size: 7px;
-  padding: 2px 4px;
-  color: #0b1120;
-  background: var(--accent);
-  z-index: 2;
+@media (prefers-reduced-motion: reduce) {
+  .pack-tile, .box-card { animation: none; transition: none; }
+  .pack-tile:not(.is-open):not(:disabled):hover, .box-card:not(:disabled):hover { translate: none; }
 }
-
-/* 已开启：精灵已现身，铝箔退场 */
-.pack-tile.is-open .pt-foil { opacity: .18; }
-.pack-tile.is-open .pt-seal { display: none; }
-
-/* 一键全开：逐张翻面 */
-.pack-tile.is-revealed {
-  animation: tile-flip .52s cubic-bezier(.3, .8, .3, 1) both;
-  animation-delay: calc(var(--i) * 55ms);
-}
-@keyframes tile-flip {
-  0% { transform: rotateY(0) scale(1); }
-  45% { transform: rotateY(88deg) scale(.94); }
-  100% { transform: rotateY(0) scale(1); }
-}
-
-/* SSR 外圈呼吸光 */
-.pack-tile.q-SSR::after {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border: 2px solid rgba(255, 179, 0, .5);
-  animation: ssr-aura 2.4s ease-in-out infinite;
-  pointer-events: none;
-}
-@keyframes ssr-aura {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 179, 0, 0); }
-  50% { box-shadow: 0 0 16px 2px rgba(255, 179, 0, .45); }
-}
-
-/* 品质 → 盾徽颜色 */
-.pack-tile.q-SSR { --shield-url: url('./assets/kenney/tiles/shield-ssr.png'); }
-.pack-tile.q-SR { --shield-url: url('./assets/kenney/tiles/shield-sr.png'); }
-.pack-tile.q-R { --shield-url: url('./assets/kenney/tiles/shield-r.png'); }
-.pack-tile.q-N { --shield-url: url('./assets/kenney/tiles/shield-n.png'); }
 
 .box-actions { margin-top: 26px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; align-items: center; }
 .box-saved { font-size: 13px; color: #3ecf94; }
@@ -1119,7 +1120,9 @@ body::after {
 }
 
 @media (max-width: 560px) {
-  .pack-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 11px; }
+  .pack-grid, .box-card-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 112px), 1fr)); gap: 12px; }
+  .box-card { padding: 7px; gap: 4px; }
+  .box-card-foot { font-size: 9px; }
   .box-tally { width: 100%; justify-content: flex-start; }
 }
 
@@ -1614,7 +1617,6 @@ body::after {
 }
 .cloud-mini-traits > span { display: flex; justify-content: space-between; align-items: baseline; gap: 3px; }
 .cloud-mini-traits b { color: var(--dim); font-weight: 400; flex: none; }
-.cloud-pack-tile.is-revealed .pt-art img { max-height: 100%; width: auto; object-fit: contain; }
 .cloud-combat-details {
   width: min(360px, 92vw);
   margin: 14px auto;

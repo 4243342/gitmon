@@ -1842,6 +1842,14 @@ export default function App() {
             setCloudError('')
             openPack(packPets, index)
           }}
+          onPickCard={(p) => {
+            const existing = savedPacks.has(packKey(p)) && (box.id ? cloudPets : collection).find((item) => packKey(item) === packKey(p))
+            setCloudError('')
+            setPackSession(null)
+            if (existing) return pickPet(existing)
+            setPet(p)
+            setView('reveal')
+          }}
           onOpenAll={() => setRevealedAll(true)}
           onSaveAll={saveAll}
           onExit={auth.profile?.authenticated ? backToAccount : reset}
