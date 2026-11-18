@@ -1,29 +1,36 @@
 import { useEffect } from 'react'
 import PixelSprite from './PixelSprite.jsx'
 import { sfx } from '../sfx.js'
+import { elementLabel } from '../elementLabel.js'
+import { cardFoil, cloudCardTraits, isCloudCard } from '../cardTraits.js'
 
 // 整箱卡包（文档 §2.3）：一个账号 = 该账号每个项目一个卡包
-// 品质在开箱前就已由各项目自己的代码质量决定（不能刷、不能改）
-
 const palette = { SSR: '#ffb300', SR: '#ab47bc', R: '#42a5f5', N: '#9e9e9e' }
 
 export default function PackBox({
   box,
   opened,
+  saved,
   revealedAll,
   onOpen,
   onOpenAll,
   onSaveAll,
   onExit,
+  saving,
+  error,
   exitLabel = '换个账号 / 仓库',
 }) {
   const { owner, pets, listed, limit, truncated, skipped, rateLimited, failed, partial } = box
-  const counts = pets.reduce((acc, p) => {
-    acc[p.quality.key] = (acc[p.quality.key] || 0) + 1
-    return acc
-  }, {})
-  const openedCount = pets.filter((p) => opened.has(p.fullName)).length
-  const allSaved = revealedAll && openedCount === pets.length
+  const cloud = Boolean(box.id)
+  const tallies = new Map(cloud ? [] : Object.entries(palette).map(([key, color]) => [key, { key, color, label: key, count: 0 }]))
+  for (const pet of pets) {
+    const foil = cardFoil(pet)
+    const key = cloud ? foil.label : foil.key
+    const tally = tallies.get(key) || { ...foil, count: 0 }
+    tallies.set(key, { ...tally, count: tally.count + 1 })
+  }
+  const allRevealed = revealedAll || pets.every((pet) => opened.has(pet.id || pet.fullName))
+  const remaining = pets.filter((pet) => !saved.has(pet.id || pet.fullName)).length
 
   // 整箱登场：上部琶音 + 一层和弦，和"一个卡包"的登场音区分开
   useEffect(() => { sfx.boxIn() }, [])
@@ -45,30 +52,31 @@ export default function PackBox({
               {owner.isOrg ? ' · 组织' : ' · 账号'}
               {' · '}
               <b>{pets.length}</b> 个卡包
-              {listed > pets.length && <em>（从 {listed} 个项目里取最近活跃的 {limit} 个）</em>}
+              {truncated && <em>（从 {listed} 个项目里取最近活跃的 {limit} 个）</em>}
             </p>
           </div>
         </div>
 
         <div className="box-tally">
-          {['SSR', 'SR', 'R', 'N'].map((k) => (
-            <span key={k} className={`tally tally-${k}`} style={{ '--tc': palette[k] }}>
-              <b>{k}</b>
-              {counts[k] || 0}
+          {[...tallies].map(([key, tally]) => (
+            <span key={key} className="tally" style={{ '--tc': tally.color }}>
+              <b>{tally.label}</b>
+              {tally.count}
             </span>
           ))}
         </div>
       </header>
 
       <p className="box-hint">
-        每个卡包对应一个项目，品质由那个项目自己的代码质量决定 —— 点开任意一包，看它孵出什么。
+        {cloud ? '点开卡包查看属性、罕见度和品质。'
+          : '每个卡包对应一个项目，品质由那个项目自己的代码质量决定 —— 点开任意一包，看它孵出什么。'}
       </p>
 
       {(truncated || rateLimited || failed?.length > 0 || partial > 0) && (
         <div className="box-warn">
           {rateLimited && <span>! API 限流，部分项目没扫到，稍后再来或设置 Token</span>}
           {!rateLimited && truncated && <span>! 项目太多（{listed} 个），本次先开最近活跃的 {limit} 个</span>}
-          {partial > 0 && <span>! {partial} 个项目的文件清单没读到，品质可能偏低 —— 刷新重试一次</span>}
+          {partial > 0 && <span>! {partial} 个项目的文件证据不完整，可刷新重试</span>}
           {failed?.length > 0 && <span>! {failed.length} 个项目扫描失败：{failed.map((f) => f.name).join('、')}</span>}
           {skipped > 0 && <span>· 已跳过 {skipped} 个 fork / 空仓库</span>}
         </div>
@@ -76,15 +84,20 @@ export default function PackBox({
 
       <div className="pack-grid">
         {pets.map((pet, i) => {
-          const isOpen = opened.has(pet.fullName)
+          const key = pet.id || pet.fullName
+          const isOpen = opened.has(key)
+          const isSaved = saved.has(key)
           const revealed = revealedAll || isOpen
+          const foil = cardFoil(pet)
+          const traits = isCloudCard(pet) ? cloudCardTraits(pet) : null
           return (
             <button
-              key={`${pet.platform}/${pet.fullName}`}
-              className={`pack-tile q-${pet.quality.key}${isOpen ? ' is-open' : ''}${revealed ? ' is-revealed' : ''}`}
-              style={{ '--q-color': pet.quality.color, '--q-glow': pet.quality.glow, '--i': i }}
-              onClick={() => { if (!revealed) { sfx.swoosh(); onOpen(pet) } }}
-              title={`${pet.fullName} · ${pet.quality.name} · Lv.${pet.level}`}
+              key={key}
+              className={`pack-tile q-${foil.effect}${traits ? ' cloud-pack-tile' : ''}${isOpen ? ' is-open' : ''}${revealed ? ' is-revealed' : ''}`}
+              style={{ '--q-color': foil.color, '--q-glow': foil.glow, '--i': i }}
+              onClick={() => { sfx.swoosh(); onOpen(pet, revealed, isSaved) }}
+              disabled={saving}
+              title={traits ? pet.fullName : `${pet.fullName} · ${pet.quality.name} · Lv.${pet.level}`}
             >
               <span className="pt-foil" />
               <span className="pt-brand">GITMON</span>
@@ -92,37 +105,47 @@ export default function PackBox({
 
               <span className="pt-art">
                 {revealed
-                  ? <PixelSprite pet={pet} size={72} animate={false} />
+                  ? <PixelSprite pet={pet} size={72} animate={false} src={pet.cardSpriteUrl} />
                   : <span className="pt-seal">?</span>}
               </span>
 
               <span className="pt-name">{pet.repo}</span>
-              <span className="pt-meta">
-                {pet.element.name}系 · Lv.{pet.level}
-              </span>
-              {revealed && <span className="pt-new">NEW</span>}
+              {traits && revealed ? (
+                <span className="pt-meta cloud-mini-traits">
+                  {traits.map(({ key, label, value, color }) => (
+                    <span key={key} style={{ color }}><b>{label}</b>{value}</span>
+                  ))}
+                </span>
+              ) : (
+                <span className="pt-meta">
+                  {traits ? foil.label : `${elementLabel(pet)} · Lv.${pet.level}`}
+                </span>
+              )}
+              {revealed && <span className="pt-new">{isSaved ? '已收下' : 'NEW'}</span>}
             </button>
           )
         })}
       </div>
 
       <div className="actions box-actions">
-        {!revealedAll && pets.length > 1 && (
+        {!allRevealed && pets.length > 1 && (
           <button className="primary-btn" onClick={() => { sfx.tiles(pets.length); onOpenAll() }}>
             一键全开（{pets.length} 包）
           </button>
         )}
-        {revealedAll && !allSaved && (
-          <button className="primary-btn" onClick={onSaveAll}>
-            全部收入图鉴（{pets.length}）
+        {allRevealed && remaining > 0 && (
+          <button className="primary-btn" onClick={onSaveAll} disabled={saving}>
+            {saving ? '正在收入…' : `全部收入${box.id ? '云图鉴' : '图鉴'}（${remaining}）`}
           </button>
         )}
-        {allSaved && <span className="box-saved">✓ 全部已收入图鉴</span>}
-        <button className="ghost-btn" onClick={onExit}>{exitLabel}</button>
+        {remaining === 0 && <span className="box-saved">✓ 全部已收入{box.id ? '云图鉴' : '图鉴'}</span>}
+        <button className="ghost-btn" onClick={onExit} disabled={saving}>{exitLabel}</button>
       </div>
+      {error && <p className="error" role="alert">{error}</p>}
 
       <p className="box-foot">
-        同一账号再次孵化只会更新数值，不会换精灵 —— 种子永远是 <code>platform/owner/repo</code>。
+        {box.id ? '单仓库和整箱孵化使用同一只精灵，收下后可在云图鉴查看。'
+          : '同一仓库在本地孵化时使用固定种子。'}
       </p>
     </main>
   )

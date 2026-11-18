@@ -1364,3 +1364,47 @@ body::after {
   .auth-token-row { flex-direction: column; }
   .auth-token-row button { padding: 10px 0; }
 }
+
+.pet-card.cloud-pet-card { padding: 16px; gap: 12px; }
+.cloud-pet-card .card-head { min-height: 26px; }
+.cloud-card-traits {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+  position: relative;
+  z-index: 2;
+}
+.cloud-card-traits > div {
+  padding: 7px 5px;
+  border: 1px solid var(--px-line);
+  background: rgba(10, 17, 32, .78);
+  text-align: center;
+}
+.cloud-card-traits dt { color: var(--dim); font-size: 10px; }
+.cloud-card-traits dd { margin: 4px 0 0; font-size: 12px; font-weight: 700; }
+.cloud-mini-traits {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  font-size: 10px;
+  line-height: 1.35;
+  text-align: left;
+}
+.cloud-mini-traits > span { display: flex; justify-content: space-between; align-items: baseline; gap: 3px; }
+.cloud-mini-traits b { color: var(--dim); font-weight: 400; flex: none; }
+.cloud-pack-tile.is-revealed .pt-art img { max-height: 100%; width: auto; object-fit: contain; }
+.cloud-combat-details {
+  width: min(360px, 92vw);
+  margin: 14px auto;
+  padding: 9px 13px;
+  text-align: left;
+  font-size: 12px;
+  border: 1px solid var(--px-line);
+  color: var(--dim);
+}
+.cloud-combat-details summary { cursor: pointer; color: var(--text); }
+.cloud-combat-details p { margin: 8px 0 0; }
+.cloud-combat-details dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin: 8px 0 0; }
+.cloud-combat-details dl > div { display: flex; gap: 6px; }
+.cloud-combat-details dd { margin: 0; color: var(--text); }

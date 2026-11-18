@@ -441,10 +441,11 @@ def sprite_seed_for(ref: RepoRef) -> tuple[int, int]:
     return seed, sprite_seed
 
 
-def judge(snapshot: RepoSnapshot, *, keep_species: tuple[str, str | None, str] | None = None) -> dict[str, Any]:
+def judge(snapshot: RepoSnapshot, *, keep_species: tuple[str, str | None, str] | None = None,
+          seeds: tuple[int, int] | None = None) -> dict[str, Any]:
     """快照 → 精灵判定结果。keep_species 用于重新扫描时锁定原品种。"""
     ref = snapshot.ref
-    seed, sprite_seed = sprite_seed_for(ref)
+    seed, sprite_seed = seeds if seeds is not None else sprite_seed_for(ref)
 
     if keep_species:
         element_key, secondary, species_key = keep_species

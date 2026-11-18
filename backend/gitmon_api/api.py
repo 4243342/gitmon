@@ -10,11 +10,11 @@ from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
-from . import auth, engine, growth, services
+from . import auth, cloud, engine, growth, services
 from .badge import badge_svg, card_svg, placeholder_badge
 from .config import settings
-from .errors import PetNotFound, ScanError
-from .queue import scan_queue
+from .errors import AuthError, PetNotFound, ScanError
+from .queue import Job, scan_queue
 from .repo import InvalidRepo, parse_repo, ref_from_parts
 
 router = APIRouter()
@@ -118,9 +118,160 @@ def hatch_now(payload: HatchRequest, user: str = Depends(owner_key),
 @router.get("/api/jobs/{job_id}", response_model=JobResponse, tags=["hatch"])
 def job_status(job_id: str) -> dict[str, Any]:
     job = scan_queue.get(job_id)
-    if job is None:
+    if job is None or job.kind in {"cloud-preview", "cloud-box"}:
         raise PetNotFound("任务不存在或已过期")
     return job.to_dict()
+
+
+# ---------------------------------------------------------------- 登录用户孵化与云图鉴
+
+# 用途属性版本开启新一轮云图鉴，旧收藏与预览不进入本轮。
+_CLOUD_COLLECTION_VERSION = 2
+
+def cloud_user(request: Request) -> dict[str, Any]:
+    user = auth.resolve_session(request.cookies.get(auth.SESSION_COOKIE, ""))
+    if not user:
+        raise AuthError("请登录后使用云图鉴")
+    return user
+
+
+def _cloud_owner(user: dict[str, Any]) -> str:
+    return f"cloud:v{_CLOUD_COLLECTION_VERSION}:{user['id']}"
+
+
+def _cloud_scan_token(user: dict[str, Any], platform: str) -> str:
+    if user["provider"] != platform:
+        return ""
+    if platform == "gitee" and user["source"] == "oauth":
+        return auth.ensure_gitee_token(user)
+    return user["token"]
+
+
+def _cloud_job(job_id: str, user: dict[str, Any], *, kind: str = "cloud-preview") -> Job:
+    job = scan_queue.get(job_id)
+    if (job is None or job.kind != kind or job.owner_key != _cloud_owner(user)
+            or (job.finished_at is not None and time.time() - job.finished_at > 3600)):
+        message = "卡箱不存在或已过期，请重新读取我的项目" if kind == "cloud-box" else "孵化预览不存在或已过期"
+        raise PetNotFound(message)
+    return job
+
+
+def _preview_pet(job: Job) -> dict[str, Any]:
+    if job.status != "done" or job.pet is None:
+        raise PetNotFound("孵化预览尚未完成")
+    return job.pet
+
+
+def _cloud_image(pet: dict[str, Any], stage: int) -> Response:
+    return Response(cloud.image(pet, stage), media_type="image/png", headers={"Cache-Control": "private, no-store"})
+
+
+@router.post("/api/cloud/previews", status_code=202, tags=["hatch"])
+def start_cloud_preview(payload: HatchRequest, user: dict[str, Any] = Depends(cloud_user)) -> dict[str, str]:
+    ref = parse_repo(payload.repo)
+    token = _cloud_scan_token(user, ref.platform)
+    job = scan_queue.submit("cloud-preview", ref.html_url, _cloud_owner(user), token=token)
+    return {"jobId": job.id}
+
+
+@router.get("/api/cloud/previews/{job_id}", response_model=JobResponse, tags=["hatch"])
+def cloud_preview_status(job_id: str, response: Response,
+                         user: dict[str, Any] = Depends(cloud_user)) -> dict[str, Any]:
+    job = _cloud_job(job_id, user)
+    payload = job.to_dict()
+    payload["pet"] = cloud.presentation(job.pet, f"previews/{job_id}") if job.status == "done" and job.pet else None
+    response.headers["Cache-Control"] = "private, no-store"
+    return payload
+
+
+@router.get("/api/cloud/previews/{job_id}/sprite.png", tags=["render"])
+def cloud_preview_sprite(job_id: str, stage: int = Query(ge=1, le=3),
+                         user: dict[str, Any] = Depends(cloud_user)) -> Response:
+    return _cloud_image(_preview_pet(_cloud_job(job_id, user)), stage)
+
+
+@router.post("/api/cloud/previews/{job_id}/collect", tags=["pets"])
+def collect_preview(job_id: str, user: dict[str, Any] = Depends(cloud_user)) -> dict[str, Any]:
+    return cloud.presentation(cloud.collect(_preview_pet(_cloud_job(job_id, user))))
+
+
+@router.post("/api/cloud/boxes", status_code=202, tags=["hatch"])
+def start_cloud_box(user: dict[str, Any] = Depends(cloud_user)) -> dict[str, str]:
+    platform = user["provider"]
+    token = _cloud_scan_token(user, platform)
+    if not token:
+        raise AuthError("请重新登录后读取项目")
+    job = scan_queue.submit("cloud-box", f"{platform}/{user['login']}", _cloud_owner(user), token=token)
+    return {"jobId": job.id}
+
+
+@router.get("/api/cloud/boxes/{job_id}", tags=["hatch"])
+def cloud_box_status(job_id: str, response: Response, user: dict[str, Any] = Depends(cloud_user)) -> dict[str, Any]:
+    job = _cloud_job(job_id, user, kind="cloud-box")
+    response.headers["Cache-Control"] = "private, no-store"
+    payload = {"status": job.status, "progress": job.progress, "error": job.error}
+    if job.status == "done" and job.box is not None:
+        payload["box"] = {
+            **job.box,
+            "owner": {
+                "platform": user["provider"],
+                "owner": user["login"],
+                "displayName": user["name"] or user["login"],
+                "avatar": user["avatar"],
+            },
+            "pets": cloud.presentations(job.box["pets"], lambda pet: f"boxes/{job_id}/pets/{pet['id']}"),
+        }
+    return payload
+
+
+def _box_pets(job_id: str, user: dict[str, Any]) -> list[dict[str, Any]]:
+    job = _cloud_job(job_id, user, kind="cloud-box")
+    if job.status != "done" or job.box is None:
+        raise PetNotFound("卡箱尚未准备好")
+    return job.box["pets"]
+
+
+def _box_pet(job_id: str, pet_id: str, user: dict[str, Any]) -> dict[str, Any]:
+    for pet in _box_pets(job_id, user):
+        if pet["id"] == pet_id:
+            return pet
+    raise PetNotFound("卡箱里没有这只精灵")
+
+
+@router.get("/api/cloud/boxes/{job_id}/pets/{pet_id}/sprite.png", tags=["render"])
+def cloud_box_sprite(job_id: str, pet_id: str, stage: int = Query(ge=1, le=3),
+                     user: dict[str, Any] = Depends(cloud_user)) -> Response:
+    return _cloud_image(_box_pet(job_id, pet_id, user), stage)
+
+
+@router.post("/api/cloud/boxes/{job_id}/pets/{pet_id}/collect", tags=["pets"])
+def collect_box_pet(job_id: str, pet_id: str, user: dict[str, Any] = Depends(cloud_user)) -> dict[str, Any]:
+    return cloud.presentation(cloud.collect(_box_pet(job_id, pet_id, user)))
+
+
+@router.post("/api/cloud/boxes/{job_id}/collect", tags=["pets"])
+def collect_box(job_id: str, user: dict[str, Any] = Depends(cloud_user)) -> dict[str, Any]:
+    pets = cloud.collect_many(_box_pets(job_id, user))
+    return {"items": cloud.presentations(pets)}
+
+
+@router.get("/api/cloud/pets", tags=["pets"])
+def cloud_collection(response: Response, limit: int = Query(60, ge=1, le=200), offset: int = Query(0, ge=0),
+                     user: dict[str, Any] = Depends(cloud_user)) -> dict[str, Any]:
+    response.headers["Cache-Control"] = "private, no-store"
+    return cloud.collection(_cloud_owner(user), limit, offset)
+
+
+@router.get("/api/cloud/pets/{pet_id}/sprite.png", tags=["render"])
+def cloud_pet_sprite(pet_id: str, stage: int = Query(ge=1, le=3),
+                     user: dict[str, Any] = Depends(cloud_user)) -> Response:
+    return _cloud_image(cloud.collected_pet(pet_id, _cloud_owner(user)), stage)
+
+
+@router.post("/api/cloud/pets/{pet_id}/refresh", tags=["pets"])
+def refresh_cloud_pet(pet_id: str, user: dict[str, Any] = Depends(cloud_user)) -> dict[str, Any]:
+    pet = cloud.collected_pet(pet_id, _cloud_owner(user))
+    return cloud.presentation(cloud.refresh(pet, _cloud_scan_token(user, pet["platform"])))
 
 
 # ---------------------------------------------------------------- 图鉴

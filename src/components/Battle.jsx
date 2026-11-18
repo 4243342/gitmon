@@ -10,18 +10,13 @@ import {
   moveEffectiveness,
 } from '../battle.js'
 import {
-  matchBuiltinOwnerTeam,
-  matchBuiltinRival,
   modeLabel,
   pickRandomTeam,
   pickSameTypeTeam,
-  powerOf,
-  rivalFromSnapshot,
-  rivalPets,
   rivalTeamLabel,
   sameTypePool,
-} from '../rivals.js'
-import { parseRepoInput, scanOwnerBox, scanRepo } from '../scan.js'
+} from '../arenaModes.js'
+import { arenaPetKey } from '../arenaRoster.js'
 
 // 三种挑战：在线对手（输入仓库/账号，真实强度）／同类型（找同属性仓库）／随机宠物
 const MODES = [
@@ -54,9 +49,6 @@ const DIFFICULTIES = [
   { key: 'hard', name: '强敌', desc: '对手六维 ×1.35' },
 ]
 
-const XP_BASE = { easy: 90, normal: 150, hard: 240 }
-const ONLINE_XP = { single: 200, team: 280 }
-
 const ONLINE_SIZES = [
   { key: 'single', name: '单项目', hint: '1v1 · 一个仓库' },
   { key: 'team', name: '整仓', hint: '3v3 · 整个账号' },
@@ -67,6 +59,7 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 function unitPet(unit) {
   return {
     spriteSeed: unit.spriteSeed,
+    spriteUrl: unit.spriteUrl,
     element: { key: unit.element.key, name: unit.element.name, color: unit.element.color },
     elementSecondary: unit.elementSecondary,
     species: unit.species,
@@ -281,19 +274,20 @@ function OnlineSetup({ size, setSize, repoInput, setRepoInput, onScan, scanning,
   )
 }
 
-function Setup({ mode, pets, team, setTeam, difficulty, setDifficulty, onStart, onBack, onExit, online }) {
+function Setup({ mode, pets, rivals, team, setTeam, difficulty, setDifficulty, onStart, onBack, onExit, online }) {
   const onlineCap = online.size === 'team' ? Math.max(1, online.ownerTeam.length) : 1
   const cap = mode === 'online' ? onlineCap : 3
   const toggle = (pet) => {
-    const exists = team.some((p) => p.fullName === pet.fullName && p.platform === pet.platform)
-    if (exists) setTeam(team.filter((p) => !(p.fullName === pet.fullName && p.platform === pet.platform)))
+    const key = arenaPetKey(pet)
+    const exists = team.some((p) => arenaPetKey(p) === key)
+    if (exists) setTeam(team.filter((p) => arenaPetKey(p) !== key))
     else if (team.length < cap) setTeam([...team, pet])
   }
 
   const lead = team[0]
   const samePool = useMemo(
-    () => (mode === 'same' && lead ? sameTypePool(lead.element?.key) : []),
-    [mode, lead],
+    () => (mode === 'same' && lead ? sameTypePool(rivals, lead.element?.key) : []),
+    [mode, lead, rivals],
   )
 
   const modeInfo = MODES.find((m) => m.key === mode)
@@ -334,7 +328,7 @@ function Setup({ mode, pets, team, setTeam, difficulty, setDifficulty, onStart, 
       {mode === 'random' && (
         <div className="same-type-bar">
           <span className="same-label">对手池</span>
-          <span className="same-pool">全部 {rivalPets().length} 只知名仓库精灵随机抽取，抽到谁都事先不知道。</span>
+          <span className="same-pool">全部 {rivals.length} 只知名仓库精灵随机抽取，抽到谁都事先不知道。</span>
         </div>
       )}
 
@@ -354,11 +348,12 @@ function Setup({ mode, pets, team, setTeam, difficulty, setDifficulty, onStart, 
       ) : (
         <div className="picker-list">
           {pets.map((pet) => {
-            const active = team.some((p) => p.fullName === pet.fullName && p.platform === pet.platform)
+            const key = arenaPetKey(pet)
+            const active = team.some((p) => arenaPetKey(p) === key)
             const blocked = !active && team.length >= cap
             return (
               <button
-                key={`${pet.platform}/${pet.fullName}`}
+                key={key}
                 className={`picker-card ${active ? 'picked' : ''} ${blocked ? 'blocked' : ''}`}
                 onClick={() => toggle(pet)}
               >
@@ -409,16 +404,10 @@ function Setup({ mode, pets, team, setTeam, difficulty, setDifficulty, onStart, 
   )
 }
 
-export default function Battle({ pets = [], initial = null, onExit, onReward }) {
-  const candidates = useMemo(() => {
-    const list = [...pets]
-    if (initial && !list.some((p) => p.fullName === initial.fullName)) list.unshift(initial)
-    return list
-  }, [pets, initial])
-
+export default function Battle({ pets, initial, rivals, resolveOpponents, onExit }) {
   const [phase, setPhase] = useState('mode') // mode | select | fight | result
   const [mode, setMode] = useState('random')
-  const [team, setTeam] = useState(() => (initial ? [initial] : candidates.slice(0, 3)))
+  const [team, setTeam] = useState(() => (initial ? [initial] : pets.slice(0, 3)))
   const [difficulty, setDifficulty] = useState('normal')
   const [state, setState] = useState(null)
   const [log, setLog] = useState([])
@@ -426,7 +415,6 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
   const [fx, setFx] = useState({ player: null, enemy: null })
   const [shake, setShake] = useState({ player: false, enemy: false })
   const [showBench, setShowBench] = useState(false)
-  const [reward, setReward] = useState(0)
   const [lunging, setLunging] = useState(null)
   const [hurt, setHurt] = useState({ player: false, enemy: false })
 
@@ -439,7 +427,6 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
   const [ownerTeam, setOwnerTeam] = useState([])
   const [opponentNote, setOpponentNote] = useState('')
 
-  const rewardedRef = useRef(false)
   const logRef = useRef(null)
   const fxLayerRef = useRef(null)
   const playerSlotRef = useRef(null)
@@ -485,9 +472,9 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
   const fillTeam = (count) => {
     setTeam((prev) => {
       const out = [...prev]
-      for (const p of candidates) {
+      for (const p of pets) {
         if (out.length >= count) break
-        if (!out.some((x) => x.fullName === p.fullName && x.platform === p.platform)) out.push(p)
+        if (!out.some((x) => arenaPetKey(x) === arenaPetKey(p))) out.push(p)
       }
       return out.slice(0, count)
     })
@@ -505,52 +492,17 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
   const scanOpponent = async () => {
     const raw = repoInput.trim()
     if (!raw) { setScanError(onlineSize === 'team' ? '先填一个账号或仓库地址' : '先填一个仓库地址'); return }
-    const info = parseRepoInput(raw)
-    if (!info) { setScanError('无法识别的地址，请输入 GitHub / Gitee 仓库或账号链接'); return }
-
     setScanError('')
     setScanning(true)
     try {
-      // ① 单项目：只打对方一个仓库
+      const result = await resolveOpponents(raw, onlineSize)
       if (onlineSize === 'single') {
-        if (info.kind !== 'repo') throw new Error('单项目 PK 需要具体仓库地址，例如 github.com/owner/repo')
-        const builtin = matchBuiltinRival(info.platform, info.fullName)
-        if (builtin) {
-          setOpponent(builtin)
-          setOpponentNote('内置快照 · 离线可打')
-          return
-        }
-        const snap = await scanRepo(raw)
-        setOpponent(rivalFromSnapshot(snap))
-        setOpponentNote(snap.cached ? '线上数据 · 本地缓存' : '线上数据 · 刚刚扫描')
-        return
+        setOpponent(result.pets[0])
+      } else {
+        setOwnerTeam(result.pets)
+        fillTeam(result.pets.length)
       }
-
-      // ② 整仓：对方账号下的项目依次上场（填仓库时按它的账号算）
-      const owner = info.owner
-      const platform = info.platform
-      const localTeam = matchBuiltinOwnerTeam(platform, owner)
-      if (localTeam.length >= 2) {
-        const picked = localTeam.slice(0, 3)
-        setOwnerTeam(picked)
-        fillTeam(picked.length)
-        setOpponentNote(`内置快照 · ${owner} 的 ${picked.length} 个项目`)
-        return
-      }
-      const res = await scanOwnerBox({ kind: 'owner', platform, owner }, { limit: 4 })
-      if (!res.snaps.length) {
-        throw new Error(res.rateLimited
-          ? 'API 触发限流，稍后再试（设置 Token 可提高额度）'
-          : '这个账号没有可挑战的公开项目')
-      }
-      const pets = res.snaps
-        .map((s) => rivalFromSnapshot(s))
-        .sort((a, b) => powerOf(b) - powerOf(a))
-        .slice(0, 3)
-      if (!pets.length) throw new Error('这个账号没有可挑战的公开项目')
-      setOwnerTeam(pets)
-      fillTeam(pets.length)
-      setOpponentNote(`线上数据 · ${owner} 的 ${pets.length} 个项目`)
+      setOpponentNote(result.note)
     } catch (e) {
       setScanError(e.message || '扫描失败，请检查地址')
     } finally {
@@ -569,8 +521,8 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
     const cap = mode === 'online' ? (teamMode ? 3 : 1) : 3
     let enemies
     if (mode === 'online') enemies = teamMode ? ownerTeam : [opponent]
-    else if (mode === 'same') enemies = pickSameTypeTeam(team, seed, difficulty, cap)
-    else enemies = pickRandomTeam(team, seed, difficulty, cap)
+    else if (mode === 'same') enemies = pickSameTypeTeam(rivals, team, seed, difficulty, cap)
+    else enemies = pickRandomTeam(rivals, team, seed, difficulty, cap)
     if (!enemies.length) return
 
     // 对手几只、我方就上几只（整仓没扫满 3 个时不会出现以多打少）
@@ -586,8 +538,6 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
       playerName: '你',
       enemyName: '对手',
     })
-    rewardedRef.current = false
-    setReward(0)
     setState(built.state)
     setLog(built.events.map((e) => e.text))
     setPhase('fight')
@@ -650,16 +600,7 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
 
     await wait(Math.max(560, at + 200))
 
-    if (next.winner) {
-      const base = mode === 'online' ? ONLINE_XP[onlineSize] : XP_BASE[difficulty]
-      const xp = Math.round(base * (next.winner === 'player' ? 1.4 : 0.6))
-      setReward(xp)
-      if (!rewardedRef.current) {
-        rewardedRef.current = true
-        onReward?.(team, xp, next.winner === 'player')
-      }
-      setPhase('result')
-    }
+    if (next.winner) setPhase('result')
     setBusy(false)
   }
 
@@ -675,7 +616,7 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
   if (phase === 'mode') {
     return (
       <main className="battle-wrap">
-        <ModePicker pets={candidates} onPick={pickMode} onExit={onExit} />
+        <ModePicker pets={pets} onPick={pickMode} onExit={onExit} />
       </main>
     )
   }
@@ -685,7 +626,8 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
       <main className="battle-wrap">
         <Setup
           mode={mode}
-          pets={candidates}
+          pets={pets}
+          rivals={rivals}
           team={team}
           setTeam={setTeam}
           difficulty={difficulty}
@@ -763,7 +705,6 @@ export default function Battle({ pets = [], initial = null, onExit, onReward }) 
             {state.winner === 'player' ? '胜利' : '惜败'}
           </h2>
           <p>{state.winner === 'player' ? '对手的仓库被你压了一头。' : '属性与节奏都被对手抓到了。'}</p>
-          <p className="reward">全队获得 <b>+{reward} EXP</b></p>
           <div className="actions">
             <button className="primary-btn" onClick={start}>{mode === 'random' ? '再抽一只' : '再战一场'}</button>
             <button className="ghost-btn" onClick={() => setPhase('select')}>换阵容</button>

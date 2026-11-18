@@ -1,15 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import { parseRepoInput, scanOwnerBox, scanRepo } from './scan.js'
-import { expForLevel, judge } from './engine.js'
+import { judge } from './engine.js'
+import { arenaRivals, loadArenaOpponents } from './arenaOpponents.js'
+import { prepareArenaRoster } from './arenaRoster.js'
+import { elementLabel } from './elementLabel.js'
+import { cardFoil, isCloudCard } from './cardTraits.js'
 import {
   cachedProfile, clearGuest, consumeAuthQuery, fetchMe, fetchProviders,
   guestSkipped, logout, PROVIDER_LABEL, quotaText, skipLogin,
 } from './auth.js'
 import { loadCollection, upsertPet } from './storage.js'
+import { collectCloudBox, collectCloudPet, loadCloudPets, previewCloudBox, previewCloudPet, refreshCloudPet } from './cloud.js'
 import { exportShareCard } from './share.js'
 import { sfx } from './sfx.js'
 import AuthPage from './components/AuthPage.jsx'
-import PetCard from './components/PetCard.jsx'
+import PetCard, { CloudCombatDetails } from './components/PetCard.jsx'
 import PackOpening from './components/PackOpening.jsx'
 import PackBox from './components/PackBox.jsx'
 import Collection from './components/Collection.jsx'
@@ -20,14 +25,15 @@ import './styles.css'
 import './game-theme.css'
 
 const RANK = { SSR: 4, SR: 3, R: 2, N: 1 }
+const packKey = (pet) => pet.id || pet.fullName
 
 // 单个项目：一个卡包
 const STEPS = ['连接仓库', '读取技术栈', '估算工程量', '评估代码质量']
 const DIALOGS = [
   '连接仓库，读取档案...',
-  '分析语言构成，判定元素属性...',
+  '读取仓库线索，判定元素属性...',
   '统计代码规模，估算工程量...',
-  '检查测试 / CI / 文档，评估品质...',
+  '核对代码、测试与文档，评估品质...',
   '卡包生成完毕！',
 ]
 
@@ -89,13 +95,20 @@ export default function App() {
   const [error, setError] = useState('')
   const [pet, setPet] = useState(null)
   const [collection, setCollection] = useState([])
+  const [cloudPets, setCloudPets] = useState([])
+  const [cloudListStatus, setCloudListStatus] = useState('loading')
+  const [cloudInput, setCloudInput] = useState('')
+  const [cloudError, setCloudError] = useState('')
+  const [cloudBusy, setCloudBusy] = useState(false)
+  const cloudRequest = useRef(null)
   const [step, setStep] = useState(0)
   const [mode, setMode] = useState('repo') // repo | owner
   const [box, setBox] = useState(null)
   const [opened, setOpened] = useState(() => new Set())
+  const [savedPacks, setSavedPacks] = useState(() => new Set())
   const [revealedAll, setRevealedAll] = useState(false)
   const [progress, setProgress] = useState(null)
-  const [battleInitial, setBattleInitial] = useState(null)
+  const [arenaSession, setArenaSession] = useState(null)
   const [muted, setMuted] = useState(sfx.muted)
   // 登录态：loading 期间不闪首页，避免"先显示未登录再跳授权页"
   const [auth, setAuth] = useState(() => ({
@@ -105,6 +118,8 @@ export default function App() {
   }))
   const [providers, setProviders] = useState(null)
   const [authNotice, setAuthNotice] = useState('')
+  const cloudAccount = auth.online && auth.profile?.authenticated ? auth.profile.id : null
+  const canBattle = collection.length > 0 || (cloudAccount && cloudPets.length > 0)
   // 已经自动开过箱的账号（provider/login），同一账号不重复扫
   const autoScanned = useRef('')
 
@@ -118,6 +133,20 @@ export default function App() {
   }, [step, view])
 
   useEffect(() => { setCollection(loadCollection()) }, [])
+
+  useEffect(() => {
+    setCloudPets([])
+    setCloudListStatus('loading')
+    if (!cloudAccount) return
+    const controller = new AbortController()
+    loadCloudPets(controller.signal).then((pets) => {
+      setCloudPets((current) => [...current, ...pets.filter((p) => !current.some((saved) => saved.id === p.id))])
+      setCloudListStatus('ready')
+    }).catch(() => {
+      if (!controller.signal.aborted) setCloudListStatus('failed')
+    })
+    return () => controller.abort()
+  }, [cloudAccount])
 
   // 启动：拉会话 + 登录方式，决定首屏是授权页还是首页
   useEffect(() => {
@@ -156,34 +185,20 @@ export default function App() {
   }
 
   const onLogout = async () => {
+    cancelCloudRequest()
+    clearBox()
+    setCloudPets([])
+    setPet(null)
+    setArenaSession(null)
     await logout()
     setAuth((s) => ({ ...s, profile: { authenticated: false, oauth: s.profile?.oauth ?? false } }))
     setView('auth')
   }
 
-  // 战斗结算：全队分经验，升级按 engine 的成长曲线走
-  const grantBattleXp = (team, xp, won) => {
-    const updated = (team || []).map((p) => {
-      let exp = (p.exp || 0) + xp
-      let level = Number(p.level) || 1
-      while (level < 999 && exp >= expForLevel(level)) {
-        exp -= expForLevel(level)
-        level += 1
-      }
-      return {
-        ...p,
-        exp,
-        level,
-        bond: Math.min(100, (p.bond || 0) + (won ? 4 : 1)),
-        battles: (p.battles || 0) + 1,
-        wins: (p.wins || 0) + (won ? 1 : 0),
-      }
-    })
-    let list = loadCollection()
-    updated.forEach((p) => { list = upsertPet(list, p) })
-    setCollection(list)
-    const mine = updated.find((p) => pet && p.fullName === pet.fullName && p.platform === pet.platform)
-    if (mine) setPet(mine)
+  const openArena = (selected = null) => {
+    const roster = prepareArenaRoster(cloudAccount ? cloudPets : [], collection, selected)
+    setArenaSession({ ...roster, rivals: arenaRivals() })
+    setView('battle')
   }
 
   const fail = (e) => {
@@ -193,14 +208,79 @@ export default function App() {
     setView('home')
   }
 
+  const cancelCloudRequest = () => {
+    cloudRequest.current?.abort()
+    cloudRequest.current = null
+    setCloudBusy(false)
+    setCloudError('')
+  }
+
+  const withCloudRequest = async (action, onError = (e) => setCloudError(e.message)) => {
+    if (cloudRequest.current) return
+    const controller = new AbortController()
+    cloudRequest.current = controller
+    setCloudBusy(true)
+    setCloudError('')
+    try {
+      await action(controller.signal)
+    } catch (e) {
+      if (!controller.signal.aborted) onError(e)
+    } finally {
+      if (cloudRequest.current === controller) {
+        cloudRequest.current = null
+        setCloudBusy(false)
+      }
+    }
+  }
+
+  const startCloudHatch = (event) => {
+    event.preventDefault()
+    const repo = cloudInput.trim()
+    if (!repo) return
+    withCloudRequest(async (signal) => {
+      setMode('repo')
+      setProgress(null)
+      setStep(1)
+      setView('scan')
+      const next = await previewCloudPet(repo, signal)
+      setPet(next)
+      setView('pack')
+    }, (e) => {
+      setCloudError(e.message)
+      setView('home')
+    })
+  }
+
+  const rememberCloudPets = (pets) => {
+    const ids = new Set(pets.map((p) => p.id))
+    setCloudPets((current) => [...pets, ...current.filter((p) => !ids.has(p.id))])
+  }
+
+  const showCloudPet = (next) => {
+    rememberCloudPets([next])
+    setPet(next)
+    setView('detail')
+  }
+
+  const pickPet = (next) => {
+    cancelCloudRequest()
+    setPet(next)
+    setView('detail')
+  }
+
+  const clearBox = () => {
+    setBox(null)
+    setOpened(new Set())
+    setSavedPacks(new Set())
+    setRevealedAll(false)
+  }
+
   const run = () => {
     if (!url.trim()) { setError('请输入仓库或账号地址'); sfx.error(); return }
     const info = parseRepoInput(url)
     if (!info) { setError('无法识别的地址：仓库链接、账号主页都行'); sfx.error(); return }
     setError('')
-    setBox(null)
-    setOpened(new Set())
-    setRevealedAll(false)
+    clearBox()
     setProgress(null)
     if (info.kind === 'owner') runOwner(info)
     else runRepo()
@@ -280,60 +360,91 @@ export default function App() {
     const provider = p.provider || 'github'
     autoScanned.current = `${provider}/${p.login}`
     setError('')
-    setBox(null)
-    setOpened(new Set())
-    setRevealedAll(false)
+    clearBox()
+    if (cloudAccount) {
+      return withCloudRequest(async (signal) => {
+        setMode('owner')
+        setProgress(null)
+        setStep(1)
+        setView('scan')
+        const result = await previewCloudBox(signal, (p) => { setProgress(p); setStep(2) })
+        if (!result.pets.length) {
+          const message = result.rateLimited ? '平台配额已用尽，稍后再试'
+            : result.failed[0]?.reason || '你名下还没有可孵化的项目（fork / 空仓库会被跳过）'
+          throw new Error(message)
+        }
+        setBox(result)
+        setView('box')
+      }, fail)
+    }
     runOwner({ kind: 'owner', platform: provider, owner: p.login }, { self: true })
   }
 
-  // 登录/切账号时自动开箱一次；同一账号不重复扫，避免每次回首页都烧配额
+  // 云账号先打开主页，方便查看图鉴和单仓库孵化。
   useEffect(() => {
-    if (auth.loading) return
+    if (auth.loading || cloudAccount) return
     const p = auth.profile
     if (!p?.authenticated) { autoScanned.current = ''; return }
     const key = `${p.provider || 'github'}/${p.login}`
     if (autoScanned.current === key) return
     autoScanned.current = key
     runOwner({ kind: 'owner', platform: p.provider || 'github', owner: p.login }, { self: true })
-  }, [auth.loading, auth.profile?.id, auth.profile?.provider, auth.profile?.login])
+  }, [auth.loading, auth.profile?.id, auth.profile?.provider, auth.profile?.login, cloudAccount])
+
+  const fromBox = pet && box && (box.id ? pet.boxId === box.id : !pet.repoId)
 
   const afterReveal = () => {
     setView('reveal')
     if (pet) {
-      sfx.reveal(pet.quality.key)
-      setOpened((s) => new Set(s).add(pet.fullName))
+      sfx.reveal(cardFoil(pet).effect)
+      if (fromBox) setOpened((s) => new Set(s).add(packKey(pet)))
     }
   }
 
-  const goDetail = () => {
-    if (pet) setCollection(upsertPet(loadCollection(), pet))
-    sfx.swoosh()
-    setView('detail')
-  }
-
-  // 从卡箱开的那一只：收下就回卡箱，接着开下一包
-  const backToBox = () => {
-    if (pet) setCollection(upsertPet(loadCollection(), pet))
-    sfx.swoosh()
-    setView('box')
+  const collectRevealed = (returnToBox = false) => {
+    const finish = (next) => {
+      if (fromBox) setSavedPacks((s) => new Set(s).add(packKey(next)))
+      setPet(next)
+      setView(returnToBox ? 'box' : 'detail')
+      sfx.collect()
+    }
+    if (pet.previewId || pet.boxId) {
+      return withCloudRequest(async (signal) => {
+        const next = await collectCloudPet(pet, signal)
+        rememberCloudPets([next])
+        finish(next)
+      })
+    }
+    setCollection(upsertPet(loadCollection(), pet))
+    finish(pet)
   }
 
   const saveAll = () => {
+    const finish = (pets) => {
+      setSavedPacks((current) => new Set([...current, ...pets.map(packKey)]))
+      sfx.collect()
+    }
+    if (box.id) {
+      return withCloudRequest(async (signal) => {
+        const pets = await collectCloudBox(box.id, signal)
+        rememberCloudPets(pets)
+        finish(pets)
+      })
+    }
     let list = loadCollection()
-    box?.pets.forEach((p) => { list = upsertPet(list, p) })
+    box.pets.forEach((p) => { list = upsertPet(list, p) })
     setCollection(list)
-    setOpened(new Set((box?.pets || []).map((p) => p.fullName)))
-    sfx.collect()
+    finish(box.pets)
   }
 
   const reset = () => {
+    cancelCloudRequest()
     sfx.back()
     setView('home')
     setPet(null)
+    setArenaSession(null)
     setUrl('')
-    setBox(null)
-    setOpened(new Set())
-    setRevealedAll(false)
+    clearBox()
     setProgress(null)
   }
 
@@ -410,10 +521,23 @@ export default function App() {
                     @{auth.profile.login} ·{' '}
                     {box
                       ? <>名下 <b>{box.pets.length}</b> 个项目已生成卡包</>
-                      : '正在读取你名下的项目…'}
+                      : '可孵化单个仓库，或读取我的项目生成卡箱'}
                   </p>
                 </div>
               </div>
+              {cloudAccount && (
+                <form className="input-row" onSubmit={startCloudHatch}>
+                  <input
+                    aria-label="单仓库地址"
+                    value={cloudInput}
+                    onChange={(e) => setCloudInput(e.target.value)}
+                    placeholder="GitHub / Gitee 仓库地址"
+                    required
+                    spellCheck={false}
+                  />
+                  <button type="submit" disabled={cloudBusy}>孵化单仓库</button>
+                </form>
+              )}
               <div className="account-actions">
                 <button className="primary-btn" onClick={runAccountBox}>
                   {box ? '重新读取全部项目' : '读取我的项目'}
@@ -423,14 +547,16 @@ export default function App() {
                     打开我的卡箱（{box.pets.length} 包）
                   </button>
                 )}
-                <button className="ghost-btn" onClick={() => setView('battle')} disabled={collection.length === 0}>
+                <button className="ghost-btn" onClick={() => openArena()} disabled={!canBattle}>
                   进入竞技场
                 </button>
               </div>
               {error && <p className="error">! {error}</p>}
+              {cloudError && <p className="error" role="alert">{cloudError}</p>}
               <p className="account-note">
-                登录账号不用再输入仓库地址 —— 你名下<b>每个项目自动生成一个卡包</b>，
-                私有仓库也会一起读出来（授权只读，不写代码）。
+                {cloudAccount
+                  ? '单仓库和卡箱里的精灵收下后都可在云图鉴查看。'
+                  : '读取我的项目，为每个仓库生成一个卡包。'}
               </p>
             </section>
           ) : (
@@ -483,7 +609,16 @@ export default function App() {
           </section>
           )}
 
-          <Collection list={collection} onPick={(p) => { setPet(p); setView('detail') }} />
+          {cloudAccount && (
+            <Collection
+              list={cloudPets}
+              onPick={pickPet}
+              title="云图鉴"
+              empty={cloudListStatus === 'loading' ? '正在读取云图鉴…'
+                : cloudListStatus === 'failed' ? '读取失败，请刷新页面重试' : '收下单仓库精灵后，它会出现在这里。'}
+            />
+          )}
+          <Collection list={collection} onPick={pickPet} title={cloudAccount ? '本地图鉴' : undefined} />
 
           <section className="arena-entry">
             <div className="arena-copy">
@@ -495,20 +630,28 @@ export default function App() {
             </div>
             <button
               className="primary-btn"
-              onClick={() => { setBattleInitial(null); setView('battle') }}
-              disabled={collection.length === 0}
+              onClick={() => openArena()}
+              disabled={!canBattle}
             >
-              {collection.length === 0 ? '先孵化一只' : '进入竞技场'}
+              {canBattle ? '进入竞技场' : '先孵化一只'}
             </button>
           </section>
 
           <section className="howto">
             <h3>怎么判定</h3>
-            <div className="howto-grid">
-              <div><b>品种</b><span>主语言 → 元素属性（Python 水系 / JS 雷系 / Rust 钢系…）× 项目类型 → 生态型（AI 龙型 / CLI 鸟型 / Web 兽型…）</span></div>
-              <div><b>品质</b><span>测试 25% + 工程质量 20% + 文档 20% + 维护 20% + 社区 15% → N / R / SR / SSR</span></div>
-              <div><b>等级</b><span>代码规模 + commit + 贡献者 + 活跃时长，对数归一化 → Lv.1–999</span></div>
-            </div>
+            {cloudAccount ? (
+              <div className="howto-grid">
+                <div><b>属性</b><span>按仓库的主要用途判定</span></div>
+                <div><b>罕见度</b><span>按 GitHub 或 Gitee 的公开 Star 和 Fork 判定</span></div>
+                <div><b>品质</b><span>源码、测试、文档和社区证据决定黑铁至王者档位</span></div>
+              </div>
+            ) : (
+              <div className="howto-grid">
+                <div><b>品种</b><span>主语言 → 元素属性（Python 水系 / JS 雷系 / Rust 钢系…）× 项目类型 → 生态型（AI 龙型 / CLI 鸟型 / Web 兽型…）</span></div>
+                <div><b>品质</b><span>测试 25% + 工程质量 20% + 文档 20% + 维护 20% + 社区 15% → N / R / SR / SSR</span></div>
+                <div><b>等级</b><span>代码规模 + commit + 贡献者 + 活跃时长，对数归一化 → Lv.1–999</span></div>
+              </div>
+            )}
           </section>
         </main>
       )}
@@ -532,7 +675,7 @@ export default function App() {
           </ul>
           {progress && (
             <div className="scan-progress">
-              <span>正在判定 {progress.done}/{progress.total} · {progress.name}</span>
+              <span>正在判定 {progress.done}/{progress.total}{progress.name ? ` · ${progress.name}` : ''}</span>
               <div className="sp-bar">
                 <div className="sp-fill" style={{ width: `${(progress.done / Math.max(1, progress.total)) * 100}%` }} />
               </div>
@@ -545,11 +688,20 @@ export default function App() {
         <PackBox
           box={box}
           opened={opened}
+          saved={savedPacks}
           revealedAll={revealedAll}
-          onOpen={(p) => { setPet(p); setView('pack') }}
+          onOpen={(p, revealed, saved) => {
+            const existing = saved && (box.id ? cloudPets : collection).find((item) => packKey(item) === packKey(p))
+            if (existing) return pickPet(existing)
+            setCloudError('')
+            setPet(p)
+            setView(revealed ? 'reveal' : 'pack')
+          }}
           onOpenAll={() => setRevealedAll(true)}
           onSaveAll={saveAll}
           onExit={auth.profile?.authenticated ? backToAccount : reset}
+          saving={cloudBusy}
+          error={cloudError}
           exitLabel={auth.profile?.authenticated ? '回到我的主页' : '换个账号 / 仓库'}
         />
       )}
@@ -562,23 +714,31 @@ export default function App() {
 
       {view === 'reveal' && pet && (
         <main className="reveal-stage">
-          <h2 className={`reveal-title quality-text-${pet.quality.key}`}>
-            {pet.quality.name} · {pet.element.name}系{pet.species.name} 登场
-          </h2>
+          {isCloudCard(pet) ? (
+            <h2 className="reveal-title" style={{ color: cardFoil(pet).color }}>{pet.repo} 登场</h2>
+          ) : (
+            <h2 className={`reveal-title quality-text-${pet.quality.key}`}>
+              {pet.quality.name} · {elementLabel(pet)} · {pet.species.name} 登场
+            </h2>
+          )}
           <PetCard pet={pet} revealed />
           <div className="actions">
-            {box ? (
+            {fromBox ? (
               <>
-                <button className="primary-btn" onClick={backToBox}>
-                  收下 · 回卡箱{box.pets.length - opened.size > 0 ? `（还剩 ${box.pets.length - opened.size} 包）` : ''}
+                <button className="primary-btn" disabled={cloudBusy} onClick={() => collectRevealed(true)}>
+                  {cloudBusy ? '正在收入…' : '收下 · 回卡箱'}
                 </button>
-                <button className="ghost-btn" onClick={goDetail}>看详情</button>
+                <button className="ghost-btn" disabled={cloudBusy} onClick={() => collectRevealed()}>收下并看详情</button>
+                <button className="ghost-btn" disabled={cloudBusy} onClick={() => { setCloudError(''); setView('box') }}>返回卡箱</button>
               </>
             ) : (
-              <button className="primary-btn" onClick={goDetail}>收入图鉴</button>
+              <button className="primary-btn" onClick={() => collectRevealed()} disabled={cloudBusy}>
+                {cloudBusy ? '正在收入…' : pet.previewId ? '收下 · 云图鉴' : '收入图鉴'}
+              </button>
             )}
-            <button className="ghost-btn" onClick={reset}>再孵一只</button>
+            {!fromBox && <button className="ghost-btn" onClick={reset}>再孵一只</button>}
           </div>
+          {cloudError && <p className="error" role="alert">{cloudError}</p>}
         </main>
       )}
 
@@ -586,26 +746,43 @@ export default function App() {
         <main className="detail-stage">
           <PetCard pet={pet} />
           <div className="actions">
-            <button className="primary-btn" onClick={() => exportShareCard(pet)}>导出分享卡</button>
-            <button className="primary-btn" onClick={() => { setBattleInitial(pet); setView('battle') }}>带它去对战</button>
-            {box && <button className="ghost-btn" onClick={() => setView('box')}>返回卡箱</button>}
-            <button className="ghost-btn" onClick={reset}>再孵一只</button>
+            <button className="primary-btn" onClick={() => exportShareCard(pet).catch(() => setCloudError('无法导出分享卡，请稍后重试'))}>导出分享卡</button>
+            {pet.repoId && (
+              <button className="primary-btn" disabled={cloudBusy} onClick={() => withCloudRequest(async (signal) => {
+                showCloudPet(await refreshCloudPet(pet.id, signal))
+              })}>
+                {cloudBusy ? '正在更新…' : '更新仓库数据'}
+              </button>
+            )}
+            <button className="primary-btn" disabled={cloudBusy} onClick={() => openArena(pet)}>带它去对战</button>
+            {box?.pets.some((p) => packKey(p) === packKey(pet)) && (
+              <button className="ghost-btn" disabled={cloudBusy} onClick={() => setView('box')}>返回卡箱</button>
+            )}
+            <button className="ghost-btn" onClick={reset}>{pet.repoId ? '返回云图鉴' : '再孵一只'}</button>
           </div>
-          <GrowPanel
-            pet={pet}
-            onUpdate={(next) => { setPet(next); setCollection(upsertPet(loadCollection(), next)) }}
-          />
-          <Collection list={collection} onPick={(p) => setPet(p)} />
+          {cloudError && <p className="error" role="alert">{cloudError}</p>}
+          {isCloudCard(pet) && <CloudCombatDetails pet={pet} />}
+          {!pet.repoId && (
+            <GrowPanel
+              pet={pet}
+              onUpdate={(next) => { setPet(next); setCollection(upsertPet(loadCollection(), next)) }}
+            />
+          )}
+          {pet.repoId
+            ? <Collection list={cloudPets} onPick={pickPet} title="云图鉴" />
+            : <Collection list={collection} onPick={pickPet} />}
         </main>
       )}
 
-      {view === 'battle' && (
+      {view === 'battle' && arenaSession && (
         <main className="battle-stage">
           <Battle
-            pets={collection}
-            initial={battleInitial}
-            onExit={() => setView(battleInitial ? 'detail' : 'home')}
-            onReward={grantBattleXp}
+            {...arenaSession}
+            resolveOpponents={loadArenaOpponents}
+            onExit={() => {
+              setView(arenaSession.initial ? 'detail' : 'home')
+              setArenaSession(null)
+            }}
           />
         </main>
       )}

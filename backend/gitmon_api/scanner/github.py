@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import base64
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import quote
 
 from ..errors import RateLimited, ScanError
 from ..repo import RepoRef
 from .http import HttpClient, link_last_page
 from .manifests import normalize_dependencies, parse_manifest
+from .purpose import PurposeFiles, PurposeOption, base64_text, blob_sha
 from .snapshot import RepoSnapshot
 from .tree import analyze_tree
 
@@ -31,15 +32,18 @@ class GitHubScanner:
         self._limit_hits = 0
 
     # ---------- 公共入口 ----------
-    def scan(self, ref: RepoRef) -> RepoSnapshot:
+    def scan(self, ref: RepoRef, *, allow_private: bool = False, purpose: PurposeOption = False,
+             quality: bool = False) -> RepoSnapshot:
         headers = self._headers()
         meta = self.http.get_json(f"{API}/repos/{ref.full_name}", headers=headers)
-        if meta.get("private"):
+        private = bool(meta.get("private")) or meta.get("visibility") in {"private", "internal"}
+        if private and not (allow_private and self.token):
             from ..errors import PrivateRepo
 
             raise PrivateRepo("暂不支持私有仓库")
 
-        snap = RepoSnapshot(ref=ref, fetched_at=datetime.now(timezone.utc).timestamp())
+        snap = RepoSnapshot(ref=ref, fetched_at=datetime.now(timezone.utc).timestamp(),
+                            repo_id=str(meta.get("id") or ""), private=private)
         snap.default_branch = meta.get("default_branch") or "main"
         snap.description = (meta.get("description") or "").strip()
         snap.homepage = (meta.get("homepage") or "").strip()
@@ -48,8 +52,7 @@ class GitHubScanner:
         snap.license = (license_info.get("spdx_id") or license_info.get("name") or "") if isinstance(license_info, dict) else ""
         snap.archived = bool(meta.get("archived"))
         snap.is_fork = bool(meta.get("fork"))
-        snap.stars = int(meta.get("stargazers_count") or 0)
-        snap.forks = int(meta.get("forks_count") or 0)
+        snap.set_recognition_counts(meta)
         snap.watchers = int(meta.get("subscribers_count") or meta.get("watchers_count") or 0)
         snap.open_issues = int(meta.get("open_issues_count") or 0)
         snap.size_kb = int(meta.get("size") or 0)
@@ -57,16 +60,21 @@ class GitHubScanner:
         snap.pushed_at = meta.get("pushed_at") or ""
         snap.language = meta.get("language") or ""
         canonical = meta.get("full_name")
-        if canonical and "/" in canonical and canonical.lower() != ref.full_name.lower():
+        if canonical and "/" in canonical:
             owner, name = canonical.split("/", 1)
             ref = RepoRef(ref.platform, owner, name)
             snap.ref = ref
 
         base = f"{API}/repos/{ref.full_name}"
+        want_purpose = purpose(snap) if callable(purpose) else purpose
 
         # 文件树（结构判定的主数据源）
-        entries, truncated = self._fetch_tree(base, snap.default_branch, headers)
+        entries, truncated, tree_sha = self._fetch_tree(base, snap.default_branch, headers)
         snap.tree = analyze_tree(entries, self.max_tree_entries)
+        purpose_files = None
+        if want_purpose or quality:
+            purpose_files = PurposeFiles(entries, self.max_tree_entries, revision=tree_sha,
+                                         complete=bool(tree_sha) and not truncated)
         if truncated:
             snap.degraded = True
             snap.notes.append("仓库文件过多，文件树被截断，LOC 与测试占比为下限估计")
@@ -121,13 +129,28 @@ class GitHubScanner:
         if isinstance(readme, dict):
             snap.readme_chars = int(readme.get("size") or 0)
 
-        snap.dependencies = self._fetch_dependencies(base, headers, snap.tree)
+        manifest_texts: dict[str, str] = {}
+        snap.dependencies = self._fetch_dependencies(base, headers, snap.tree, purpose_files, manifest_texts)
         snap.notes.append(f"由 GitHub API 扫描 · {len(snap.tree.get('manifests') or [])} 份依赖清单")
 
         if self._limit_hits >= 3:
             raise RateLimited(
                 "GitHub API 配额不足，扫描数据不完整",
                 hint="配置 GITHUB_TOKEN 后可稳定扫描（5000 次/小时）",
+            )
+        if purpose_files is not None:
+            platform_path = readme.get("path") if isinstance(readme, dict) else ""
+            readme_path = purpose_files.readme_path(platform_path or "")
+            if not readme_path and quality:
+                readme_path = snap.tree.get("readme_path") or ""
+            expected_sha = purpose_files.sha(readme_path)
+            readme_text = base64_text(readme) if not expected_sha or blob_sha(readme) == expected_sha else ""
+            if not readme_text and readme_path and purpose_files.can_fetch(readme_path):
+                readme_text = self._purpose_file(base, readme_path, headers, purpose_files)
+            purpose_files.populate(
+                snap, releases, readme=readme_text, readme_path=readme_path or platform_path or "README",
+                manifests=manifest_texts, fetch=lambda path: self._purpose_file(base, path, headers, purpose_files),
+                purpose=want_purpose, quality=quality,
             )
         return snap
 
@@ -150,12 +173,15 @@ class GitHubScanner:
             headers["Authorization"] = f"Bearer {token}"
         return headers
 
-    def _fetch_tree(self, base: str, branch: str, headers: dict[str, str]) -> tuple[list[dict[str, Any]], bool]:
-        data = self._safe_json(f"{base}/git/trees/{branch}", headers, params={"recursive": 1}, default={})
+    def _fetch_tree(self, base: str, branch: str, headers: dict[str, str]) -> tuple[list[dict[str, Any]], bool, str]:
+        data = self._safe_json(f"{base}/git/trees/{quote(branch, safe='')}", headers,
+                               params={"recursive": 1}, default={})
         if not isinstance(data, dict):
-            return [], False
-        entries = data.get("tree") or []
-        return entries, bool(data.get("truncated"))
+            return [], False, ""
+        entries = data.get("tree")
+        if not isinstance(entries, list):
+            return [], False, ""
+        return entries, bool(data.get("truncated")), blob_sha(data)
 
     def _count(self, url: str, headers: dict[str, str], params: dict[str, Any]) -> int | None:
         try:
@@ -225,21 +251,36 @@ class GitHubScanner:
                 buckets[51 - weeks_ago] += 1
         return buckets
 
-    def _fetch_dependencies(self, base: str, headers: dict[str, str], tree: dict[str, Any]) -> list[str]:
+    def _fetch_dependencies(self, base: str, headers: dict[str, str], tree: dict[str, Any],
+                            purpose_files: PurposeFiles | None, manifest_texts: dict[str, str]) -> list[str]:
         tokens: list[str] = []
         for manifest in tree.get("manifests") or []:
             path = manifest.get("path")
             kind = manifest.get("kind")
             if not path or not kind:
                 continue
-            text = self._fetch_file(base, path, headers)
+            text = ""
+            if purpose_files is not None and purpose_files.can_fetch(path):
+                text = self._purpose_file(base, path, headers, purpose_files)
+                manifest_texts[path] = text
+            if not text:
+                text = self._fetch_file(base, path)
             if text:
                 tokens.extend(parse_manifest(kind, path, text))
         return normalize_dependencies(tokens)[:120]
 
-    def _fetch_file(self, base: str, path: str, headers: dict[str, str]) -> str:
+    def _purpose_file(self, base: str, path: str, headers: dict[str, str], files: PurposeFiles) -> str:
+        sha = files.sha(path)
+        if not sha:
+            return self._fetch_file(base, path)
         try:
-            resp = self.http.get(f"{base}/contents/{path}", headers=self._headers(_RAW_ACCEPT), platform="github")
+            return base64_text(self.http.get_json(f"{base}/git/blobs/{sha}", headers=headers, platform="github"))
+        except ScanError:
+            return ""
+
+    def _fetch_file(self, base: str, path: str) -> str:
+        try:
+            resp = self.http.get(f"{base}/contents/{quote(path)}", headers=self._headers(_RAW_ACCEPT), platform="github")
         except RateLimited:
             self._limit_hits += 1
             return ""
@@ -250,12 +291,7 @@ class GitHubScanner:
                 payload = resp.json()
             except ValueError:
                 return ""
-            if isinstance(payload, dict) and payload.get("encoding") == "base64":
-                try:
-                    return base64.b64decode(payload.get("content") or "").decode("utf-8", "replace")
-                except (ValueError, TypeError):
-                    return ""
-            return ""
+            return base64_text(payload)
         return resp.text[:200_000]
 
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { drawSprite } from '../sprite.js'
 
-export default function PixelSprite({ pet, size = 180, animate = true }) {
+export default function PixelSprite({ pet, size = 180, animate = true, src = pet?.spriteUrl }) {
   const ref = useRef(null)
   const [blink, setBlink] = useState(false)
 
@@ -15,10 +15,10 @@ export default function PixelSprite({ pet, size = 180, animate = true }) {
         blink,
       })
     }
-  }, [pet, blink])
+  }, [pet, blink, src])
 
   useEffect(() => {
-    if (!animate) return
+    if (!animate || src) return
     let t
     const loop = () => {
       setBlink(true)
@@ -29,7 +29,20 @@ export default function PixelSprite({ pet, size = 180, animate = true }) {
     }
     t = setTimeout(loop, 2400)
     return () => clearTimeout(t)
-  }, [animate])
+  }, [animate, src])
+
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt=""
+        className={animate ? 'sprite sprite-float' : 'sprite'}
+        width={size}
+        height={size}
+        draggable={false}
+      />
+    )
+  }
 
   return (
     <canvas

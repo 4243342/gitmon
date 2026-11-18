@@ -3,7 +3,10 @@
 // 覆盖：属性表合法性、伤害不变量、战斗必然收敛、同种子可复现、AI 合法性
 
 import { ELEMENTS } from '../src/engine.js'
-import { rivalPets, pickRivalTeam } from '../src/rivals.js'
+import { rivalPets } from '../src/rivals.js'
+import { pickRivalTeam } from '../src/arenaModes.js'
+import { loadArenaOpponents } from '../src/arenaOpponents.js'
+import { prepareArenaRoster } from '../src/arenaRoster.js'
 import {
   TYPE_CHART,
   battleTurn,
@@ -75,6 +78,64 @@ const mockPet = (key) => ({
 })
 
 {
+  const local = { ...mockPet('water'), platform: 'github', fullName: 'Acme/Water' }
+  const cloud = { ...local, fullName: 'acme/water', repoId: '123', exp: 86, bond: 9,
+    element: { key: 'purpose_dark', name: '暗', color: '#9484cc' },
+    battleElement: local.element, battleElementSecondary: ELEMENTS.fire,
+    spriteUrl: '/api/cloud/pets/test/sprite.png?stage=2' }
+  const roster = prepareArenaRoster([cloud], [local], cloud)
+  const snapshot = roster.initial
+  check('云端与本地图鉴同名精灵只选一份', roster.pets.length === 1 && roster.pets[0] === snapshot)
+  check('对战快照只包含出战字段', !('exp' in snapshot) && !('bond' in snapshot))
+  check('对战快照与养成数据独立', snapshot.stats[0] !== cloud.stats[0] && Object.isFrozen(snapshot.stats[0]))
+  check('图鉴用途属性不改变对战属性和副属性', snapshot.element.key === 'water' && snapshot.elementSecondary.key === 'fire')
+  const { state } = createBattle({ playerTeam: [snapshot], enemyTeam: [mockPet('fire')] })
+  const unit = state.sides.player.team[0]
+  check('使用孵化结果中的同阶段立绘', unit.spriteUrl === cloud.spriteUrl)
+  unit.species.name = '战斗临时变化'
+  battleTurn(state, { type: 'move', index: 0 })
+  check('战斗状态不修改图鉴或阵容快照', cloud.species.name === '元素型' && snapshot.species.name === '元素型')
+}
+
+{
+  const realFetch = globalThis.fetch
+  let storageReads = 0
+  let storageWrites = 0
+  globalThis.localStorage = {
+    getItem: () => { storageReads += 1; return 'saved-hatching-token' },
+    setItem: () => { storageWrites += 1 },
+  }
+  const requests = []
+  globalThis.fetch = async (address, options) => {
+    const url = new URL(address)
+    requests.push({ url, ...options })
+    let payload = []
+    if (url.pathname.endsWith('/users/acme')) payload = { login: 'acme' }
+    else if (url.pathname.endsWith('/users/acme/repos')) {
+      payload = [{ name: 'isolated-check', full_name: 'acme/isolated-check', size: 10, language: 'JavaScript' }]
+    } else if (url.pathname.endsWith('/languages')) payload = { JavaScript: 100 }
+    else if (url.pathname.endsWith('/isolated-check')) payload = { language: 'JavaScript' }
+    return Response.json(payload)
+  }
+  try {
+    for (const platform of ['github', 'gitee']) {
+      const result = await loadArenaOpponents(`https://${platform}.com/acme/isolated-check`, 'single')
+      check(`${platform} 公开数据生成只读对手`, Object.isFrozen(result.pets[0]) && result.pets[0].element.key === 'thunder')
+      const team = await loadArenaOpponents(`https://${platform}.com/acme`, 'team')
+      check(`${platform} 整仓对手也使用公开数据`, team.pets.length === 1 && team.pets[0].fullName === 'acme/isolated-check')
+    }
+    check('在线对手只访问平台公开数据', requests.length > 0 && requests.every(({ url, headers, method }) => (
+      ['api.github.com', 'gitee.com'].includes(url.hostname) && !headers?.Authorization
+      && !url.searchParams.has('access_token') && !method
+    )))
+    check('在线对手跳过孵化缓存和令牌', storageReads === 0 && storageWrites === 0)
+  } finally {
+    globalThis.fetch = realFetch
+    delete globalThis.localStorage
+  }
+}
+
+{
   const water = toCombatant(mockPet('water'))
   const fire = toCombatant(mockPet('fire'))
   const grass = toCombatant(mockPet('grass'))
@@ -93,7 +154,7 @@ const mockPet = (key) => ({
 const stats = { turns: [], winner: { player: 0, enemy: 0 }, longest: 0 }
 
 function playOne(seed, difficulty, size) {
-  const pick = (offset) => pickRivalTeam(pets.slice(offset, offset + 4), seed + offset, difficulty).slice(0, size)
+  const pick = (offset) => pickRivalTeam(pets, pets.slice(offset, offset + 4), seed + offset, difficulty).slice(0, size)
   const teamA = pick(0)
   const teamB = pick(0).reverse()
   let { state } = createBattle({ playerTeam: teamA, enemyTeam: teamB, seed, difficulty })
@@ -135,8 +196,8 @@ for (let i = 0; i < 120; i += 1) {
 {
   const seed = 777
   const run = () => {
-    const teamA = pickRivalTeam(pets, seed, 'normal').slice(0, 3)
-    const teamB = pickRivalTeam(pets, seed + 5, 'normal').slice(0, 3)
+    const teamA = pickRivalTeam(pets, pets, seed, 'normal').slice(0, 3)
+    const teamB = pickRivalTeam(pets, pets, seed + 5, 'normal').slice(0, 3)
     let { state } = createBattle({ playerTeam: teamA, enemyTeam: teamB, seed })
     for (let i = 0; i < 12 && !state.winner; i += 1) {
       const usable = state.sides.player.team[state.sides.player.active].moves

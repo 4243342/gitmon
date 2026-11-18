@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPackOpener } from 'pack-opener-js'
 import { packArtwork, cardArtwork } from '../sprite.js'
 import { sfx } from '../sfx.js'
+import { cardFoil, isCloudCard } from '../cardTraits.js'
 import RevealBurst from './RevealBurst.jsx'
 
 // 品质 → 开包库的落档位（决定"落地"这一击有多重）
@@ -23,6 +24,7 @@ export default function PackOpening({ pet, onReveal, muted }) {
   const [ready, setReady] = useState(false)
   const [failed, setFailed] = useState(false)
   const [burst, setBurst] = useState(false)
+  const foil = cardFoil(pet)
 
   // 揭晓只走一次：库的 revealed 事件是唯一权威入口
   const finish = () => {
@@ -41,18 +43,19 @@ export default function PackOpening({ pet, onReveal, muted }) {
     ;(async () => {
       try {
         const pack = packArtwork(pet)
-        const card = cardArtwork(pet)
+        const card = await cardArtwork(pet)
+        if (cancelled) return
         // 这套选项要留着：改静音时 setOptions 是整体替换，不能只传 sound 那一小块
         const options = {
           variant: 'slice',
           assets: { pack: { url: pack }, card: { url: card } },
-          theme: { glow: pet.quality.color },
+          theme: { glow: foil.color },
           // 礼成音轨：默认是关的，这里显式打开
           sound: {
             enabled: true,
             volume: 0.6,
             muted: mutedRef.current,
-            badge: BADGE[pet.quality.key] || null,
+            badge: BADGE[foil.effect] || null,
           },
         }
         optionsRef.current = options
@@ -146,9 +149,11 @@ export default function PackOpening({ pet, onReveal, muted }) {
   }
 
   return (
-    <div className="pack-wrap" style={{ '--q-color': pet.quality.color, '--q-glow': pet.quality.glow }}>
+    <div className="pack-wrap" style={{ '--q-color': foil.color, '--q-glow': foil.glow }}>
       <div className="pack-meta">
-        <span className={`quality-pill q-${pet.quality.key}`}>{pet.quality.key}</span>
+        <span className={`quality-pill q-${foil.effect}`} style={isCloudCard(pet) ? { color: foil.color } : undefined}>
+          {isCloudCard(pet) ? foil.label : foil.key}
+        </span>
         <span className="pack-meta-text">
           {pet.platform === 'gitee' ? 'Gitee' : 'GitHub'} · {pet.fullName}
         </span>
@@ -173,7 +178,7 @@ export default function PackOpening({ pet, onReveal, muted }) {
         一键开包
       </button>
 
-      {burst && <RevealBurst color={pet.quality.color} intensity={pet.quality.key === 'SSR' ? 1.6 : pet.quality.key === 'SR' ? 1.2 : 0.8} />}
+      {burst && <RevealBurst color={foil.color} intensity={foil.effect === 'SSR' ? 1.6 : foil.effect === 'SR' ? 1.2 : 0.8} />}
     </div>
   )
 }

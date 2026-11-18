@@ -1,12 +1,14 @@
-// 分享卡片导出（文档 §7.3）：立绘 + 六维雷达 + 品质 + 等级
-import { drawSprite } from './sprite.js'
+// 分享卡片导出（文档 §7.3）
+import { drawCloudCardTraits, drawPetSprite } from './sprite.js'
+import { elementLabel } from './elementLabel.js'
+import { cardFoil, isCloudCard } from './cardTraits.js'
 
-export function exportShareCard(pet) {
+export async function exportShareCard(pet) {
   const W = 1080, H = 1350
   const c = document.createElement('canvas')
   c.width = W; c.height = H
   const ctx = c.getContext('2d')
-  const q = pet.quality
+  const q = cardFoil(pet)
 
   const bg = ctx.createLinearGradient(0, 0, W, H)
   bg.addColorStop(0, '#1b2740')
@@ -24,12 +26,7 @@ export function exportShareCard(pet) {
   // 立绘
   const sprite = document.createElement('canvas')
   sprite.width = 512; sprite.height = 512
-  drawSprite(sprite, {
-    spriteSeed: pet.spriteSeed,
-    colors: [pet.element.color, pet.elementSecondary?.color || pet.element.color],
-    body: pet.species.body,
-    stage: pet.evolutionStage,
-  })
+  await drawPetSprite(sprite, pet)
   ctx.imageSmoothingEnabled = false
   ctx.drawImage(sprite, (W - 512) / 2, 180, 512, 512)
 
@@ -38,9 +35,19 @@ export function exportShareCard(pet) {
   ctx.font = 'bold 76px -apple-system, "PingFang SC", sans-serif'
   ctx.fillText(pet.repo, W / 2, 800)
 
+  if (isCloudCard(pet)) drawCloudCardTraits(ctx, pet, W, 940, 108, 56)
+  else drawLocalCardDetails(ctx, pet, q, W, H)
+
+  const link = document.createElement('a')
+  link.download = `gitmon-${pet.repo}-${q.key}.png`
+  link.href = c.toDataURL('image/png')
+  link.click()
+}
+
+function drawLocalCardDetails(ctx, pet, q, W, H) {
   ctx.fillStyle = 'rgba(196,210,232,0.8)'
   ctx.font = '36px -apple-system, "PingFang SC", sans-serif'
-  ctx.fillText(`${pet.element.name}系${pet.elementSecondary ? '/' + pet.elementSecondary.name : ''} · ${pet.species.name}`, W / 2, 862)
+  ctx.fillText(`${elementLabel(pet)}${pet.elementSecondary ? '/' + pet.elementSecondary.name : ''} · ${pet.species.name}`, W / 2, 862)
 
   ctx.fillStyle = q.color
   ctx.font = 'bold 54px -apple-system, sans-serif'
@@ -67,9 +74,4 @@ export function exportShareCard(pet) {
   ctx.fillStyle = 'rgba(150,166,192,0.7)'
   ctx.font = '26px -apple-system, sans-serif'
   ctx.fillText(`品质分 ${pet.qualityScore} · 工程量 ${pet.engineeringScore} · ${pet.platform === 'gitee' ? 'Gitee' : 'GitHub'}`, W / 2, H - 60)
-
-  const link = document.createElement('a')
-  link.download = `gitmon-${pet.repo}-${pet.quality.key}.png`
-  link.href = c.toDataURL('image/png')
-  link.click()
 }

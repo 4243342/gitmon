@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react'
 import PixelSprite from './PixelSprite.jsx'
 import RadarChart from './RadarChart.jsx'
+import { elementLabel } from '../elementLabel.js'
+import { cardFoil, cloudCardTraits, isCloudCard } from '../cardTraits.js'
 
 const STAGE_NAME = ['', '幼体', '成长体', '完全体']
 const NEXT_STAGE = { 1: 150, 2: 500, 3: 999 }
@@ -19,17 +21,16 @@ export default function PetCard({ pet, revealed = false }) {
   }
   const onLeave = () => setTilt({ x: 0, y: 0 })
 
-  const q = pet.quality
-  const nextLevel = NEXT_STAGE[pet.evolutionStage]
-  const progress = pet.evolutionStage >= 3 ? 100 : Math.min(100, (pet.level / nextLevel) * 100)
+  const foil = cardFoil(pet)
+  const cloud = isCloudCard(pet)
 
   return (
     <div
       ref={ref}
-      className={`pet-card quality-${q.key} ${revealed ? 'card-flip-in' : ''}`}
+      className={`pet-card quality-${foil.effect} ${cloud ? 'cloud-pet-card' : ''} ${revealed ? 'card-flip-in' : ''}`}
       style={{
-        '--q-color': q.color,
-        '--q-glow': q.glow,
+        '--q-color': foil.color,
+        '--q-glow': foil.glow,
         '--rx': `${tilt.x}deg`,
         '--ry': `${tilt.y}deg`,
         '--mx': `${50 + tilt.y * 2}%`,
@@ -40,12 +41,61 @@ export default function PetCard({ pet, revealed = false }) {
     >
       <div className="holo-layer" />
       <div className="glare" />
+      {cloud ? <CloudCardFace pet={pet} /> : <LocalCardFace pet={pet} />}
+    </div>
+  )
+}
 
+function CloudCardFace({ pet }) {
+  return (
+    <>
+      <div className="card-head">
+        <div className="card-head-text">
+          <div className="pet-name" title={pet.fullName}>{pet.repo}</div>
+        </div>
+      </div>
+      <div className="sprite-frame">
+        <div className="sprite-aura" />
+        <PixelSprite pet={pet} size={200} src={pet.cardSpriteUrl} />
+      </div>
+      <dl className="cloud-card-traits">
+        {cloudCardTraits(pet).map(({ key, label, value, color, hint }) => (
+          <div key={key} title={hint || undefined}>
+            <dt>{label}</dt>
+            <dd style={{ color }}>{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </>
+  )
+}
+
+export function CloudCombatDetails({ pet }) {
+  return (
+    <details className="cloud-combat-details">
+      <summary>对战资料</summary>
+      <p>Lv.{pet.level} · {STAGE_NAME[pet.evolutionStage]} · HP {pet.maxHp}</p>
+      <dl>
+        {pet.stats.map(({ name, value }) => (
+          <div key={name}><dt>{name}</dt><dd>{value}</dd></div>
+        ))}
+      </dl>
+      {pet.skills.length > 0 && <p>{pet.skills.map(({ name }) => name).join(' · ')}</p>}
+    </details>
+  )
+}
+
+function LocalCardFace({ pet }) {
+  const q = pet.quality
+  const nextLevel = NEXT_STAGE[pet.evolutionStage]
+  const progress = pet.evolutionStage >= 3 ? 100 : Math.min(100, (pet.level / nextLevel) * 100)
+  return (
+    <>
       <div className="card-head">
         <div className="card-head-text">
           <div className="pet-name">{pet.repo}</div>
           <div className="pet-sub">
-            {pet.element.name}系
+            <span title={pet.element.trait}>{elementLabel(pet)}</span>
             {pet.elementSecondary && <span className="dual">/{pet.elementSecondary.name}</span>}
             {' · '}{pet.species.name} · {STAGE_NAME[pet.evolutionStage]}
             {pet.status === 'sleeping' && <span className="sleep-tag">沉睡</span>}
@@ -141,6 +191,6 @@ export default function PetCard({ pet, revealed = false }) {
         <span>品质 {pet.qualityScore} · 工程量 {pet.engineeringScore}</span>
         <span>{pet.platform === 'gitee' ? 'Gitee' : 'GitHub'} · ★{pet.stars}</span>
       </div>
-    </div>
+    </>
   )
 }

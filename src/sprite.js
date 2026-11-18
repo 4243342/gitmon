@@ -2,6 +2,8 @@
 // 64×64 网格 · 8 种手绘体型部件（眼/嘴/腮红/耳/尾/四肢/配饰/花纹）· 双属性配色 · 进化阶段加配饰
 import { PRNG } from 'monstrjs/dist/core/prng.js'
 import { applySymmetry } from 'monstrjs/dist/monster/grid.js'
+import { elementLabel } from './elementLabel.js'
+import { cardFoil, cloudCardTraits, isCloudCard } from './cardTraits.js'
 import {
   accessories as ACCESSORY_PARTS,
   cheeks as CHEEK_PARTS,
@@ -137,6 +139,25 @@ export function drawSprite(canvas, { spriteSeed, colors, body, stage }) {
   }
 }
 
+export async function drawPetSprite(canvas, pet) {
+  const spriteUrl = pet.cardSpriteUrl ?? pet.spriteUrl
+  if (spriteUrl) {
+    const image = new Image()
+    image.src = spriteUrl
+    await image.decode()
+    const ctx = canvas.getContext('2d')
+    ctx.imageSmoothingEnabled = false
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
+    return
+  }
+  drawSprite(canvas, {
+    spriteSeed: pet.spriteSeed,
+    colors: [pet.element.color, pet.elementSecondary?.color || pet.element.color],
+    body: pet.species.body,
+    stage: pet.evolutionStage,
+  })
+}
+
 // ---------- 卡包 / 卡面美术（供 pack-opener-js 使用） ----------
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath()
@@ -153,7 +174,7 @@ export function packArtwork(pet) {
   const c = document.createElement('canvas')
   c.width = W; c.height = H
   const ctx = c.getContext('2d')
-  const q = pet.quality
+  const q = cardFoil(pet)
 
   const g = ctx.createLinearGradient(0, 0, W, H)
   g.addColorStop(0, '#1e2942')
@@ -198,7 +219,7 @@ export function packArtwork(pet) {
 
   ctx.fillStyle = q.color
   ctx.font = 'bold 44px -apple-system, sans-serif'
-  ctx.fillText(q.key, W / 2, H / 2 + 132)
+  ctx.fillText(isCloudCard(pet) ? q.label : q.key, W / 2, H / 2 + 132)
 
   ctx.fillStyle = 'rgba(200,212,232,0.35)'
   ctx.font = '22px -apple-system, sans-serif'
@@ -207,11 +228,21 @@ export function packArtwork(pet) {
   return c.toDataURL('image/png')
 }
 
-export function cardArtwork(pet) {
+export function drawCloudCardTraits(ctx, pet, width, y, gap, fontSize) {
+  ctx.textAlign = 'center'
+  ctx.font = `bold ${fontSize}px -apple-system, "PingFang SC", sans-serif`
+  cloudCardTraits(pet).forEach(({ label, value, color }, index) => {
+    ctx.fillStyle = color
+    ctx.fillText(`${label}  ${value}`, width / 2, y + gap * index)
+  })
+}
+
+export async function cardArtwork(pet) {
   const W = 600, H = 840
   const c = document.createElement('canvas')
   c.width = W; c.height = H
   const ctx = c.getContext('2d')
+  const foil = cardFoil(pet)
 
   const g = ctx.createLinearGradient(0, 0, W, H)
   g.addColorStop(0, '#243252')
@@ -220,20 +251,15 @@ export function cardArtwork(pet) {
   roundRect(ctx, 0, 0, W, H, 40); ctx.fill()
 
   ctx.lineWidth = 10
-  ctx.strokeStyle = pet.quality.color
-  ctx.shadowColor = pet.quality.glow
+  ctx.strokeStyle = foil.color
+  ctx.shadowColor = foil.glow
   ctx.shadowBlur = 36
   roundRect(ctx, 10, 10, W - 20, H - 20, 34); ctx.stroke()
   ctx.shadowBlur = 0
 
   const spriteCanvas = document.createElement('canvas')
   spriteCanvas.width = 320; spriteCanvas.height = 320
-  drawSprite(spriteCanvas, {
-    spriteSeed: pet.spriteSeed,
-    colors: [pet.element.color, pet.elementSecondary?.color || pet.element.color],
-    body: pet.species.body,
-    stage: pet.evolutionStage,
-  })
+  await drawPetSprite(spriteCanvas, pet)
   ctx.imageSmoothingEnabled = false
   ctx.drawImage(spriteCanvas, (W - 320) / 2, 120, 320, 320)
 
@@ -242,9 +268,14 @@ export function cardArtwork(pet) {
   ctx.textAlign = 'center'
   ctx.fillText(pet.repo, W / 2, 520)
 
+  if (isCloudCard(pet)) {
+    drawCloudCardTraits(ctx, pet, W, 600, 66, 34)
+    return c.toDataURL('image/png')
+  }
+
   ctx.fillStyle = 'rgba(190,204,226,0.75)'
   ctx.font = '28px -apple-system, "PingFang SC", sans-serif'
-  const typeText = `${pet.element.name}系${pet.elementSecondary ? '/' + pet.elementSecondary.name : ''} · ${pet.species.name}`
+  const typeText = `${elementLabel(pet)}${pet.elementSecondary ? '/' + pet.elementSecondary.name : ''} · ${pet.species.name}`
   ctx.fillText(typeText, W / 2, 570)
 
   ctx.fillStyle = pet.quality.color

@@ -69,6 +69,20 @@ class RepoSnapshot:
     # ---- 扫描质量 ----
     degraded: bool = False
     notes: list[str] = field(default_factory=list)
+    repo_id: str = ""
+    private: bool = False
+    recognition_counts_known: bool = True
+    purpose_evidence: dict[str, Any] = field(default_factory=dict, repr=False)
+    quality_evidence: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    def set_recognition_counts(self, meta: dict[str, Any]) -> None:
+        stars = meta.get("stargazers_count")
+        forks = meta.get("forks_count")
+        valid_stars = type(stars) is int and stars >= 0
+        valid_forks = type(forks) is int and forks >= 0
+        self.recognition_counts_known = valid_stars and valid_forks
+        self.stars = stars if valid_stars else 0
+        self.forks = forks if valid_forks else 0
 
     # ---------- 派生指标 ----------
     @property
@@ -119,6 +133,8 @@ class RepoSnapshot:
 
     def to_dict(self) -> dict[str, Any]:
         data = self.__dict__.copy()
+        data.pop("purpose_evidence", None)  # Only used during the authorized cloud scan.
+        data.pop("quality_evidence", None)
         data["ref"] = self.ref.to_dict()
         return data
 
