@@ -24,7 +24,6 @@
     "gsap": "^3.15.1",
     "inkjs": "^2.4.0",
     "monstrjs": "^1.0.0",
-    "pack-opener-js": "^0.5.15",
     "pixelfx": "github:patch-gg/pixelfx",
     "pixi.js": "^8.22.0",
     "react": "^18.3.1",

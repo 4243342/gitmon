@@ -3,10 +3,12 @@ import PixelSprite from './PixelSprite.jsx'
 import { sfx } from '../sfx.js'
 import { elementLabel } from '../elementLabel.js'
 import { cardFoil, cloudCardTraits, isCloudCard } from '../cardTraits.js'
+import { groupIntoPacks } from '../packGroups.js'
 import { useI18n } from '../i18n.js'
 
-// 整箱卡包（文档 §2.3）：一个账号 = 该账号每个项目一个卡包
+// 整箱卡包：账号下的项目每 5 个装一包，品质由包里最好的那个决定外观
 const palette = { SSR: '#ffb300', SR: '#ab47bc', R: '#42a5f5', N: '#9e9e9e' }
+const RANK = { N: 1, R: 2, SR: 3, SSR: 4 }
 
 export default function PackBox({
   box,
@@ -24,6 +26,8 @@ export default function PackBox({
   const { t } = useI18n()
   const { owner, pets, listed, limit, truncated, skipped, rateLimited, failed, partial } = box
   const cloud = Boolean(box.id)
+  const packs = groupIntoPacks(pets)
+
   const tallies = new Map(cloud ? [] : Object.entries(palette).map(([key, color]) => [key, { key, color, label: key, count: 0 }]))
   for (const pet of pets) {
     const foil = cardFoil(pet)
@@ -31,6 +35,7 @@ export default function PackBox({
     const tally = tallies.get(key) || { ...foil, count: 0 }
     tallies.set(key, { ...tally, count: tally.count + 1 })
   }
+
   const allRevealed = revealedAll || pets.every((pet) => opened.has(pet.id || pet.fullName))
   const remaining = pets.filter((pet) => !saved.has(pet.id || pet.fullName)).length
   const exitText = exitLabel ?? t('换个账号 / 仓库', 'Switch account / repo')
@@ -54,7 +59,9 @@ export default function PackBox({
               {owner.platform === 'gitee' ? 'Gitee' : 'GitHub'}
               {owner.isOrg ? t(' · 组织', ' · Org') : t(' · 账号', ' · Account')}
               {' · '}
-              <b>{pets.length}</b>{t(' 个卡包', ' packs')}
+              <b>{pets.length}</b>{t(' 个项目', ' projects')}
+              {' · '}
+              <b>{packs.length}</b>{t(' 包', ' packs')}
               {(truncated || listed > pets.length) && <em>{t(`（从 ${listed} 个项目里取最近活跃的 ${limit} 个）`, `(${limit} most recently active of ${listed} projects)`)}</em>}
             </p>
           </div>
@@ -73,7 +80,7 @@ export default function PackBox({
       <p className="box-hint">
         {cloud
           ? t('点开卡包查看属性、罕见度和品质。', 'Tap a pack to see its attribute, rarity and quality.')
-          : t('每个卡包对应一个项目，品质由那个项目自己的代码质量决定 —— 点开任意一包，看抽中什么。', 'Each pack is one project; its rarity comes from that repo’s own code quality — tap any pack to see what you drew.')}
+          : t('每 5 个项目装一包，品质取包里最好的那个 —— 点开任意一包，看抽中什么。', 'Every 5 projects make a pack, its look comes from the best one inside — tap any pack to see what you drew.')}
       </p>
 
       {(truncated || rateLimited || failed?.length > 0 || partial > 0) && (
@@ -87,54 +94,58 @@ export default function PackBox({
       )}
 
       <div className="pack-grid">
-        {pets.map((pet, i) => {
-          const key = pet.id || pet.fullName
-          const isOpen = opened.has(key)
-          const isSaved = saved.has(key)
-          const revealed = revealedAll || isOpen
-          const foil = cardFoil(pet)
-          const traits = isCloudCard(pet) ? cloudCardTraits(pet) : null
+        {packs.map((pack, i) => {
+          // 包的外观取包里最好的品质
+          let best = null
+          for (const pet of pack) {
+            const foil = cardFoil(pet)
+            if (!best || (RANK[foil.effect] || 0) > (RANK[best.effect] || 0)) best = foil
+          }
+          const revealed = revealedAll || pack.every((pet) => opened.has(pet.id || pet.fullName))
+          const kept = pack.filter((pet) => saved.has(pet.id || pet.fullName)).length
           return (
             <button
-              key={key}
-              className={`pack-tile q-${foil.effect}${traits ? ' cloud-pack-tile' : ''}${isOpen ? ' is-open' : ''}${revealed ? ' is-revealed' : ''}`}
-              style={{ '--q-color': foil.color, '--q-glow': foil.glow, '--i': i }}
-              onClick={() => { sfx.swoosh(); onOpen(pet, revealed, isSaved) }}
+              key={`pack-${i}`}
+              className={`pack-tile q-${best.effect}${revealed ? ' is-revealed' : ''}`}
+              style={{ '--q-color': best.color, '--q-glow': best.glow, '--i': i }}
+              onClick={() => { sfx.swoosh(); onOpen(pack, i) }}
               disabled={saving}
-              title={traits ? pet.fullName : `${pet.fullName} · ${pet.quality.name} · Lv.${pet.level}`}
+              title={pack.map((pet) => `${pet.repo} · ${cardFoil(pet).label || cardFoil(pet).name || cardFoil(pet).key}`).join('\n')}
             >
               <span className="pt-foil" />
               <span className="pt-brand">GITMON</span>
               <span className="pt-shield" />
 
-              <span className="pt-art">
-                {revealed
-                  ? <PixelSprite pet={pet} size={72} animate={false} src={pet.cardSpriteUrl} />
-                  : <span className="pt-seal">?</span>}
+              <span className="pt-slots">
+                {pack.map((pet) => {
+                  const key = pet.id || pet.fullName
+                  const isKept = saved.has(key)
+                  return (
+                    <span key={key} className={`pt-slot${isKept ? ' is-kept' : ''}`}>
+                      {revealed
+                        ? <PixelSprite pet={pet} size={40} animate={false} src={pet.cardSpriteUrl} />
+                        : <span className="pt-seal">?</span>}
+                    </span>
+                  )
+                })}
               </span>
 
-              <span className="pt-name">{pet.repo}</span>
-              {traits && revealed ? (
-                <span className="pt-meta cloud-mini-traits">
-                  {traits.map(({ key, label, value, color }) => (
-                    <span key={key} style={{ color }}><b>{label}</b>{value}</span>
-                  ))}
-                </span>
-              ) : (
-                <span className="pt-meta">
-                  {traits ? foil.label : `${elementLabel(pet)} · Lv.${pet.level}`}
-                </span>
-              )}
-              {revealed && <span className="pt-new">{isSaved ? t('已收下', 'Kept') : 'NEW'}</span>}
+              <span className="pt-name">{t(`第 ${i + 1} 包`, `Pack ${i + 1}`)}</span>
+              <span className="pt-meta">
+                {revealed
+                  ? `${pack.length} ${t('只', 'pets')}${kept ? ` · ${t(`已收 ${kept}`, `${kept} kept`)}` : ''}`
+                  : `${pack.length} ${t('只', 'pets')} · ${best.label || best.name || best.key}`}
+              </span>
+              {revealed && <span className="pt-new">{kept === pack.length ? t('已收下', 'Kept') : 'NEW'}</span>}
             </button>
           )
         })}
       </div>
 
       <div className="actions box-actions">
-        {!allRevealed && pets.length > 1 && (
-          <button className="primary-btn" onClick={() => { sfx.tiles(pets.length); onOpenAll() }}>
-            {t(`一键全开（${pets.length} 包）`, `Open All (${pets.length})`)}
+        {!allRevealed && packs.length > 1 && (
+          <button className="primary-btn" onClick={() => { sfx.tiles(packs.length); onOpenAll() }}>
+            {t(`一键全开（${packs.length} 包）`, `Open All (${packs.length})`)}
           </button>
         )}
         {/* 收下（保存）流程：已揭晓的包才可收入，剩下的还能补收 */}

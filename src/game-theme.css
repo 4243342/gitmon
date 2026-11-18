@@ -1008,6 +1008,29 @@ body::after {
   50% { opacity: 1; }
 }
 
+/* 一包里的 5 个项目：竖排的小卡位，未揭晓是封条，已揭晓是立绘 */
+.pt-slots {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  z-index: 1;
+}
+.pt-slot {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 20%;
+  min-height: 0;
+}
+.pt-slot .pt-seal { width: 100%; height: 100%; max-width: 22px; max-height: 22px; font-size: 9px; }
+.pt-slot img { image-rendering: pixelated; }
+.pt-slot.is-kept { filter: drop-shadow(0 0 4px var(--accent)); }
+
 .pt-name {
   font-size: 10.5px;
   color: #e6edfb;

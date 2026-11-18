@@ -61,9 +61,9 @@
 
 ## 玩法
 
-- 🎴 **开包**：品质决定卡包外观，SSR 金光闪闪
-- 🔊 **过场音效**：双层音轨——pack-opener-js 的礼成采样（指尖铝箔、掀盖、抽卡风声、落地一击，SSR 落得最重）+ WebAudio 合成的芯片音（卡包登场、整箱琶音、翻格连打、收图鉴铃音）
-- 📦 **整箱**：输入账号主页 = 该账号每个项目一包，一键全开、批量收图鉴
+- 🎴 **开包**：全息 3D 卡包，拖动封口撕开，卡牌绕场摊开；品质决定包身颜色，SSR 金光闪闪
+- 🔊 **过场音效**：双层音轨——WebAudio 实时合成的铝箔撕裂 / 翻牌 / 落地声 + 合成的芯片音（卡包登场、整箱琶音、翻格连打、收图鉴铃音）
+- 📦 **整箱**：输入账号主页 = 每 5 个项目装一包（同包不重复），一键全开、批量收图鉴
 - ⬆️ **养成**：commit +2 XP、合并 PR +10 XP、发 release +50 XP
 - 🧬 **进化**：8 个节点、9 个形态，Lv.10 起每跨一个台阶换一次外形，**Lv.500 起化为人形态**（详见下节）
 - ⚔️ **对战**：1–3 只组队上竞技场，属性克制 + 先制 + 异常状态 + 换人，3v3 回合制
@@ -334,8 +334,8 @@ AI 味 ≥50 → 词条「根基不稳」，≥75 → 「生成体」；根基�
 
 | 来源 | 我们用了什么 | 落点 | 协议 |
 |---|---|---|---|
-| [pack-opener-js](https://www.npmjs.com/package/pack-opener-js) `0.5` | **开包动画引擎**：手指划开撕口 → 卡包盖飞出 → 卡牌带品质辉光翻面；slice / burst / carousel 三种机制、稀有度辉光色随品质切换 | [`src/components/PackOpening.jsx`](src/components/PackOpening.jsx) | MIT |
-| [PixiJS](https://github.com/pixijs/pixijs) `8` | pack-opener-js 的 WebGL 渲染后端（我们只做实例配置与素材喂入） | 随 pack-opener-js 间接引入 | MIT |
+| [holo-card-pack](https://github.com/akasakariko/frontend-components/tree/main/holo-card-pack) | **全息 3D 卡包**：CSS 3D 包身与封口压齿、拖动撕口 + 铝箔内衬、彩虹流、卡牌绕场摊开与箔面视差、WebAudio 合成撕纸音效。移植到 [`src/holoPack/`](src/holoPack/)，卡面与卡包配色改为 GitMon 数据 | [`src/components/HoloPack.jsx`](src/components/HoloPack.jsx) | MIT |
+| [PixiJS](https://github.com/pixijs/pixijs) `8` | 对战与剧情场景的 WebGL 渲染 | 间接引入 | MIT |
 | [tsParticles](https://github.com/tsparticles/tsparticles) `4`（`@tsparticles/react` + `slim`） | 开包揭晓与升级的粒子氛围，配色按 N / R / SR / SSR 参数化 | [`src/components/RevealBurst.jsx`](src/components/RevealBurst.jsx) | MIT |
 | [pixelfx](https://github.com/patch-gg/pixelfx) `0.3` | **对战攻击特效**：按模块引入约 35 个程序化像素特效（火 / 水 / 雷 / 冲击 / 爆裂 / 投射 / 生成），按招式属性与威力选片，单独打包、进竞技场才加载 | [`src/vfx.js`](src/vfx.js) | MIT |
 | ↳ [Sprite Fusion Pixel Art VFX](https://www.spritefusion.com/pixel-art-vfx)（Hugo Duprez） | pixelfx 的 `core/sim.js` 与部分特效改写自此，为本项目的粒子物理/光照缓冲提供底层 | 间接依赖 | MIT |

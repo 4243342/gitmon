@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from './i18n.js'
 import { parseRepoInput, scanOwnerBox, scanRepo } from './scan.js'
 import { derivedFieldsOf, expForLevel, judge, recomputePetStats } from './engine.js'
@@ -18,8 +18,9 @@ import { sfx } from './sfx.js'
 import { bgm } from './bgm.js'
 import AuthPage from './components/AuthPage.jsx'
 import PetCard, { CloudCombatDetails } from './components/PetCard.jsx'
-import PackOpening from './components/PackOpening.jsx'
+import HoloPack from './components/HoloPack.jsx'
 import PackBox from './components/PackBox.jsx'
+import { groupIntoPacks } from './packGroups.js'
 import Collection from './components/Collection.jsx'
 import GrowPanel from './components/GrowPanel.jsx'
 import Battle from './components/Battle.jsx'
@@ -223,6 +224,8 @@ export default function App() {
   const [step, setStep] = useState(0)
   const [mode, setMode] = useState('repo') // repo | owner
   const [box, setBox] = useState(null)
+  // 当前这一包：整箱里每 5 个项目装一包，单仓库则只有一只
+  const [packSession, setPackSession] = useState(null)
   const [opened, setOpened] = useState(() => new Set())
   const [savedPacks, setSavedPacks] = useState(() => new Set())
   const [revealedAll, setRevealedAll] = useState(false)
@@ -951,6 +954,7 @@ export default function App() {
       const judged = judge(snap)
       await new Promise((r) => setTimeout(r, 420))
       setPet(judged)
+      setPackSession({ pets: [judged] })
       setView('pack')
     } catch (e) {
       fail(e)
@@ -1081,6 +1085,59 @@ export default function App() {
 
   const fromBox = pet && box && (box.id ? pet.boxId === box.id : !pet.repoId)
 
+  // 整箱里每 5 个项目一包；单仓库只有一只，独成一包
+  const packs = useMemo(() => (box ? groupIntoPacks(box.pets) : []), [box])
+  const openPack = (packPets, index = 0) => {
+    setPackSession({ pets: packPets, label: `PACK ${String(index + 1).padStart(2, '0')}` })
+    setView('pack')
+  }
+  // 还没拆开的包有几包
+  const packsLeft = packs.filter((p) => !p.every((pet) => opened.has(packKey(pet)))).length
+
+  // 一包摊开后，这一包里的项目都算已揭晓
+  const afterPackSpread = (packPets) => {
+    if (!packPets?.length) return
+    setOpened((s) => {
+      const next = new Set(s)
+      packPets.forEach((p) => next.add(packKey(p)))
+      return next
+    })
+    sfx.reveal(cardFoil(packPets[0]).effect)
+    // 单仓库只有一只，摊开后直接进揭晓页
+    if (packPets.length === 1) {
+      setPet(packPets[0])
+      setView('reveal')
+    }
+  }
+
+  // 收下整包：一次性把这一包里的项目都收进图鉴
+  const collectPack = (packPets) => {
+    if (!packPets?.length) return
+    const finish = (list) => {
+      setSavedPacks((s) => {
+        const next = new Set(s)
+        list.forEach((p) => next.add(packKey(p)))
+        return next
+      })
+      setPackSession(null)
+      sfx.collect()
+      setView('box')
+    }
+    if (packPets.some((p) => p.previewId || p.boxId)) {
+      return withCloudRequest(async (signal) => {
+        const list = []
+        for (const p of packPets) list.push(await collectCloudPet(p, signal))
+        rememberCloudPets(list)
+        finish(list)
+      })
+    }
+    let list = loadCollection()
+    packPets.forEach((p) => { list = upsertPet(list, p) })
+    setCollection(list)
+    markDirty(packPets)
+    finish(packPets)
+  }
+
   const afterReveal = () => {
     setView('reveal')
     if (pet) {
@@ -1206,7 +1263,7 @@ export default function App() {
   const storyReady = storyBinding && storyKey && storyCast.length > 0
 
   return (
-    <div className="app">
+    <div className={`app${view === 'pack' ? ' is-packing' : ''}`}>
       {storyNotice && (
         <button className="story-toast" onClick={() => setStoryNotice('')}>{storyNotice}</button>
       )}
@@ -1779,12 +1836,11 @@ export default function App() {
           opened={opened}
           saved={savedPacks}
           revealedAll={revealedAll}
-          onOpen={(p, revealed, saved) => {
-            const existing = saved && (box.id ? cloudPets : collection).find((item) => packKey(item) === packKey(p))
-            if (existing) return pickPet(existing)
+          onOpen={(packPets, index) => {
+            const kept = packPets.filter((p) => savedPacks.has(packKey(p)))
+            if (kept.length === packPets.length) return pickPet(kept[0])
             setCloudError('')
-            setPet(p)
-            setView(revealed ? 'reveal' : 'pack')
+            openPack(packPets, index)
           }}
           onOpenAll={() => setRevealedAll(true)}
           onSaveAll={saveAll}
@@ -1795,10 +1851,16 @@ export default function App() {
         />
       )}
 
-      {view === 'pack' && pet && (
-        <main className="pack-stage">
-          <PackOpening pet={pet} onReveal={afterReveal} muted={muted} />
-        </main>
+      {view === 'pack' && packSession && (
+        <HoloPack
+          pets={packSession.pets}
+          muted={muted}
+          label={packSession.label}
+          onSpread={afterPackSpread}
+          onPick={(p) => { setPet(p); setView('reveal'); sfx.reveal(cardFoil(p).effect) }}
+          onCollect={box ? collectPack : null}
+          onBack={box ? () => { setPackSession(null); setView('box') } : null}
+        />
       )}
 
       {view === 'reveal' && pet && (
@@ -1816,7 +1878,7 @@ export default function App() {
             {fromBox ? (
               <>
                 <button className="primary-btn" disabled={cloudBusy} onClick={() => collectRevealed(true)}>
-                  {cloudBusy ? t('正在收入…', 'Collecting…') : t('收下 · 回卡箱', 'Collect · Back to Box')}{box.pets.length - opened.size > 0 ? t(`（还剩 ${box.pets.length - opened.size} 包）`, ` (${box.pets.length - opened.size} left)`) : ''}
+                  {cloudBusy ? t('正在收入…', 'Collecting…') : t('收下 · 回卡箱', 'Collect · Back to Box')}{packsLeft > 0 ? t(`（还剩 ${packsLeft} 包）`, ` (${packsLeft} left)`) : ''}
                 </button>
                 <button className="ghost-btn" disabled={cloudBusy} onClick={() => collectRevealed()}>{t('收下并看详情', 'Collect & View')}</button>
                 <button className="ghost-btn" onClick={goDetail}>{t('看详情', 'Details')}</button>
@@ -1985,7 +2047,7 @@ export default function App() {
         onPosChange={(p) => setDesk((d) => ({ ...d, pos: p }))}
       />
       <footer className="footer">
-        {t('GitMon Prototype v0.3 · 数据来自 GitHub / Gitee 公开 API · 开包动画 pack-opener-js · 粒子 tsParticles · 对战机制参照 Pokémon Showdown（MIT）', 'GitMon Prototype v0.3 · Data from GitHub / Gitee public APIs · Pack animation pack-opener-js · Particles tsParticles · Battle mechanics modeled on Pokémon Showdown (MIT)')}
+        {t('GitMon Prototype v0.3 · 数据来自 GitHub / Gitee 公开 API · 开包动画 holo-card-pack（MIT）· 粒子 tsParticles · 对战机制参照 Pokémon Showdown（MIT）', 'GitMon Prototype v0.3 · Data from GitHub / Gitee public APIs · Pack animation holo-card-pack (MIT) · Particles tsParticles · Battle mechanics modeled on Pokémon Showdown (MIT)')}
       </footer>
     </div>
   )

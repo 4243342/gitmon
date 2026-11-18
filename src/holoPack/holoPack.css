@@ -1,0 +1,301 @@
+/* 全息 3D 卡包
+   移植自开源项目 akasakariko/frontend-components 的 holo-card-pack（MIT），
+   适配 GitMon：类名统一加 hp- 前缀避免与本项目样式冲突，改深色底，
+   卡面换成 GitMon 自己的立绘，卡包正面改成纯 CSS 绘制。 */
+
+.hp-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+  background:
+    radial-gradient(120% 90% at 50% 34%, rgba(78, 104, 210, .22), transparent 62%),
+    radial-gradient(90% 70% at 50% 108%, rgba(255, 140, 60, .16), transparent 62%),
+    radial-gradient(70% 60% at 12% 8%, rgba(120, 60, 200, .18), transparent 65%),
+    #070b14;
+}
+
+/* 舞台：引擎把自己的 DOM 塞进这里 */
+.hp-host {
+  --hp-ease-out: cubic-bezier(.23, 1, .32, 1);
+  --hp-spring: linear(0, 0.055, 0.193, 0.378, 0.577, 0.767, 0.93, 1.056, 1.142, 1.19, 1.205, 1.195, 1.167, 1.13, 1.089, 1.05, 1.016, 0.99, 0.972, 0.961, 0.958, 0.96, 0.965, 0.973, 0.981, 0.989, 0.996, 1.002, 1.006, 1.008, 1);
+  /* 卡包比例 0.69:1，卡片 1:1.4 —— 比卡包窄一点才塞得进去 */
+  --hp-ph: min(400px, 52vh, 52svh, 110vw);
+  --hp-pw: calc(var(--hp-ph) * .69);
+  --hp-cw: calc(var(--hp-pw) * .84);
+  --hp-ch: calc(var(--hp-cw) * 1.4);
+  --hp-crimp: calc(var(--hp-ph) * .068);
+  --hp-d: 16px;
+  --hp-pack: #2b3ff0;
+  --hp-rainbow: repeating-linear-gradient(110deg, #ff7aa8 0%, #ffcf6b 5%, #a8ff8a 10%, #6be2ff 15%, #9b8cff 20%, #ff7aa8 25%);
+  /* 阈值化噪点：稀疏白点，当作闪粉 */
+  --hp-glitter: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='.8' seed='7' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 14 0 0 0 -8.6'/></filter><rect width='160' height='160' filter='url(%23g)'/></svg>");
+  position: absolute;
+  inset: 0;
+  perspective: 1400px;
+  perspective-origin: 50% 40%;
+}
+
+.hp-scene {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+.hp-scene.flat { transform-style: flat; }
+
+.hp-hit, .hp-card { pointer-events: auto; }
+
+.hp-pack, .hp-card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.hp-pack {
+  width: var(--hp-pw);
+  height: var(--hp-ph);
+  margin: calc(var(--hp-ph) / -2) 0 0 calc(var(--hp-pw) / -2);
+}
+
+.hp-ground {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--hp-pw) * .95);
+  height: calc(var(--hp-pw) * .16);
+  margin: calc(var(--hp-pw) * -.08) 0 0 calc(var(--hp-pw) * -.475);
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(0, 0, 0, .6), transparent);
+  filter: blur(6px);
+}
+
+/* 卡包外皮：正反两面共用底纹，撕口才严丝合缝 */
+.hp-skin {
+  --hp-tooth: calc(var(--hp-pw) / 26);
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  transform: translateZ(calc(var(--hp-d) / 2));
+  background:
+    var(--hp-shade, none) 0 0/100% 100%,
+    linear-gradient(90deg, transparent 91%, rgba(0, 0, 0, .18) 97.6%) 0 50%/100% calc(100% - 2 * var(--hp-crimp)) no-repeat,
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, .2) 0 1px, rgba(255, 255, 255, .09) 1px 2px, transparent 2px 5px) 0 0/100% var(--hp-crimp) no-repeat,
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, .2) 0 1px, rgba(255, 255, 255, .09) 1px 2px, transparent 2px 5px) 0 100%/100% var(--hp-crimp) no-repeat,
+    var(--hp-pack);
+  mask:
+    conic-gradient(from 135deg at 50% 0, transparent, #000 1deg 89deg, transparent 90deg) 0 0/var(--hp-tooth) calc(var(--hp-tooth) / 2) repeat-x,
+    url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'><path d='M0 0H100V5.6C100 8 97.6 7.6 97.6 10V90C97.6 92.4 100 92 100 94.4V100H0V94.4C0 92 2.4 92.4 2.4 90V10C2.4 7.6 0 8 0 5.6Z'/></svg>") 0 50%/100% calc(100% - var(--hp-tooth)) no-repeat,
+    conic-gradient(from -45deg at 50% 100%, transparent, #000 1deg 89deg, transparent 90deg) 0 100%/var(--hp-tooth) calc(var(--hp-tooth) / 2) repeat-x;
+}
+
+.hp-skin.back { transform: rotateY(180deg) translateZ(calc(var(--hp-d) / 2)); }
+
+/* 铝箔反光：左缘滑光随包裹转动移动，顶部封口下的高光也跟着偏 */
+.hp-skin::before, .hp-skin::after { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.hp-skin::before {
+  background: linear-gradient(90deg, transparent 2.4%, rgba(255, 255, 255, .72) 3%, rgba(255, 255, 255, .3) 5%, transparent 9%);
+  mask: linear-gradient(transparent 7%, #000 13% 48%, transparent 84%);
+  translate: calc(var(--hp-gx, 0) * 1%) 0;
+  opacity: var(--hp-gl, .8);
+}
+.hp-skin::after {
+  background: var(--hp-shine, none) 0 0/100% 100%;
+  opacity: var(--hp-gt, .85);
+  mask: linear-gradient(90deg, rgba(0, 0, 0, .45), #000 40% 60%, rgba(0, 0, 0, .45)) calc(var(--hp-gm, 50) * 1%) 0/250% 100%;
+}
+
+/* 彩虹流：从撕口涌出，夹在两面之间 */
+.hp-flow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--hp-pw);
+  height: var(--hp-ph);
+  margin: calc(var(--hp-ph) / -2) 0 0 calc(var(--hp-pw) / -2);
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+/* 彩虹流是一张 SVG，画在包身同尺寸的盒子里，撕口就在它的 y=60 处 */
+.hp-rays {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  top: calc(10.5% - var(--hp-pw) * .6);
+  height: calc(var(--hp-pw) * .76);
+  overflow: visible;
+  opacity: 0;
+  transform: translateZ(-6px);
+}
+.hp-band, .hp-edge, .hp-mote { pointer-events: none; }
+
+/* 印刷面 */
+.hp-tag { position: absolute; left: 9%; top: calc(var(--hp-crimp) + .9%); font: 700 calc(var(--hp-pw) * .029)/1 system-ui, sans-serif; letter-spacing: .16em; text-transform: uppercase; color: rgba(255, 255, 255, .78); }
+.hp-mark { position: absolute; left: 9%; top: 15%; font: 800 calc(var(--hp-pw) * .165)/1 ui-rounded, "SF Pro Rounded", system-ui, sans-serif; letter-spacing: -.045em; color: #fff; text-shadow: 0 2px 12px rgba(0, 0, 0, .35); }
+.hp-series { position: absolute; right: 9%; top: 17.5%; font: 600 calc(var(--hp-pw) * .036)/1 system-ui, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: rgba(255, 255, 255, .72); }
+.hp-foot { position: absolute; bottom: calc(var(--hp-crimp) + 3.4%); font: 500 calc(var(--hp-pw) * .042)/1 system-ui, sans-serif; color: rgba(255, 255, 255, .8); }
+.hp-foot.l { left: 9%; }
+.hp-foot.r { right: 9%; }
+
+/* 吉祥物：纯 CSS 镀铬小球，眨眼 / 皱眉 / 冒汗都是几何图形 */
+.hp-orb { position: absolute; left: 8%; width: 84%; top: 26.5%; aspect-ratio: 1; transition: scale .35s var(--hp-spring); }
+.hp-orb-body {
+  position: absolute; inset: 0; border-radius: 50%;
+  background:
+    radial-gradient(38% 30% at 34% 26%, #fff 0%, rgba(255, 255, 255, .55) 18%, transparent 46%),
+    conic-gradient(from 200deg, #7f8bff, #dfe6ff, #9aa6ff, #f0f4ff, #8f9bff, #7f8bff);
+  box-shadow: inset 0 0 18px rgba(255, 255, 255, .55), 0 10px 26px rgba(0, 0, 0, .35);
+  filter: hue-rotate(calc(var(--hp-sh, 0) * 1deg));
+}
+.hp-eye { position: absolute; width: 9%; height: 13%; top: 40%; border-radius: 50%; background: #10142a; transition: scale .14s var(--hp-ease-out), opacity .09s; }
+.hp-eye.l { left: 32%; }
+.hp-eye.r { right: 32%; }
+.hp-pupil { display: block; width: 100%; height: 100%; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #fff 0 22%, #2a3358 26%, #0b0f22 100%); }
+.hp-smile { position: absolute; left: 40%; top: 60%; width: 20%; height: 9%; border-bottom: 3px solid #10142a; border-radius: 0 0 60% 60%; transition: opacity .08s, scale .2s var(--hp-ease-out); }
+.hp-ouch { position: absolute; left: 36%; top: 60%; width: 28%; height: 9%; border-top: 3px solid #10142a; border-radius: 60% 60% 0 0; opacity: 0; scale: .6; transition: opacity .08s, scale .24s var(--hp-spring); }
+.hp-drip { position: absolute; right: 18%; top: 52%; width: 7%; height: 10%; border-radius: 50% 50% 60% 60%; background: linear-gradient(#9fd8ff, #4aa8ff); opacity: 0; scale: .7; translate: 0 -45%; transition: opacity .18s, scale .3s var(--hp-spring), translate .5s var(--hp-ease-out); }
+
+.hp-held .hp-orb { scale: 1.06 .92; animation: hp-tremble 90ms steps(2) infinite; }
+.hp-held .hp-eye { scale: 1 0; }
+.hp-held .hp-smile { opacity: 0; scale: .3; }
+.hp-held .hp-ouch { opacity: 1; scale: 1; }
+.hp-hurt .hp-drip { opacity: 1; scale: 1; translate: 0 0; }
+@keyframes hp-tremble { 50% { translate: 1.2px -.8px; } }
+
+.hp-fin { position: absolute; left: 45%; width: 10%; top: 0; bottom: 0; background: repeating-linear-gradient(rgba(0, 0, 0, .16) 0 1px, transparent 1px 4px), linear-gradient(90deg, rgba(0, 0, 0, .32), rgba(255, 255, 255, .2) 45%, rgba(0, 0, 0, .24)); }
+.hp-mark.sm { left: 0; right: 0; top: 20%; text-align: center; font-size: calc(var(--hp-pw) * .1); }
+.hp-blurb { position: absolute; left: 10%; right: 10%; top: 40%; margin: 0; text-align: center; font: 500 calc(var(--hp-pw) * .044)/1.5 system-ui, sans-serif; color: rgba(255, 255, 255, .85); }
+.hp-code { position: absolute; left: 31%; right: 31%; bottom: calc(var(--hp-crimp) + 6%); height: 10%; padding: 6px 8px; border-radius: 4px; background: repeating-linear-gradient(90deg, #111 0 2px, transparent 2px 3px, #111 3px 4px, transparent 4px 7px, #111 7px 10px, transparent 10px 12px) content-box, #fff; }
+
+/* 撕口条：沿长度切成小段，每段比上一段弯一点 */
+.hp-flap { position: absolute; inset: 0; transform-style: preserve-3d; visibility: hidden; }
+.hp-flap.on { visibility: visible; }
+.hp-ply { position: absolute; inset: 0; transform-style: preserve-3d; transform-origin: 0 0; }
+.hp-ply .hp-front { transform: translateZ(.4px); }
+.hp-skin.foil { transform: rotateY(180deg) translateZ(.4px); background: linear-gradient(97deg, #e3e8f2, #fff 12%, #cfd7e6 26%, #fff 44%, #dbe1ee 58%, #fff 76%, #d3dbe9); }
+.hp-skin.foil::before, .hp-skin.foil::after { display: none; }
+.hp-tone { position: absolute; inset: 0; z-index: 3; background: #0b0d1c; opacity: 0; }
+.hp-lips { position: absolute; inset: 0; z-index: 2; filter: drop-shadow(0 1.5px 1.2px rgba(0, 0, 0, .45)); }
+.hp-lip { position: absolute; inset: 0; z-index: 2; clip-path: polygon(0 0); background: linear-gradient(100deg, #f4f6fb, #fff 14%, #bfc8da 27%, #fff 42%, #c9d1e1 58%, #fbfcff 72%, #b9c2d4 86%, #eef1f7); }
+
+.hp-hit {
+  position: absolute; inset: -24px -16px -8px; margin: 0; padding: 0; border: 0; border-radius: 14px;
+  background: none; appearance: none; cursor: grab; touch-action: none;
+  transform: translateZ(calc(var(--hp-d) / 2 + 1px));
+  -webkit-tap-highlight-color: transparent;
+}
+.hp-hit:focus-visible { outline: 2px solid #0a84ff; outline-offset: 8px; }
+.hp-held .hp-hit, .hp-tug .hp-hit { cursor: grabbing; }
+.hp-tug .hp-orb { scale: .95 1.07; }
+
+/* ---------- 卡片 ---------- */
+.hp-card {
+  width: var(--hp-cw);
+  height: var(--hp-ch);
+  margin: calc(var(--hp-ch) / -2) 0 0 calc(var(--hp-cw) / -2);
+  touch-action: none;
+  cursor: pointer;
+  --px: 50; --py: 50; --hyp: 0;
+}
+.hp-flip {
+  position: absolute; inset: 0;
+  transform-style: preserve-3d;
+  transform: rotateY(180deg);
+  transition: transform .8s var(--hp-spring);
+}
+.hp-flip.shown { transform: rotateY(0deg); }
+.hp-face, .hp-back, .hp-slab { position: absolute; inset: 0; border-radius: calc(var(--hp-cw) * .05); backface-visibility: hidden; }
+.hp-slab { background: var(--hp-edge); pointer-events: none; }
+.hp-slab:nth-child(1) { transform: translateZ(-1.5px); }
+.hp-slab:nth-child(2) { transform: translateZ(-3px); }
+.hp-slab:nth-child(3) { transform: translateZ(-4.5px); box-shadow: 0 26px 40px -16px rgba(0, 0, 0, .55); }
+.hp-face { overflow: hidden; isolation: isolate; container-type: inline-size; background: var(--hp-frame); color: var(--hp-text); }
+.hp-back {
+  transform: rotateY(180deg);
+  background:
+    radial-gradient(120% 90% at 50% 30%, rgba(255, 255, 255, .2), transparent 60%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, .07) 0 2px, transparent 2px 9px),
+    linear-gradient(165deg, #1b2447, #0d1226);
+  color: rgba(255, 255, 255, .82);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6%;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .16);
+}
+.hp-back-mark { font: 800 12cqw/1 ui-rounded, "SF Pro Rounded", system-ui, sans-serif; letter-spacing: -.03em; }
+.hp-back-sub { font: 500 4cqw/1.4 system-ui, sans-serif; letter-spacing: .16em; text-transform: uppercase; opacity: .6; }
+.hp-win { position: absolute; left: 6%; right: 6%; top: 4.3%; height: 60%; border-radius: 4cqw; overflow: hidden; background: linear-gradient(160deg, rgba(255, 255, 255, .16), rgba(0, 0, 0, .22)); box-shadow: inset 0 2px 5px rgba(0, 0, 0, .35), inset 0 0 0 1px rgba(0, 0, 0, .12); display: flex; align-items: center; justify-content: center; }
+.hp-win img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .35)); }
+.hp-win img.smooth { image-rendering: auto; }
+.hp-drop { position: absolute; left: 28%; right: 28%; bottom: 7%; height: 8%; border-radius: 50%; background: radial-gradient(closest-side, rgba(0, 0, 0, .5), transparent); filter: blur(1.5px); opacity: 0; transition: opacity .4s; }
+.hp-out .hp-drop { opacity: 1; }
+.hp-name { position: absolute; left: 7%; top: 68.5%; font: 700 8.6cqw/1.1 ui-rounded, "SF Pro Rounded", system-ui, sans-serif; letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 62%; }
+.hp-type { position: absolute; right: 7%; top: 69.5%; padding: 1.6cqw 2.6cqw; border-radius: 9cqw; background: rgba(127, 127, 127, .16); font: 600 3.6cqw/1 system-ui, sans-serif; letter-spacing: .08em; }
+.hp-rule { position: absolute; left: 7%; right: 7%; top: 83%; height: 1px; background: currentColor; opacity: .15; }
+.hp-no, .hp-rar { position: absolute; bottom: 5.5%; font: 500 3.8cqw/1 system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+.hp-no { left: 7%; opacity: .6; }
+.hp-rar { right: 7%; font-weight: 600; opacity: .9; }
+
+/* 箔面：彩虹跟着倾角走，闪粉颗粒接住高光，眩光落在受光处 */
+.hp-holo, .hp-glare { position: absolute; inset: 0; z-index: 2; border-radius: inherit; pointer-events: none; }
+.hp-holo {
+  background: var(--hp-rainbow) calc(var(--px) * 1%) calc(var(--py) * 1%)/400% 400%;
+  mix-blend-mode: color-dodge;
+  opacity: calc(.3 + var(--hp-hyp) * .6);
+  filter: brightness(.7) contrast(1.5) saturate(1.4);
+}
+.hp-holo::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: inherit; mask: var(--hp-glitter) 0 0/140px 140px; filter: brightness(1.8); }
+/* 清漆：整张卡一层厚透明涂层，两扇影棚窗户在上面滑动 */
+.hp-glaze {
+  position: absolute; inset: 0; z-index: 3; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .28), inset 0 2px 1.5px rgba(255, 255, 255, .8), inset 0 -2px 4px rgba(0, 0, 0, .18);
+  background: radial-gradient(42% 26% at calc(var(--px) * 1%) calc(var(--py) * 1%), rgba(255, 255, 255, calc(.1 + var(--hp-hyp) * .5)), transparent), linear-gradient(rgba(255, 255, 255, .24), transparent 16%);
+}
+.hp-glaze::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; mask: linear-gradient(#000 30%, transparent 88%);
+  background: linear-gradient(112deg, transparent 44%, rgba(255, 255, 255, .4) 44.4%, rgba(255, 255, 255, .13) 52%, transparent 52.4%, transparent 54%, rgba(255, 255, 255, .22) 54.3%, rgba(255, 255, 255, .05) 56.4%, transparent 56.7%) calc((100 - var(--px)) * 1%) 0/220% 100%;
+}
+.hp-common { --hp-frame: linear-gradient(165deg, #fdfcf9, #ebe8e1); --hp-text: #1b1a17; --hp-edge: #cfcac0; }
+.hp-common .hp-holo { inset: 4.3% 6% 35.7%; border-radius: 4cqw; mask: var(--hp-glitter) 0 0/110px 110px; opacity: calc(.55 + var(--hp-hyp) * .45); }
+.hp-common .hp-holo::after { display: none; }
+.hp-rare { --hp-frame: linear-gradient(165deg, #2a3169, #12152f); --hp-text: #eef0ff; --hp-edge: #0b0d20; }
+.hp-ultra { --hp-frame: linear-gradient(135deg, #f9e7a8, #d6a43a 28%, #fff2c4 50%, #c38a26 72%, #f4d57e); --hp-text: #3a2600; --hp-edge: #94661a; }
+.hp-ultra .hp-holo { mix-blend-mode: overlay; opacity: calc(.5 + var(--hp-hyp) * .5); background: repeating-conic-gradient(from calc(var(--px) * 1deg) at 50% 40%, transparent 0 3deg, rgba(255, 255, 255, .45) 4deg 5deg, transparent 6deg 10deg), var(--hp-rainbow) calc(var(--px) * 1%) calc(var(--py) * 1%)/400% 400%; }
+
+/* 彩纸 */
+.hp-fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+/* 底部操作条 */
+.hp-hud {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 5;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+  pointer-events: none;
+}
+.hp-hud > * { pointer-events: auto; }
+.hp-hud-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center; }
+.hp-hud-text { font-size: 13px; color: rgba(233, 238, 248, .78); text-align: center; text-shadow: 0 2px 10px rgba(0, 0, 0, .6); margin: 0; }
+.hp-hud-btn {
+  height: 42px; padding: 0 26px; border: 0; border-radius: 21px;
+  background: linear-gradient(100deg, #ffcb05, #ff9f1a); color: #1b1400;
+  font-family: inherit; font-size: 15px; font-weight: 800; cursor: pointer;
+  box-shadow: 0 10px 26px -10px rgba(255, 180, 40, .7);
+}
+.hp-hud-btn:disabled { opacity: .5; cursor: default; }
+.hp-hud-ghost {
+  height: 38px; padding: 0 20px; border: 1px solid rgba(255, 255, 255, .22); border-radius: 19px;
+  background: rgba(12, 18, 32, .6); color: #e9eef8;
+  font-family: inherit; font-size: 14px; cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hp-held .hp-orb { animation: none; }
+  .hp-flip { transition: opacity .25s ease; }
+}
+
+/* 开包是全屏沉浸的，桌宠先让开，别压到卡牌和按钮上 */
+.app.is-packing .deskpet { display: none; }

@@ -549,7 +549,7 @@ grade(value) = S:≥92%  A:≥78%  B:≥60%  C:≥40%  D:<40%
 
 | 层 | 方案 | 理由 |
 |---|---|---|
-| 前端 | React + Vite，静态托管 | 开包动画用 pack-opener-js（PixiJS），雷达图用轻量 SVG 自绘 |
+| 前端 | React + Vite，静态托管 | 开包动画移植 holo-card-pack（CSS 3D + 原生 DOM 引擎），雷达图用轻量 SVG 自绘 |
 | 后端 | Python **FastAPI** | 生态熟、scc 输出解析方便、APScheduler 内置定时 |
 | 数据库 | **SQLite**（WAL 模式） | 单文件零运维；单写多读模型完全够用 |
 | 代码统计 | **scc** 二进制调用 | 见 §10.5 |
@@ -631,7 +631,8 @@ User     { id, github_login, gitee_login, created_at }   // P1 才需要
 
 | 方案 | 仓库 | 协议 | 评估 |
 |---|---|---|---|
-| **pack-opener-js** ✅ 首选 | npm `pack-opener-js`（PixiJS 渲染） | MIT | 专为开包场景设计：手指划开撕口、卡包盖飞出、卡牌带稀有度辉光翻面登场；支持 slice/burst/carousel 三种机制、200+ 可调参数、稀有度辉光色随品质切换；Web 与 React 组件双入口，也支持 React Native WebView。几乎是为我们量身定做的 |
+| **holo-card-pack** ✅ 现用 | github.com/akasakariko/frontend-components（holo-card-pack） | MIT | 撕口服帖物理 + 封口压齿 + 彩虹流 + 卡牌绕场摊开 + 箔面视差 + WebAudio 合成音，全部原生 DOM/CSS，无渲染引擎依赖。已移植到 `src/holoPack/`，改造为 GitMon 数据驱动（一包 5 个项目、品质分档） |
+| pack-opener-js（已弃用） | npm `pack-opener-js`（PixiJS 渲染） | MIT | 早先采用：切片撕开 + 卡包盖飞出。视觉为 2D 平面 Canvas，做不出 holo 的全息包装质感，已由上面方案替换 |
 | Pokemon-Pack-Sim | github.com/jaip18/Pokemon-Pack-Sim | MIT | React 19 + Framer Motion + React Three Fiber 的开包模拟器，有 3D 翻卡效果。功能完整但耦合 Pokémon TCG API，适合**参考动画编排**不宜直接引入 |
 | pokemon-card-game | github.com/trungLyDal/pokemon-card-game | MIT | React + MongoDB 的开包+收藏全套实现（PackOpening 组件、卡册筛选），架构可借鉴，代码质量一般 |
 

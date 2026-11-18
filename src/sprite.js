@@ -2,8 +2,7 @@
 // 64×64 网格 · 8 种手绘体型部件（眼/嘴/腮红/耳/尾/四肢/配饰/花纹）· 双属性配色 · 进化阶段加配饰
 import { PRNG } from 'monstrjs/dist/core/prng.js'
 import { applySymmetry } from 'monstrjs/dist/monster/grid.js'
-import { elementLabel } from './elementLabel.js'
-import { cardFoil, cloudCardTraits, isCloudCard } from './cardTraits.js'
+import { cloudCardTraits, isCloudCard } from './cardTraits.js'
 import {
   accessories as ACCESSORY_PARTS,
   cheeks as CHEEK_PARTS,
@@ -200,86 +199,6 @@ export async function petArtwork(pet) {
   return { image: c, pixelated: true }
 }
 
-// 等比铺进方框：立绘素材尺寸不一，不能像以前那样硬拉成 320×320
-function drawContained(ctx, image, x, y, box) {
-  const w = image.naturalWidth || image.width
-  const h = image.naturalHeight || image.height
-  if (!w || !h) return
-  const s = Math.min(box / w, box / h)
-  const dw = w * s
-  const dh = h * s
-  ctx.drawImage(image, x + (box - dw) / 2, y + (box - dh) / 2, dw, dh)
-}
-
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath()
-  ctx.moveTo(x + r, y)
-  ctx.arcTo(x + w, y, x + w, y + h, r)
-  ctx.arcTo(x + w, y + h, x, y + h, r)
-  ctx.arcTo(x, y + h, x, y, r)
-  ctx.arcTo(x, y, x + w, y, r)
-  ctx.closePath()
-}
-
-export function packArtwork(pet) {
-  const W = 600, H = 900
-  const c = document.createElement('canvas')
-  c.width = W; c.height = H
-  const ctx = c.getContext('2d')
-  const q = cardFoil(pet)
-
-  const g = ctx.createLinearGradient(0, 0, W, H)
-  g.addColorStop(0, '#1e2942')
-  g.addColorStop(0.5, '#121a2c')
-  g.addColorStop(1, '#0b1120')
-  ctx.fillStyle = g
-  roundRect(ctx, 0, 0, W, H, 36); ctx.fill()
-
-  ctx.lineWidth = 10
-  ctx.strokeStyle = q.color
-  ctx.shadowColor = q.glow
-  ctx.shadowBlur = 40
-  roundRect(ctx, 10, 10, W - 20, H - 20, 30); ctx.stroke()
-  ctx.shadowBlur = 0
-
-  const foil = ctx.createLinearGradient(0, H, W, 0)
-  foil.addColorStop(0, 'rgba(255,255,255,0)')
-  foil.addColorStop(0.45, 'rgba(255,255,255,0.06)')
-  foil.addColorStop(0.5, q.glow)
-  foil.addColorStop(0.55, 'rgba(255,255,255,0.06)')
-  foil.addColorStop(1, 'rgba(255,255,255,0)')
-  ctx.fillStyle = foil
-  roundRect(ctx, 10, 10, W - 20, H - 20, 30); ctx.fill()
-
-  ctx.save()
-  ctx.translate(W / 2, H / 2 - 40)
-  ctx.strokeStyle = q.color
-  ctx.globalAlpha = 0.85
-  ctx.lineWidth = 6
-  ctx.beginPath(); ctx.arc(0, 0, 120, 0, Math.PI * 2); ctx.stroke()
-  ctx.beginPath(); ctx.arc(0, 0, 84, 0, Math.PI * 2); ctx.stroke()
-  ctx.restore()
-
-  ctx.globalAlpha = 1
-  ctx.fillStyle = q.color
-  ctx.font = 'bold 76px -apple-system, "PingFang SC", sans-serif'
-  ctx.textAlign = 'center'
-  ctx.fillText('GITMON', W / 2, H / 2 - 10)
-  ctx.fillStyle = 'rgba(230,238,250,0.62)'
-  ctx.font = '28px -apple-system, "PingFang SC", sans-serif'
-  ctx.fillText('仓 库 精 灵 卡 包', W / 2, H / 2 + 48)
-
-  ctx.fillStyle = q.color
-  ctx.font = 'bold 44px -apple-system, sans-serif'
-  ctx.fillText(isCloudCard(pet) ? q.label : q.key, W / 2, H / 2 + 132)
-
-  ctx.fillStyle = 'rgba(200,212,232,0.35)'
-  ctx.font = '22px -apple-system, sans-serif'
-  ctx.fillText(`${pet.platform.toUpperCase()} · ${pet.fullName}`, W / 2, H - 64)
-
-  return c.toDataURL('image/png')
-}
-
 export function drawCloudCardTraits(ctx, pet, width, y, gap, fontSize) {
   ctx.textAlign = 'center'
   ctx.font = `bold ${fontSize}px -apple-system, "PingFang SC", sans-serif`
@@ -289,63 +208,3 @@ export function drawCloudCardTraits(ctx, pet, width, y, gap, fontSize) {
   })
 }
 
-// 现在是异步的：立绘可能是一张还没解码的 PNG，必须等它就绪再交给开包库，
-// 否则翻面那一帧会出现空白 / 上一张卡的形象。
-export async function cardArtwork(pet) {
-  const { image, pixelated } = await petArtwork(pet)
-  const W = 600, H = 840
-  const c = document.createElement('canvas')
-  c.width = W; c.height = H
-  const ctx = c.getContext('2d')
-  const foil = cardFoil(pet)
-
-  const g = ctx.createLinearGradient(0, 0, W, H)
-  g.addColorStop(0, '#243252')
-  g.addColorStop(1, '#111a2e')
-  ctx.fillStyle = g
-  roundRect(ctx, 0, 0, W, H, 40); ctx.fill()
-
-  ctx.lineWidth = 10
-  ctx.strokeStyle = foil.color
-  ctx.shadowColor = foil.glow
-  ctx.shadowBlur = 36
-  roundRect(ctx, 10, 10, W - 20, H - 20, 34); ctx.stroke()
-  ctx.shadowBlur = 0
-
-  // 与正式卡片同一只角色：卡面立绘和 PetCard 的 sprite-frame 用同一个源
-  // （云卡已由 petArtwork 按 cardSpriteUrl 选六系八档图）
-  const ART_BOX = 380
-  const glow = ctx.createRadialGradient(W / 2, 280, 40, W / 2, 280, 230)
-  glow.addColorStop(0, foil.glow)
-  glow.addColorStop(1, 'rgba(0,0,0,0)')
-  ctx.fillStyle = glow
-  ctx.fillRect((W - ART_BOX) / 2 - 20, 76, ART_BOX + 40, ART_BOX + 40)
-
-  ctx.imageSmoothingEnabled = !pixelated
-  drawContained(ctx, image, (W - ART_BOX) / 2, 96, ART_BOX)
-
-  ctx.fillStyle = '#eef2fa'
-  ctx.font = 'bold 56px -apple-system, "PingFang SC", sans-serif'
-  ctx.textAlign = 'center'
-  ctx.fillText(pet.repo, W / 2, 520)
-
-  if (isCloudCard(pet)) {
-    drawCloudCardTraits(ctx, pet, W, 600, 66, 34)
-    return c.toDataURL('image/png')
-  }
-
-  ctx.fillStyle = 'rgba(190,204,226,0.75)'
-  ctx.font = '28px -apple-system, "PingFang SC", sans-serif'
-  const typeText = `${elementLabel(pet)}${pet.elementSecondary ? '/' + pet.elementSecondary.name : ''} · ${pet.species.name}`
-  ctx.fillText(typeText, W / 2, 570)
-
-  ctx.fillStyle = pet.quality.color
-  ctx.font = 'bold 40px -apple-system, sans-serif'
-  ctx.fillText(`Lv.${pet.level}   ${pet.quality.key}`, W / 2, 660)
-
-  ctx.fillStyle = 'rgba(170,184,208,0.6)'
-  ctx.font = '24px -apple-system, sans-serif'
-  ctx.fillText(`品质分 ${pet.qualityScore} · 工程量 ${pet.engineeringScore}`, W / 2, 712)
-
-  return c.toDataURL('image/png')
-}
