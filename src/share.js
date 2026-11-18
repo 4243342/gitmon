@@ -2,9 +2,9 @@
 // 与 PetCard / game-theme.css 同一套视觉：像素切角、星级段位、六边形宝石品质标、
 // HP / 进化 / 根基条、六维雷达 + 分段条、技能剑牌、性格词条、品质五维、页脚
 // 云卡：立绘按 cardArt 选图，词条行展示属性 / 六档品质 / 源码评分。
-import { drawCloudCardTraits, drawPetSprite, petArtwork } from './sprite.js'
+import { drawPetSprite, petArtwork } from './sprite.js'
 import { elementLabel } from './elementLabel.js'
-import { cardFoil, isCloudCard } from './cardTraits.js'
+import { cardFoil } from './cardTraits.js'
 import { QUALITY_RANK } from './cardQuality.js'
 import { sealData } from './modelSeal.js'
 import { starRank } from './starBadge.jsx'
@@ -681,38 +681,32 @@ export async function exportShareCard(pet) {
 
   // ---------- 性格词条 / 云卡 traits ----------
   const trTop = 422 * S
-  if (isCloudCard(pet)) {
-    // 云卡的品质 / 原属性信息比本地性格更该出现在分享图上：词条行让给 traits 三行
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    drawCloudCardTraits(ctx, pet, CW, trTop - 3 * S, 8.5 * S, 6 * S)
-  } else {
-    let tx = PXD
-    const chips = pet.traits?.slice(0, 3) || []
-    ctx.font = `${8.5 * S}px ${PX}`; ctx.textBaseline = 'middle'
-    chips.forEach((t) => {
-      const label = `${t.kind === 'negative' ? '▾' : '▴'} ${t.name}`
-      const tw = ctx.measureText(label).width
-      const pos = t.kind !== 'negative'
-      const pad = 5 * S
-      ctx.fillStyle = pos ? 'rgba(74,217,160,.08)' : 'rgba(255,93,93,.08)'
-      ctx.fillRect(tx, trTop, tw + pad * 2, 15 * S)
-      ctx.strokeStyle = pos ? 'rgba(74,217,160,.4)' : 'rgba(255,93,93,.45)'
-      ctx.lineWidth = 2
-      ctx.strokeRect(tx + 1, trTop + 1, tw + pad * 2 - 2, 15 * S - 2)
-      ctx.fillStyle = pos ? '#7fe3b8' : '#ff9a9a'
-      ctx.textAlign = 'left'
-      ctx.fillText(label, tx + pad, trTop + 15 * S / 2)
-      tx += tw + pad * 2 + 4 * S
-    })
-    const fixHint = pet.traitHints?.filter((h) => h.fix).length
-    if (fixHint) {
-      ctx.fillStyle = 'rgba(11,18,32,.7)'
-      ctx.fillRect(tx, trTop, 13 * S, 13 * S + 1 * S)
-      ctx.strokeStyle = 'rgba(255,203,5,.5)'; ctx.lineWidth = 2
-      ctx.strokeRect(tx + 1, trTop + 1, 13 * S - 2, 13 * S - 1)
-      ctx.fillStyle = '#ffcb05'; ctx.font = `${9 * S}px ${PX}`; ctx.textAlign = 'center'
-      ctx.fillText('?', tx + 13 * S / 2, trTop + 7 * S)
-    }
+  let tx = PXD
+  const chips = pet.traits?.slice(0, 3) || []
+  ctx.font = `${8.5 * S}px ${PX}`; ctx.textBaseline = 'middle'
+  chips.forEach((t) => {
+    const label = `${t.kind === 'negative' ? '▾' : '▴'} ${t.name}`
+    const tw = ctx.measureText(label).width
+    const pos = t.kind !== 'negative'
+    const pad = 5 * S
+    ctx.fillStyle = pos ? 'rgba(74,217,160,.08)' : 'rgba(255,93,93,.08)'
+    ctx.fillRect(tx, trTop, tw + pad * 2, 15 * S)
+    ctx.strokeStyle = pos ? 'rgba(74,217,160,.4)' : 'rgba(255,93,93,.45)'
+    ctx.lineWidth = 2
+    ctx.strokeRect(tx + 1, trTop + 1, tw + pad * 2 - 2, 15 * S - 2)
+    ctx.fillStyle = pos ? '#7fe3b8' : '#ff9a9a'
+    ctx.textAlign = 'left'
+    ctx.fillText(label, tx + pad, trTop + 15 * S / 2)
+    tx += tw + pad * 2 + 4 * S
+  })
+  const fixHint = pet.traitHints?.filter((h) => h.fix).length
+  if (fixHint) {
+    ctx.fillStyle = 'rgba(11,18,32,.7)'
+    ctx.fillRect(tx, trTop, 13 * S, 13 * S + 1 * S)
+    ctx.strokeStyle = 'rgba(255,203,5,.5)'; ctx.lineWidth = 2
+    ctx.strokeRect(tx + 1, trTop + 1, 13 * S - 2, 13 * S - 1)
+    ctx.fillStyle = '#ffcb05'; ctx.font = `${9 * S}px ${PX}`; ctx.textAlign = 'center'
+    ctx.fillText('?', tx + 13 * S / 2, trTop + 7 * S)
   }
 
   // ---------- 品质五维 ----------
