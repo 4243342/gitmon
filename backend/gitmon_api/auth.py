@@ -30,7 +30,7 @@ import subprocess
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit
 
 import httpx
 
@@ -144,24 +144,79 @@ def oauth_enabled() -> bool:
     return bool(settings.github_client_id and settings.github_client_secret)
 
 
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def _split_host(value: str) -> tuple[str, int | None]:
+    """把 Host 头拆成 (主机名, 端口)。没写端口时端口为 None。"""
+    host = (value or "").strip()
+    if not host:
+        return "", None
+    if host.startswith("["):  # [::1]:8000
+        pure, _, rest = host.partition("]")
+        return pure[1:].lower(), int(rest[1:]) if rest[1:].isdigit() else None
+    pure, _, port = host.partition(":")
+    return pure.lower(), int(port) if port.isdigit() else None
+
+
+def request_origin(request: Any) -> str:
+    """本次请求自己的 origin（含协议），拿不到就返回空串。"""
+    try:
+        host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").strip()
+        if not host:
+            return ""
+        scheme = (request.headers.get("x-forwarded-proto") or request.url.scheme or "http")
+        return f"{scheme.split(',')[0].strip()}://{host}"
+    except Exception:  # noqa: BLE001 — Host 头缺失时不值得报错
+        return ""
+
+
+def _backend_port() -> int | None:
+    return _split_host(urlsplit(settings.public_base_url).netloc)[1]
+
+
 def _callback_base(request: Any = None) -> str:
     """回调前缀。
 
-    优先取本次请求自己的 host —— 本机开发时 127.0.0.1 和 localhost 是两个
-    不同的 origin，平台后台登记哪一个都能对上（只在回环地址上这么做，
-    公网部署仍以 GITMON_PUBLIC_URL 为准，避免被 Host 头带偏）。
+    平台后台只登记一个回调地址，所以这个前缀必须等于后端自己的对外地址：
+    请求是从别的端口转发过来的（页面开在 vite 的 5173、由代理转给 8000）时
+    Host 是 5173，但 OAuth 平台只会把浏览器送回 8000 —— 端口不一致就一律
+    回退到 GITMON_PUBLIC_URL，否则平台会报「无效的登录回调地址」。
+
+    端口一致时允许 127.0.0.1 与 localhost 互换：本机开发常见的两个 origin，
+    后台登记了哪一个都能对上。公网部署仍以 GITMON_PUBLIC_URL 为准。
     """
     base = settings.public_base_url
     if request is not None:
         try:
             host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").strip()
-            pure = host.split(":")[0].strip("[]").lower()
-            if pure in {"127.0.0.1", "localhost", "::1"}:
-                scheme = (request.headers.get("x-forwarded-proto") or request.url.scheme or "http").split(",")[0].strip()
-                base = f"{scheme}://{host}"
+            pure, port = _split_host(host)
+            if pure in LOOPBACK_HOSTS and port is not None and port == _backend_port():
+                base = request_origin(request)
         except Exception:  # noqa: BLE001 — Host 头缺失时不值得报错，退回配置值
             pass
     return base.rstrip("/")
+
+
+def page_origin(request: Any = None) -> str:
+    """页面所在的 origin —— 仅在「页面端口 ≠ 后端端口」时返回。
+
+    前后端分开跑时页面在 5173，登录回调只能落在 8000，登完相对路径一跳就把
+    用户带离了 dev 页面。把页面 origin 塞进签名 state，回调时才知道送回哪。
+    只认回环地址，所以伪造 Host 头没法把用户带去外部站点。
+    """
+    if request is None:
+        return ""
+    origin = request_origin(request)
+    if not origin:
+        return ""
+    try:
+        pure, port = _split_host(origin.split("://", 1)[1])
+        if pure not in LOOPBACK_HOSTS or port is None or port == _backend_port():
+            return ""
+    except Exception:  # noqa: BLE001
+        return ""
+    return origin
 
 
 def callback_url(request: Any = None) -> str:

@@ -19,7 +19,7 @@ backend/
 │   ├── queue.py         # 进程内扫描队列（单 worker 串行）
 │   ├── repo.py          # 仓库地址解析
 │   └── scanner/         # GitHub / Gitee 扫描器 + 文件树分析 + 依赖清单解析
-└── tests/               # 90 个用例：判定、养成、立绘、登录授权、API 全链路
+└── tests/               # 103 个用例：判定、养成、立绘、登录授权（含 Gitee 续期）、API 全链路
 ```
 
 ## 快速开始
@@ -51,26 +51,40 @@ GitHub 匿名 API 只有 **60 次/小时**，一次扫描要 5~17 个请求，�
 | 本机一键登录 | 这台机器上 `gh auth login` 过（自动读 `gh auth token`） | 本地开发，点一下就进，零配置 |
 | GitHub OAuth | 注册一个 GitHub OAuth App（2 分钟） | 正式部署，用户点一下就登录 |
 | GitHub 个人访问令牌 | 用户自己去 GitHub 生成 `ghp_xxx` 贴进来 | 不想建应用、或换设备 |
-| Gitee OAuth | 注册一个 Gitee 应用（<https://gitee.com/oauth/applications>） | 正式部署 |
-| Gitee 私人令牌 | 用户在 <https://gitee.com/profile/personal_access_tokens> 生成 | 不建应用也能用（推荐先走这条） |
+| Gitee OAuth | 注册一个 Gitee 应用（<https://gitee.com/oauth/applications>） | 正式部署；本机 `.env` 已配好 |
+| Gitee 私人令牌 | 用户在 <https://gitee.com/profile/personal_access_tokens> 生成 | 不建应用也能用 |
 
-**配 OAuth App**：<https://github.com/settings/developers> → New OAuth App
+**应用后台两栏，只有回调地址有硬性要求**（`localhost` ≠ `127.0.0.1`，整串精确匹配）：
 
-```
-Homepage URL            http://127.0.0.1:8000
-Authorization callback  http://127.0.0.1:8000/api/auth/github/callback
-```
+| 平台 | 主页（仅展示） | 回调地址 |
+|---|---|---|
+| GitHub | `http://127.0.0.1:8000` | `http://127.0.0.1:8000/api/auth/github/callback` |
+| Gitee | `http://127.0.0.1:8000` | `http://127.0.0.1:8000/api/auth/gitee/callback` |
 
-Gitee 的回调则是 `http://127.0.0.1:8000/api/auth/gitee/callback`。
+Gitee 权限勾 `user_info` + `projects`；授权页对已授权用户会直接回调，但 `scope` 必须与上次一致，
+所以 `auth.GITEE_SCOPES` 不要随手改。
+
+> ⚠️ 回调地址**不能是仓库地址**（如 `https://github.com/4243342/gitmon`）：平台会把授权码拼成
+> `?code=...&state=...` 跳过去，那里没有后端接收，code 直接丢失，登录必然失败。
+
+`auth._callback_base()` 在回环地址上按本次请求的 `Host` 拼回调，公网部署以 `GITMON_PUBLIC_URL`
+为准，避免被 Host 头带偏。本机 `.env` 已设 `GITHUB_CALLBACK_URL` / `GITEE_CALLBACK_URL`
+把两个回调**完全固定**，用哪个 host 打开都一致；部署到公网时同步改这三处。
+`node scripts/check-oauth.mjs` 可一键核对「providers 报的回调」与「授权跳转实际带的 redirect_uri」是否一致。
 
 凭证写进 `backend/.env`（启动时自动加载，`KEY=VALUE` 一行一个，不覆盖已有环境变量）：
 
 ```ini
 GITHUB_CLIENT_ID=...
 GITHUB_CLIENT_SECRET=...
-GITEE_CLIENT_ID=...        # 可选，不填就用私人令牌
+GITEE_CLIENT_ID=...        # 留空则该平台回退到私人令牌登录
 GITEE_CLIENT_SECRET=...
 ```
+
+**Gitee 令牌只有 1 天有效期**：`POST /oauth/token` 返回的 `refresh_token` 会和 access token 一起
+加密存进 `users.refresh_cipher`（老库启动时自动补列）。`/api/auth/me` 与 `/api/auth/token` 会走
+`auth.ensure_gitee_token()`：结果缓存 10 分钟，发现 401 就用 refresh token 换新的并把新 refresh 写回，
+换不出来才结束会话、让前端提示重新授权。私人令牌没有过期问题，跳过这套检查。
 
 部署到域名时同时改 `GITMON_PUBLIC_URL=https://your.domain`（回调地址由它拼出来）。
 
@@ -82,7 +96,8 @@ GITEE_CLIENT_SECRET=...
 安全做法：令牌用 HMAC-SHA256 计数器模式流加密后落库（密钥来自 `GITMON_SECRET`，
 留空则自动生成 `data/secret.key`，权限 0600）；浏览器只持有 HttpOnly 会话 cookie
 （库里存它的 sha256），令牌通过同源 `/api/auth/token` 单次下发，因为前端是浏览器直连
-GitHub API 扫描的。退出登录时会连同会话一起清掉，OAuth 令牌还会调 GitHub 撤销。
+对应平台 API 扫描的。退出登录时会连同会话一起清掉；只有 GitHub OAuth 令牌会调撤销端点，
+Gitee 没有对应接口，绝不把 Gitee 令牌发到 `api.github.com`。
 
 ## 端点
 
@@ -131,7 +146,7 @@ README 里直接嵌：
 | 初始等级 | 工程量分分段映射到 Lv.1–999（§5.2） | `engine.level_from_engineering` |
 | 六维 | 提交频率 / CI+测试 / 活跃度 / 依赖广度 / 文档+复杂度 / 年龄 | `engine.stats_for` |
 | XP | commit +2（日上限 20）、关 issue +5、合并 PR +10、release +50、star +1 | `growth.XP_RULES` |
-| 进化 | Lv.150 且（有 release 或 ≥5 贡献者）→ 成长体；Lv.500 且（≥100 star 或 ≥10 release）→ 完全体 | `engine.evolution_stage` |
+| 进化 | 只看等级：Lv.10/50/100/200/300/500/800/999 八个节点共 9 阶，**Lv.500 起人形态** | `engine.evolution_stage` / `STAGE_NAMES` |
 | 沉睡 | 30 天无提交 → `sleeping`，停止成长 | `growth.status_for` |
 
 **确定性**：`seed = fnv1a("platform/owner/repo")`，`spriteSeed = fnv1a(seed + fullName)`，
@@ -151,6 +166,27 @@ issue / PR 计数与依赖清单（最多 6 份）——单次扫描 12~17 个�
 服务端也可配 `GITHUB_TOKEN` 兜底；Gitee 匿名配额更紧，建议配 `GITEE_TOKEN`。
 配额耗尽会返回 429，带 `Retry-After` 和"去登录"的提示。
 
+### 服务端限流（和上面的平台配额是两回事）
+
+`GITMON_RATE_LIMIT` 挡的是「刷扫描配额」，按 **IP + `X-Gitmon-User`** 双层滑动窗口计数：
+
+| 层 | 计数键 | 额度/分钟 | 作用 |
+|---|---|---|---|
+| 身份桶 | `ip \| 设备头` | `GITMON_RATE_LIMIT` | 同一台机器上的不同浏览器/标签各用各的额度 |
+| IP 总桶 | `ip` | `GITMON_RATE_LIMIT × 4` | 兜住「狂换设备头刷额度」 |
+
+下列请求**不占额度**：CORS 预检 `OPTIONS`、健康检查 `/api/health`、`/api/meta`、
+`/api/auth/me`、`/api/auth/providers`、孵化轮询 `/api/jobs/{id}`。一次孵化会轮询最多
+90 次，把这些算进去会误伤正常玩家。
+
+429 响应带 `Retry-After`（滑动窗口的真实回血秒数，不是写死的 60）、
+`X-RateLimit-Limit / Remaining / Reset`，以及 `retryAfter` 字段；这些头都在
+`Access-Control-Expose-Headers` 里，跨域时前端也读得到。**前端所有 `/api/*` 请求都必须带
+`X-Gitmon-User`**，否则统一落到 `public` 桶共享一份额度。
+
+部署在 Nginx 等反代后面时，`request.client.host` 全是反代 IP，设 `GITMON_TRUST_PROXY=1`
+改按 `X-Forwarded-For` 首段取客户端 IP。默认关闭 —— XFF 可以伪造，随便信等于给限流开后门。
+
 ## 配置
 
 | 环境变量 | 默认 | 说明 |
@@ -166,7 +202,8 @@ issue / PR 计数与依赖清单（最多 6 份）——单次扫描 12~17 个�
 | `GITMON_CACHE_TTL` | `21600` | 快照缓存（秒） |
 | `GITMON_DAILY_SYNC` | `0` | 开 1 后每天定时结算一批精灵 |
 | `GITMON_CORS_ORIGINS` | `http://127.0.0.1:5173` | 允许的前端来源，逗号分隔 |
-| `GITMON_RATE_LIMIT` | `120` | 单 IP 每分钟请求上限（0 = 不限） |
+| `GITMON_RATE_LIMIT` | `120` | 单客户端（IP + 设备头）每分钟请求上限，同 IP 总上限为其 4 倍（0 = 不限） |
+| `GITMON_TRUST_PROXY` | `0` | 开 1 后限流按 `X-Forwarded-For` 取真实 IP，仅在可信反代后使用 |
 | `GITMON_SPRITE_STYLE` | `rich` | `rich` 32×32 分层立绘；`classic` 16×16（与旧版 canvas 逐像素一致） |
 | `GITMON_USE_SCC` | `0` | 是否浅克隆 + scc 精确统计 |
 | `GITMON_STATIC_DIR` | 自动探测 `../dist` | 前端构建产物目录 |

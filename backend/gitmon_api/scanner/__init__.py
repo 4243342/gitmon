@@ -8,24 +8,20 @@ from . import scc
 from .gitee import GiteeScanner
 from .github import GitHubScanner
 from .http import HttpClient
+from .meta import check_starred, fetch_repo_meta
 from .snapshot import RepoSnapshot
+from .tokens import token_for
 
-__all__ = ["RepoSnapshot", "scan", "GitHubScanner", "GiteeScanner", "HttpClient"]
-
-# GitHub 令牌都有前缀，Gitee 私人令牌是一串裸十六进制 —— 用它来挡住"跨平台串令牌"
-_GITHUB_TOKEN_PREFIXES = ("ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_")
-
-
-def token_for(token: str | None, platform: str) -> str | None:
-    """登录令牌只发给它自己的平台：GitHub 令牌不发给 Gitee，反之亦然。"""
-    if not token:
-        return token
-    looks_github = token.startswith(_GITHUB_TOKEN_PREFIXES)
-    if platform == "github" and not looks_github:
-        return None
-    if platform == "gitee" and looks_github:
-        return None
-    return token
+__all__ = [
+    "RepoSnapshot",
+    "scan",
+    "GitHubScanner",
+    "GiteeScanner",
+    "HttpClient",
+    "token_for",
+    "fetch_repo_meta",
+    "check_starred",
+]
 
 
 def scan(ref: RepoRef, *, use_scc: bool | None = None, since: str | None = None,

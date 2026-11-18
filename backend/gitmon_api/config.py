@@ -94,7 +94,11 @@ class Settings:
     # 行为开关
     daily_sync: bool = False
     daily_sync_hour: int = 3
+    # 单客户端（IP + X-Gitmon-User）每分钟请求上限；同 IP 总上限为它的 4 倍
     rate_limit_per_min: int = 120
+    # 部署在可信反代后面时，限流按 X-Forwarded-For 取真实客户端 IP。
+    # 默认关：XFF 可以伪造，随便信等于给限流开后门。
+    trust_proxy: bool = False
     use_scc: bool = False
     # 是否在浅克隆后跑一次离线 AI 味检测（依赖 use_scc 的克隆）
     ai_trace: bool = False
@@ -104,6 +108,11 @@ class Settings:
     sprite_style: str = "rich"
     # 单次扫描最多分析的文件条目，防止超大 monorepo 拖垮判定
     max_tree_entries: int = 20000
+    # 活动任务「给项目仓库点一颗星」的目标仓库。
+    # 只有一个固定目标（就是本项目自己的仓库），玩家没有得挑 ——
+    # 挑目标会让「我要不要点这个」变成「有没有别的可选」，反而稀释了任务的号召力。
+    # 格式 owner/repo（默认 GitHub）；改成 gitee/owner/repo 可以指向 Gitee 上的同名仓库。
+    quest_target: str = "4243342/gitmon"
 
     @property
     def db_path(self) -> Path:
@@ -154,12 +163,14 @@ def load_settings() -> Settings:
         daily_sync=_env_bool("GITMON_DAILY_SYNC", False),
         daily_sync_hour=_env_int("GITMON_DAILY_SYNC_HOUR", 3),
         rate_limit_per_min=_env_int("GITMON_RATE_LIMIT", 120),
+        trust_proxy=_env_bool("GITMON_TRUST_PROXY", False),
         use_scc=_env_bool("GITMON_USE_SCC", False),
         ai_trace=_env_bool("GITMON_AI_TRACE", False),
         cors_origins=_env_list("GITMON_CORS_ORIGINS", ["http://127.0.0.1:5173"]),
         static_dir=static_dir,
         sprite_style=(_env("GITMON_SPRITE_STYLE") or "rich").lower(),
         max_tree_entries=_env_int("GITMON_MAX_TREE_ENTRIES", 20000),
+        quest_target=_env("GITMON_QUEST_TARGET") or "4243342/gitmon",
     )
     settings.ensure_dirs()
     return settings
