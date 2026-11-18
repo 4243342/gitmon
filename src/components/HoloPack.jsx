@@ -114,7 +114,7 @@ export default function HoloPack({ pets, muted, label, onSpread, onPick, onColle
       <div className="hp-hud">
         {!spread ? (
           <>
-            <p className="hp-hud-text">{ready ? '拖动封口撕开卡包' : '正在准备卡面立绘…'}</p>
+            <p className="hp-hud-text">{ready ? '按住卡包任意位置，沿任意方向拖动撕开' : '正在准备卡面立绘…'}</p>
             <button className="hp-hud-btn" onClick={autoOpen} disabled={!ready}>
               {ready ? '一键开包' : '准备中…'}
             </button>

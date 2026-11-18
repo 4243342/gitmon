@@ -8,6 +8,8 @@
 //
 // 引擎自己管 DOM，不依赖 React：挂到容器上，吐事件。
 
+import { createTearGeometry, tearPeelSide } from './tearGeometry.js'
+
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v))
 const rand = (a, b) => a + Math.random() * (b - a)
 
@@ -88,7 +90,7 @@ export default function createHoloPack(root, options = {}) {
       <div class="hp-flow" data-flow><svg class="hp-rays" data-rays viewBox="0 0 100 76"></svg></div>
       <div class="hp-pack" data-pack>
         <div class="hp-skin front" data-skin-front>
-          <span class="hp-tag">Tear here ⟶</span>
+          <span class="hp-tag">Tear anywhere</span>
           <span class="hp-lips"><i class="hp-lip" data-lip></i></span>
           <b class="hp-mark">GITMON</b>
           <span class="hp-series" data-series>Series 01</span>
@@ -109,7 +111,7 @@ export default function createHoloPack(root, options = {}) {
           <i class="hp-code"></i>
         </div>
         <div class="hp-flap" data-flap></div>
-        <button class="hp-hit" data-hit type="button" aria-label="卡包：拖动顶部撕开"></button>
+        <button class="hp-hit" data-hit type="button" aria-label="卡包：按住任意位置拖动撕开；按回车或空格一键开包"></button>
       </div>
     </div>
     <canvas class="hp-fx" data-fx></canvas>
@@ -134,11 +136,8 @@ export default function createHoloPack(root, options = {}) {
   ground.className = 'hp-ground'
   scene.append(ground)
 
-  const TEAR = 10.5
   const N = 96
   const K = handheld ? 8 : 12
-  const Y_MIN = 8
-  const Y_MAX = 19.5
   const P = pose({ x: 0, y: 0, rx: 0, ry: 0, rz: 0 }, 0.7, 0.28)
   const eye = pose({ x: 0, y: 0 }, 0.18, 0.3)
   const tear = { p: new Spring(0, 0.1), th: new Spring(0, 0.28, 0.35), ph: new Spring(0, 0.3, 0.2), dir: 1, last: 0 }
@@ -149,10 +148,17 @@ export default function createHoloPack(root, options = {}) {
   let state = 'enter'
   let settle = null
   let jag = []
+  let cut = null
+  let cutWidth = 1
+  let peelSign = 1
+  let cutMinV = 0
+  let cutMaxV = 0
+  let tearing = false
+  let committed = false
+  let retractAt = 0
   let fall = null
   let fly = null
   let drag = null
-  let wasDrag = false
   let cardList = []
   let bits = []
   let spreadAt = 0
@@ -181,48 +187,62 @@ export default function createHoloPack(root, options = {}) {
     fx.height = innerHeight * d
   }
 
-  /* ---------- 撕口 ---------- */
-  /* 每次撕口都不一样：怎么起伏、怎么抖、在哪儿卡住。每点记录
-     [x, y, 线本身的高度, 细齿, 露出多少金属, 手把它掰弯了多少]，单位都是包高的百分比 */
-  const place = (q, bend) => {
-    q[5] = bend
-    q[1] = clamp(q[2] + bend, Y_MIN, Y_MAX) + q[3]
+  // 把屏幕触点投回旋转后的包面；包面的倾斜、透视和挤压不能改变下刀位置。
+  function packPoint(e) {
+    const rect = root.getBoundingClientRect()
+    const style = getComputedStyle(root)
+    const m = new DOMMatrixReadOnly(getComputedStyle(pack).transform)
+    const depth = (parseFloat(getComputedStyle(pack).getPropertyValue('--hp-d')) || 16) / 2 + 1
+    const perspective = parseFloat(style.perspective) || 1400
+    const sx = e.clientX - rect.left - rect.width / 2
+    const sy = e.clientY - rect.top - rect.height * 0.4
+    const z = m.m33 * depth + m.m43
+    const a = m.m11 + sx * m.m13 / perspective
+    const b = m.m21 + sx * m.m23 / perspective
+    const c = m.m12 + sy * m.m13 / perspective
+    const d = m.m22 + sy * m.m23 / perspective
+    const x = sx * (1 - z / perspective) - m.m31 * depth - m.m41
+    const y = sy * (1 - z / perspective) - m.m32 * depth - m.m42 - rect.height * 0.1
+    const determinant = a * d - b * c
+    if (Math.abs(determinant) < 0.001) return null
+    return { x: (x * d - b * y) / determinant + PW / 2, y: (a * y - x * c) / determinant + PH / 2 }
   }
-  function path() {
+
+  /* ---------- 撕口 ---------- */
+  // u 沿首段手势，v 沿法线：横、竖、斜撕使用同一条真实轨迹。
+  // 点记录 [u 百分比, v 像素, 原轨迹 v, 细齿, 露出的金属宽度]。
+  function path(geometry = createTearGeometry({ width: PW, height: PH, start: { x: 0, y: PH * 0.12 }, direction: { x: 1, y: 0 } })) {
+    cut = geometry
+    cutWidth = PW
+    peelSign = tearPeelSide(cut)
+    cutMinV = peelSign > 0 ? cut.minV : -cut.maxV
+    cutMaxV = peelSign > 0 ? cut.maxV : -cut.minV
     tear.roll = rand(0.65, 1.4)
-    const slope = rand(-7.5, 7.5)
-    const bow = rand(-3, 3)
-    const freq = rand(1.5, 3.5)
-    const ph = rand(0, 6.28)
-    const wob = rand(0.3, 1.1)
-    const y0 = rand(10.5, 14)
-    let walk = 0
+    const grain = Math.min(PW, PH) / 100
     jag = Array.from({ length: N + 1 }, (_, i) => {
       const x = (i / N) * 100
-      const s = x / 50 - 1
-      walk = clamp(walk + rand(-0.25, 0.25) + (Math.random() < 0.05 ? rand(-1.5, 1.5) : 0), -2.2, 2.2)
-      const q = [
-        i && i < N ? x + rand(-0.3, 0.3) : x,
-        0,
-        y0 + slope * s + bow * (1 - s * s) + wob * Math.sin(s * freq * Math.PI + ph) + walk,
-        rand(-0.42, 0.42) + (Math.random() < 0.14 ? rand(-1.2, 1.2) : 0),
-        Math.random() < 0.12 ? rand(1.2, 2.1) : rand(0.35, 1.1),
-        0,
-      ]
-      place(q, 0)
-      return q
+      return [x, 0, 0, grain * (rand(-0.42, 0.42) + (Math.random() < 0.14 ? rand(-1.2, 1.2) : 0)), grain * rand(0.5, 1.5)]
     })
+    trace()
   }
-  // 没撕的部分跟着手走：往下拽就往下沉，往上拽就往上翘。已经撕开的部分保持原样
-  function steer(k) {
-    const d = tear.dir
-    const i0 = clamp(Math.round((d > 0 ? tear.p.x : 1 - tear.p.x) * N), 0, N)
-    for (let i = i0 + d; i >= 0 && i <= N; i += d) place(jag[i], jag[i0][5] + k * Math.abs(i - i0) * 100 / N)
+  function trace() {
+    for (const q of jag) {
+      q[2] = cut.at(cut.minU + q[0] / 100 * cut.span) * peelSign
+      q[1] = q[2] + q[3]
+    }
   }
-  const yAt = (x) => {
+  const vAt = (x) => {
     const f = (clamp(x, 0, 100) / 100) * N
     const i = Math.min(N - 1, f | 0)
     return jag[i][1] + (jag[i + 1][1] - jag[i][1]) * (f - i)
+  }
+  const packPath = (points) => points.map(([u, v]) => cut.toPercent(cut.minU + u / 100 * cut.span, v * peelSign))
+  const seamPoint = (u) => packPath([[u, vAt(u)]])[0]
+  const seamPoints = () => packPath(jag).filter(([x, y]) => x >= 0 && x <= 100 && y >= 0 && y <= 100)
+  const seamCenter = () => {
+    const points = seamPoints()
+    if (!points.length) return cut.toPercent(0, 0)
+    return points[Math.floor(points.length / 2)]
   }
 
   // 撕口条：沿长度切成 K 片，每片比上一片弯得更狠，长度越长卷得越紧
@@ -230,58 +250,58 @@ export default function createHoloPack(root, options = {}) {
     const el = document.createElement('div')
     el.className = 'hp-ply'
     el.hidden = true
-    el.innerHTML = '<div class="hp-skin front"><span class="hp-tag">Tear here ⟶</span><i class="hp-lip"></i><i class="hp-tone"></i></div><div class="hp-skin foil"><i class="hp-tone"></i></div>'
+    // 任意位置撕开都要带走原印刷面，不能在裂口上方丢掉文字或吉祥物。
+    const front = skins[0].cloneNode(true)
+    front.removeAttribute('data-skin-front')
+    front.insertAdjacentHTML('beforeend', '<i class="hp-tone"></i>')
+    el.append(front)
+    el.insertAdjacentHTML('beforeend', '<div class="hp-skin foil"><i class="hp-tone"></i></div>')
     flap.append(el)
-    const [front, foil] = el.children
-    return { el, front, foil, lip: front.querySelector('.hp-lip'), shade: front.querySelector('.hp-tone'), under: foil.querySelector('.hp-tone'), done: false }
+    const foil = el.lastElementChild
+    return { el, front, foil, lip: front.querySelector('.hp-lip'), shade: front.querySelector('.hp-tone'), under: foil.querySelector('.hp-tone') }
   })
 
   function clips(p) {
-    const d = tear.dir
-    const xt = d > 0 ? p * 100 : 100 - p * 100
-    const yt = yAt(xt)
+    const xt = clamp(p, 0, 1) * 100
+    const yt = vAt(xt)
     const tip = [xt, yt, 0, 0, 0]
-    const torn = jag.filter(([x]) => (d > 0 ? x < xt : x > xt))
-    const rest = d > 0
-      ? [[xt, 0], [100, 0], [100, 100], [0, 100], ...torn, [xt, yt]]
-      : [[0, 0], [xt, 0], [xt, yt], ...torn, [100, 100], [0, 100]]
+    const torn = jag.filter(([x]) => x < xt)
+    const rest = packPath([[xt, cutMinV], [100, cutMinV], [100, cutMaxV], [0, cutMaxV], ...torn, [xt, yt]])
     skins[0].style.clipPath = poly(rest)
     skins[1].style.clipPath = poly(mirror(rest))
-    bodyLip.style.clipPath = poly(band(d > 0 ? [...torn, tip] : [tip, ...torn], 1))
-    for (const r of rims) {
-      const side = r.s > 0 ? 100 : 0
-      if (d > 0 ? side <= xt : side >= xt) r.el.style.top = `${Math.max(r.top, yAt(side) + 1.4).toFixed(2)}%`
-    }
-    flap.style.transformOrigin = `${xt}% ${yt}%`
+    bodyLip.style.clipPath = poly(packPath(band([...torn, tip], 1)))
+    rimLayer.style.clipPath = poly(rest)
+    const [tx, ty] = seamPoint(xt)
+    flap.style.transformOrigin = `${tx}% ${ty}%`
     const w = 100 / K
     const lap = 0.25
     plies.forEach((s, k) => {
-      const lo = d > 0 ? k * w : Math.max(k * w, xt)
-      const hi = d > 0 ? Math.min((k + 1) * w, xt) : (k + 1) * w
+      const lo = k * w
+      const hi = Math.min((k + 1) * w, xt)
       if (hi <= lo) { s.el.hidden = true; return }
       s.el.hidden = false
-      if (s.done) return
-      const L = d < 0 && lo === xt ? lo : Math.max(0, lo - lap)
-      const R = d > 0 && hi === xt ? hi : Math.min(100, hi + lap)
-      const span = [[L, yAt(L), 0, 0, 0.8], ...jag.filter((q) => q[0] > L && q[0] < R), [R, yAt(R), 0, 0, 0.8]]
-      const piece = [[L, 0], [R, 0], ...span.slice().reverse()]
+      const L = Math.max(0, lo - lap)
+      const R = hi === xt ? hi : Math.min(100, hi + lap)
+      const span = [[L, vAt(L), 0, 0, 1.5], ...jag.filter((q) => q[0] > L && q[0] < R), [R, vAt(R), 0, 0, 1.5]]
+      const piece = packPath([[L, cutMinV], [R, cutMinV], ...span.slice().reverse()])
       s.front.style.clipPath = poly(piece)
       s.foil.style.clipPath = poly(mirror(piece))
-      s.lip.style.clipPath = poly(band(span, -1))
-      s.done = d > 0 ? hi < xt || xt >= 100 : lo > xt || xt <= 0
+      s.lip.style.clipPath = poly(packPath(band(span, -1)))
     })
     // 从断口往外，每道折得比上一道更狠
-    const k0 = clamp(Math.floor((d > 0 ? xt - 1e-6 : xt) / w), 0, K - 1)
+    const k0 = clamp(Math.floor((xt - 1e-6) / w), 0, K - 1)
     const bend = (2.6 + 2.6 * p) * tear.roll
     const jit = Math.min(1, Math.abs(tear.p.v) * 0.4) * 1.6
     let m = ''
     let sum = 0
-    for (let n = 0, k = k0; k >= 0 && k < K; n++, k -= d) {
-      const x = (((n ? (d > 0 ? k + 1 : k) * w : xt) / 100) * PW).toFixed(2)
-      const a = d * (bend * (0.4 + 0.3 * n) + Math.sin(t * 16 + n * 0.9) * jit)
+    for (let n = 0, k = k0; k >= 0; n++, k--) {
+      const [x, y] = seamPoint(n ? (k + 1) * w : xt)
+      const px = (x / 100 * PW).toFixed(2)
+      const py = (y / 100 * PH).toFixed(2)
+      const a = bend * (0.4 + 0.3 * n) + Math.sin(t * 16 + n * 0.9) * jit
       const s = plies[k]
       sum += a
-      m += `translateX(${x}px) rotateY(${a.toFixed(2)}deg) rotateZ(${((d * 0.9 * n) / 4).toFixed(2)}deg) translateX(-${x}px) `
+      m += `translate(${px}px,${py}px) rotate3d(${cut.normal.x},${cut.normal.y},0,${a.toFixed(2)}deg) rotateZ(${(0.9 * n / 4).toFixed(2)}deg) translate(${-px}px,${-py}px) `
       s.el.style.transform = m
       s.shade.style.opacity = Math.min(0.5, Math.abs(sum) / 200).toFixed(2)
       s.under.style.opacity = Math.max(0, 0.34 - Math.abs(sum) / 420).toFixed(2)
@@ -289,6 +309,7 @@ export default function createHoloPack(root, options = {}) {
   }
 
   const start = () => {
+    tearing = true
     if (pack.classList.contains('hp-hurt')) return
     audio?.eep?.()
     flap.classList.add('on')
@@ -296,14 +317,55 @@ export default function createHoloPack(root, options = {}) {
     pack.classList.add('hp-held', 'hp-hurt')
   }
   const finish = (response) => {
+    committed = true
+    retractAt = 0
     tear.p.set(response)
     tear.p.to = 1
     tear.th.to = rand(14, 30)
     tear.ph.to = -rand(20, 44)
   }
 
+  function prepareTear(geometry) {
+    path(geometry)
+    tear.dir = cut.axis.x < -0.01 || (Math.abs(cut.axis.x) <= 0.01 && cut.axis.y < 0) ? -1 : 1
+    tear.p.x = tear.p.to = clamp(-cut.minU / cut.span, 0, 1)
+    tear.p.v = 0
+    tear.last = tear.p.x
+    retractAt = 0
+    committed = false
+    sprout()
+  }
+
+  function restoreWrapper() {
+    tearing = committed = false
+    retractAt = 0
+    for (const s of skins) s.style.clipPath = ''
+    bodyLip.style.clipPath = ''
+    rimLayer.style.clipPath = ''
+    for (const s of plies) { s.el.hidden = true; s.el.style.transform = '' }
+    flap.className = 'hp-flap'
+    flap.style.transform = ''
+    pack.classList.remove('hp-held', 'hp-hurt', 'hp-tug')
+    for (const s of [tear.p, tear.th, tear.ph]) s.x = s.to = s.v = 0
+    tear.last = 0
+    for (const b of ribbons) { b.on = false; b.g.to = 0 }
+    audio?.rip?.(0)
+  }
+
+  function autoTear() {
+    if (state === 'enter') { clearTimeout(settle); state = 'idle' }
+    if (state !== 'idle' || committed) return
+    if (!tearing || retractAt) {
+      restoreWrapper()
+      const dir = Math.random() < 0.5 ? -1 : 1
+      prepareTear(createTearGeometry({ width: PW, height: PH, start: { x: dir > 0 ? 0 : PW, y: PH * 0.12 }, direction: { x: dir, y: 0 } }))
+    }
+    start()
+    finish(0.3)
+  }
+
   hit.addEventListener('pointerdown', (e) => {
-    if (e.button || drag) return
+    if (e.button || drag || committed) return
     if (state === 'enter') {
       clearTimeout(settle)
       state = 'idle'
@@ -311,60 +373,65 @@ export default function createHoloPack(root, options = {}) {
       for (const s of Object.values(P)) s.set(0.28, 0.25)
     }
     if (state !== 'idle') return
+    if (retractAt) restoreWrapper()
+    const point = packPoint(e)
+    if (!point) return
+    e.preventDefault()
     hit.setPointerCapture(e.pointerId)
     audio?.grab?.()
-    drag = { id: e.pointerId, x0: e.clientX, y0: e.clientY, p0: tear.p.to, moved: false, lx: e.clientX, lt: e.timeStamp }
+    drag = { id: e.pointerId, x0: e.clientX, y0: e.clientY, moved: false, start: { x: clamp(point.x, 0, PW), y: clamp(point.y, 0, PH) } }
   })
   hit.addEventListener('pointermove', (e) => {
-    if (e.pointerId !== drag?.id || state !== 'idle') return
+    if (e.pointerId !== drag?.id || state !== 'idle' || committed) return
     if (e.pointerType === 'mouse' && !e.buttons) return letGo(e)
     const dx = e.clientX - drag.x0
-    let dy = e.clientY - drag.y0
+    const dy = e.clientY - drag.y0
+    const point = packPoint(e)
+    if (!point) return
     if (!drag.moved) {
-      if (Math.hypot(dx, dy) < 6) return
+      if (Math.hypot(dx, dy) < 12) return
+      const direction = { x: point.x - drag.start.x, y: point.y - drag.start.y }
+      if (Math.hypot(direction.x, direction.y) < 1) return
       drag.moved = true
+      prepareTear(createTearGeometry({ width: PW, height: PH, start: drag.start, direction }))
       tear.p.set(0.1)
-      pack.classList.add('hp-tug')
+      start()
     }
-    if (tear.p.to === 0) {
-      // 手真的横着走才撕，之前只是拽了拽包
-      drag.dy = dy
-      if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy) * 0.5) return
-      tear.dir = dx < 0 ? -1 : 1
-      drag.y0 = e.clientY
-      dy = 0
-    }
-    start()
-    tear.p.to = clamp(drag.p0 + (drag.p0 ? Math.abs(dx) : dx * tear.dir) / (PW * 0.85), tear.p.to, 1)
-    tear.th.to = 6 + tear.p.to * 14 + clamp(-dy * 0.16, -6, 22)
-    tear.ph.to = -(8 + tear.p.to * 22) - clamp(-dy * 0.2, 0, 24)
-    drag.k = (drag.k || 0) + (clamp(dy / Math.max(60, Math.abs(dx)), -0.7, 0.7) * (PW / PH) - (drag.k || 0)) * 0.3
-    steer(drag.k)
+    if (!cut.advance(point)) return
+    trace()
+    tear.p.to = clamp((cut.tipU - cut.minU) / cut.span, tear.p.to, 1)
+    tear.th.to = 6 + cut.progress * 14
+    tear.ph.to = -(8 + cut.progress * 22)
+    placeRays()
+    clips(tear.p.x)
+    if (cut.progress >= 1) finish(0.18)
   })
   const letGo = (e) => {
     if (!drag || (e.pointerId !== undefined && e.pointerId !== drag.id)) return
-    wasDrag = drag.moved
+    const released = drag
     drag = null
-    if (!wasDrag || state !== 'idle') return
-    if (tear.p.to > 0.55) return finish(0.18)
-    audio?.[pack.classList.contains('hp-hurt') ? 'phew' : 'boing']?.()
+    if (hit.hasPointerCapture(released.id)) hit.releasePointerCapture(released.id)
+    if (!released.moved || state !== 'idle' || committed) return
+    // 和旧版一样：距离不足就回拢，取消/失焦也不能误开包。
+    retractAt = t + 0.22
+    tear.p.set(0.16)
+    tear.p.to = 0
+    tear.th.to = tear.ph.to = 0
+    audio?.phew?.()
     pack.classList.remove('hp-held', 'hp-hurt', 'hp-tug')
-    tear.th.to = 3 + tear.p.to * 10
-    tear.ph.to = -tear.p.to * 14
   }
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) hit.addEventListener(type, letGo)
   hit.addEventListener('click', (e) => {
-    if (wasDrag && e.detail) { wasDrag = false; return }
-    if (state !== 'idle') return
-    if (!tear.p.to) tear.dir = Math.random() < 0.5 ? -1 : 1
-    start()
-    finish(tear.p.to ? 0.18 : 0.55)
+    // 鼠标/触屏轻点不拆包，保留键盘和辅助技术的 button 激活方式。
+    if (!e.detail) autoTear()
   })
 
   /* ---------- 侧边鼓起 ---------- */
   /* 侧边是一条条沿深度叠出来的，每条往外推一点、往后站矮一点，
      边缘于是从正面滚开、鼓起来，再收进上下两道封口 */
-  const rims = []
+  const rimLayer = document.createElement('div')
+  rimLayer.className = 'hp-rims'
+  pack.insertBefore(rimLayer, flap)
   for (const s of [-1, 1]) {
     for (const deg of [80, 60, 40, 20, 0, -20, -40, -60, -80]) {
       const a = (deg * Math.PI) / 180
@@ -377,8 +444,7 @@ export default function createHoloPack(root, options = {}) {
       const tone = s > 0 ? `#000 ${(10 + back * 40).toFixed(0)}%` : `#fff ${(45 * (1 - back)).toFixed(0)}%`
       el.className = 'hp-rim'
       el.style.cssText = `${s > 0 ? 'left' : 'right'}:calc(50% + var(--hp-pw)*.476 - ${o}px);width:${(o + b).toFixed(2)}px;top:${(11.5 + back * 13).toFixed(2)}%;bottom:${(11.5 + back * 13).toFixed(2)}%;transform:translateZ(calc(var(--hp-d)*${(Math.sin(a) / 2).toFixed(3)}));clip-path:${poly(s > 0 ? shape : mirror(shape))};background:color-mix(in srgb,var(--hp-pack),${tone})`
-      pack.insertBefore(el, flap)
-      rims.push({ el, s, top: 11.5 + back * 13 })
+      rimLayer.append(el)
     }
   }
 
@@ -408,10 +474,20 @@ export default function createHoloPack(root, options = {}) {
   let Y0 = 62.5
   let R0 = 45
 
+  const rayWidth = () => cut.span * PW / cutWidth
+  function placeRays() {
+    const [x, y] = seamPoint(50)
+    const width = rayWidth()
+    rays.style.left = `${x}%`
+    rays.style.top = `${y}%`
+    rays.style.width = `${width}px`
+    rays.style.height = `${width * 0.76}px`
+    rays.style.transform = `translate(-50%, -78.947368%) rotate(${cut.angle}deg) scaleY(${peelSign}) translateZ(-6px)`
+  }
+
   function sprout() {
     const k0 = rand(0, 7) | 0
-    const u = PW / 100
-    Y0 = 62.5 + ((Y_MAX - TEAR) / 100) * PH / u
+    Y0 = 64
     R0 = CY - Y0
     lines = Array.from({ length: NR + 1 }, (_, j) => {
       const ox = 3 + (94 * j) / NR
@@ -448,14 +524,16 @@ export default function createHoloPack(root, options = {}) {
     edgeEls = [...rays.querySelectorAll('.hp-edge')]
     stops = [...rays.querySelectorAll('#hp-fade-g stop')]
     motes = [...rays.querySelectorAll('.hp-mote')].map((el) => ({ el, j: -1, u: Math.random(), v: rand(0.2, 0.8), sp: rand(0.3, 0.5), r: rand(1.6, 3) }))
+    placeRays()
     fit()
   }
 
   // 依赖窗口尺寸的部分：窗口变了、手机转了，整把彩带依然要够到屏幕顶端
   function fit() {
-    const u = PW / 100
-    const room = 2.5 + (innerHeight / 2 - PH * (0.5 - TEAR / 100)) / u
-    const w = Math.min(innerWidth / 2 / u, room * 1.2 + 60) + 20
+    const u = rayWidth() / 100
+    // 光幕随裂口转向，按屏幕对角线留足空间，竖撕时也不会被顶端视框截断。
+    const room = Math.hypot(innerWidth, innerHeight) / u
+    const w = room + 20
     reach = reduce ? 45 + room * 0.6 : (45 + room) * Math.hypot(47 / 45, 1) + TIP + 20
     for (const b of ribbons) b.L = reach - b.r
     const box = { x: 50 - w, y: 32.5 - room, width: 2 * w, height: room + 60 }
@@ -466,13 +544,12 @@ export default function createHoloPack(root, options = {}) {
 
   function pour(dt) {
     const ft = reduce ? 0 : t
-    const xt = tear.dir > 0 ? tear.p.x * 100 : 100 - tear.p.x * 100
+    const xt = tear.p.x * 100
     const sway = Math.sin(ft * 0.9) * 1.5
     const go = !reduce && (state === 'open' || state === 'spread')
     const s = t - openedAt
-    const u = PW / 100
-    const a = anchor.rz * (Math.PI / 180)
-    const roof = 60 + ((-innerHeight / 2 - anchor.y) / Math.cos(a) + PH * (0.5 - TEAR / 100)) / u
+    const u = rayWidth() / 100
+    const roof = 60 - Math.hypot(innerWidth, innerHeight) / u
     const soft = TIP
     // 甩出去：前沿离开口子很快，冲出屏幕顶端才慢下来，最外侧的带子也一样；
     // 尾巴紧跟在后面，整把带子不到一秒就冲完
@@ -481,8 +558,11 @@ export default function createHoloPack(root, options = {}) {
     const tail = R0 - 5 + (go ? (full + 21 - R0) * clamp((s - 0.35) / 0.55, 0, 1) ** 2 : 0)
     const carry = go ? (45 * s * s) / (s + 0.25) : 0
     for (const b of ribbons) {
-      if (state === 'idle' && tear.p.x > 0 && (tear.dir > 0 ? b.mx < xt : b.mx > xt)) b.on = true
-      b.g.to = b.on ? 1 : 0
+      if (state === 'idle' && tearing && !retractAt) {
+        const [x, y] = seamPoint(b.mx)
+        b.on = b.mx < xt && x >= 0 && x <= 100 && y >= 0 && y <= 100
+      }
+      b.g.to = b.on && !retractAt ? 1 : 0
       b.len = b.L * Math.max(0, b.g.x) + far - reach
     }
     if (!handheld) {
@@ -498,7 +578,7 @@ export default function createHoloPack(root, options = {}) {
     // 每条边每帧只算一次，两侧的带子共用，距离始终一致，接缝不会裂开；
     // 算到屏幕边缘外一点就停，没人看得见
     const lead = handheld ? 0 : 20
-    const side = innerWidth / 2 / u + 14
+    const side = Math.hypot(innerWidth, innerHeight) / u + 14
     const fix = (v) => Math.round(v * 20) / 20
     const edges = lines.map((e, j) => {
       const stop = Math.min((Y0 - roof) / -e.uy, (side - Math.abs(e.x - 50)) / Math.abs(e.ux)) + 24
@@ -550,12 +630,13 @@ export default function createHoloPack(root, options = {}) {
     for (let i = 0; i < (handheld ? 130 : 240); i++) bits.push({ kind: i % 3, fill: [...BANDS, '#fff'][i % 8] })
   }
   function burst() {
+    const points = seamPoints()
     bits.forEach((b, i) => {
       if (b.age !== undefined) return
-      const lx = rand(6, 94)
+      const [lx, ly] = points.length ? points[rand(0, points.length) | 0] : seamCenter()
       const vt = 260 + 400 * Math.random() ** 1.5
       Object.assign(b, {
-        inside: true, lx, ly: yAt(lx) + rand(1, 16), lz: rand(4.6, 7),
+        inside: true, lx, ly, lz: rand(4.6, 7),
         up: rand(900, 2600), a: ((lx - 50) / 50 + rand(-0.5, 0.5)) * clamp(innerWidth / 1000, 0.5, 1),
         sp: rand(500, 2700), r: rand(0, 360), spin: rand(-700, 700), c: 2600 / vt / vt,
         slip: rand(900, 2600), glide: Math.sign(lx - 50) * rand(-200, 900), sc: rand(0.9, 1.9),
@@ -707,6 +788,9 @@ export default function createHoloPack(root, options = {}) {
   }
 
   function spawn() {
+    const [mouthX, mouthY] = seamCenter()
+    // 卡堆仍装在包里；下部/侧面开口不能把整张卡瞬移到包装外。
+    const [fromX, fromY] = onStage(clamp(mouthX, 42, 58), clamp(mouthY + 39, 41, 59), 0)
     cardList = shuffle([...cards]).map((d, i) => {
       const el = document.createElement('div')
       el.className = `hp-card hp-${d.tier || 'common'}${d.flip ? ' hp-flip-card' : ''}`
@@ -729,7 +813,7 @@ export default function createHoloPack(root, options = {}) {
         hover: false,
         hx: 0.5,
         hy: 0.5,
-        p: pose({ x: P.x.x, y: P.y.x + PH * ((Math.max(...jag.map((q) => q[1])) + 0.8 + 38.2) / 100 - 0.5), z: 3.5 - i * 1.75, rx: 0, ry: 0, rz: P.rz.x, s: 0.94 }, 0.55, 0.22),
+        p: pose({ x: fromX, y: fromY, z: 3.5 - i * 1.75, rx: 0, ry: 0, rz: P.rz.x, s: 0.94 }, 0.55, 0.22),
       }
       el.addEventListener('click', () => {
         if (c.phase === 'spread') onPick?.(c.d)
@@ -740,6 +824,7 @@ export default function createHoloPack(root, options = {}) {
     if (reduce) {
       for (const c of cardList) {
         c.phase = 'spread'
+        c.landAt = t - 1
         c.f = fan(c)
         c.el.classList.add('hp-out')
         for (const k in c.f) c.p[k].x = c.p[k].to = c.f[k]
@@ -783,16 +868,14 @@ export default function createHoloPack(root, options = {}) {
     t += dt
     const motion = reduce ? 0 : 1
     const held = pack.classList.contains('hp-held')
-    // 上下拽而不是横着撕，包会被拉长，松手弹回去
-    const tug = motion && drag?.moved && !tear.p.to ? Math.sign(drag.dy) * 170 * (1 - 1 / (1 + Math.abs(drag.dy) / 170)) : 0
-    squeeze.to = tug ? -Math.abs(tug) / 90 : held && state === 'idle' ? motion : 0
+    squeeze.to = held && state === 'idle' ? motion : 0
 
     if (state === 'enter' || state === 'idle') {
       const hold = drag?.moved ? 0.25 : 1
       const tilt = hold * (reduce ? 0.5 : 1)
       const nx = pointer.in ? clamp((pointer.x / innerWidth) * 2 - 1, -1, 1) : 0
       const ny = pointer.in ? clamp((pointer.y / innerHeight) * 2 - 1, -1, 1) : 0
-      P.y.to = Math.sin(t * 1.4) * 7 * motion + tug
+      P.y.to = Math.sin(t * 1.4) * 7 * motion
       P.ry.to = nx * 22 * tilt
       P.rx.to = -ny * 16 * tilt - squeeze.x * 6
       P.rz.to = Math.sin(t * 0.9) * 1.6 * motion - (held && tear.p.x > 0 ? tear.dir * tear.p.x * 3 : 0)
@@ -825,26 +908,27 @@ export default function createHoloPack(root, options = {}) {
     const h = dt / n
     for (let i = 0; i < n; i++) for (const s of springs) s.step(h)
 
-    if (state === 'idle' && tear.p.x > 0) {
+    if (state === 'idle' && tearing) {
       const p = Math.min(1, tear.p.x)
       const dp = p - tear.last
       tear.last = p
       // 铝箔多响取决于手多快：慢是零星脆响，快是一道长撕
       audio?.rip?.(dp > 0 ? (dp / Math.max(dt, 0.004) / 4) ** 0.6 : 0)
-      if (dp > 0 && motion) {
+      if (dp > 0 && motion && !retractAt) {
         P.rz.v += rand(-1, 1) * Math.min(dp, 0.02) * 900
         P.y.v += dp * 420
         tear.th.v += dp * 300
         squeeze.v += dp * 20
         for (const b of ribbons) if (b.on) b.g.v += dp * 6
       }
-      if (dp > 0 || Math.abs(tear.p.v) > 0.001) clips(p)
+      if (Math.abs(dp) > 0 || Math.abs(tear.p.v) > 0.001) clips(p)
       const draft = drag ? 0 : motion * (Math.sin(t * 5.3) + Math.sin(t * 8.7) * 0.5)
-      flap.style.transform = `rotateZ(${(tear.th.x + draft) * tear.dir}deg) rotateX(${tear.ph.x + draft * 1.5}deg)`
-      if (p > 0.985 && tear.p.to >= 1) open()
+      flap.style.transform = `rotateZ(${(tear.th.x + draft) * tear.dir}deg) rotate3d(${cut.axis.x * peelSign},${cut.axis.y * peelSign},0,${tear.ph.x + draft * 1.5}deg)`
+      if (committed && p > 0.985 && tear.p.to >= 1) open()
+      else if (retractAt && t >= retractAt) restoreWrapper()
     }
     // 撕开时彩带走起来，之后一路冲出屏幕顶端，直到最后一根也散尽
-    glow.to = (state === 'idle' && tear.p.x > 0) || ((state === 'open' || state === 'spread') && !reduce && !drained) ? 1 : 0
+    glow.to = (state === 'idle' && tearing && !retractAt) || ((state === 'open' || state === 'spread') && !reduce && !drained) ? 1 : 0
     if (glow.x > 0.003 || glow.to) {
       rays.style.opacity = (glow.x * 0.86).toFixed(3)
       pour(dt)
@@ -855,7 +939,7 @@ export default function createHoloPack(root, options = {}) {
       fly.y += fly.vy * dt
       fly.th += fly.vth * dt
       fly.ph += fly.vph * dt
-      flap.style.transform = `translate3d(${fly.x}px,${fly.y}px,0) rotateZ(${fly.th * tear.dir}deg) rotateX(${fly.ph}deg)`
+      flap.style.transform = `translate3d(${fly.x}px,${fly.y}px,0) rotateZ(${fly.th * tear.dir}deg) rotate3d(${cut.axis.x * peelSign},${cut.axis.y * peelSign},0,${fly.ph}deg)`
       if (t - openedAt > 1.6) { fly = null; flap.className = 'hp-flap' }
     }
     if (state === 'open' && !fall && !reduce && t - openedAt > 0.02) fall = { y: 0, v: (1500 * PH) / 420 }
@@ -895,7 +979,7 @@ export default function createHoloPack(root, options = {}) {
     // 出来后各自散开，谁也不会从谁身上穿过去
     if (state === 'open' && !spreadAt && reduce) { spreadAt = t; scene.classList.add('flat') }
     if (state === 'open' && !spreadAt && !reduce && cardList.every((c) => c.phase === 'shot')) {
-      const mouth = P.y.x + (fall ? fall.y : 0) + PH * (Math.max(...jag.map((q) => q[1])) / 100 - 0.5)
+      const mouth = P.y.x + (fall ? fall.y : 0) + PH * (seamCenter()[1] / 100 - 0.5)
       const ch = PW * 1.176
       if (cardList.every((c) => c.p.y.x + ch * 0.36 < mouth)) unwind()
     }
@@ -969,10 +1053,8 @@ export default function createHoloPack(root, options = {}) {
     bits = bits.filter((b) => {
       if (b.age === undefined || (b.age += dt) < 0) return true
       if (b.inside) {
-        // 被包的正面挡住，冒过撕口之后才散开
-        b.ly -= (b.up * dt * 100) / PH
+        // 从真实裂口放出彩纸，保留原有重力、空气阻力和散落动画。
         b.r += b.spin * dt
-        if (b.ly > yAt(b.lx)) return true
         ;[b.x, b.y, b.z] = onStage(b.lx, b.ly, b.lz)
         b.inside = false
         b.age = 0
@@ -1023,9 +1105,14 @@ export default function createHoloPack(root, options = {}) {
   const onBlur = (e) => { letGo(e); pointer.in = false }
   const onResize = () => {
     if (!innerWidth || !innerHeight) return
+    if (state === 'idle' && !committed && (drag || tearing)) {
+      if (drag) letGo({})
+      restoreWrapper()
+    }
     measure()
+    placeRays()
     fit()
-    if (state === 'idle' && tear.p.x > 0) clips(Math.min(1, tear.p.x))
+    if (state === 'idle' && tearing) clips(Math.min(1, tear.p.x))
     for (const c of cardList) if (c.f) c.f = fan(c)
   }
   const onVisibility = () => { if (document.hidden) audio?.rip?.(0) }
@@ -1049,12 +1136,8 @@ export default function createHoloPack(root, options = {}) {
     pack.style.setProperty('--hp-pack', skin[1])
     paintLight(pack.style)
     path()
-    for (const s of skins) s.style.clipPath = ''
-    bodyLip.style.clipPath = ''
-    for (const s of plies) { s.el.hidden = true; s.done = false; s.el.style.transform = '' }
-    for (const r of rims) r.el.style.top = `${r.top}%`
-    flap.className = 'hp-flap'
-    flap.style.transform = ''
+    restoreWrapper()
+    for (const s of plies) s.front.querySelector('[data-series]').textContent = seriesEl.textContent
     rays.style.cssText = ''
     rays.classList.remove('hp-rays-on')
     pack.style.visibility = flow.style.visibility = ''
@@ -1085,20 +1168,13 @@ export default function createHoloPack(root, options = {}) {
 
   return {
     // 一键开包：直接走完撕口
-    autoTear() {
-      if (state === 'enter') { clearTimeout(settle); state = 'idle' }
-      if (state !== 'idle') return
-      if (!tear.p.to) tear.dir = Math.random() < 0.5 ? -1 : 1
-      start()
-      finish(tear.p.to ? 0.18 : 0.55)
-    },
+    autoTear,
     // 直接跳到"卡牌摊开"的状态
     skipToSpread() {
       if (state === 'enter') { clearTimeout(settle); state = 'idle' }
       if (state !== 'idle') return
+      autoTear()
       tear.p.x = tear.p.to = 1
-      start()
-      finish(0.3)
     },
     get state() { return state },
     destroy() {

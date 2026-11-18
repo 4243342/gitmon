@@ -122,16 +122,17 @@
   transform-style: preserve-3d;
   pointer-events: none;
 }
-/* 彩虹流是一张 SVG，画在包身同尺寸的盒子里，撕口就在它的 y=60 处 */
+/* SVG 的 y=60 是喷口，由引擎对齐实际裂口并沿手势方向旋转。 */
 .hp-rays {
   position: absolute;
-  left: 0;
+  left: 50%;
   width: 100%;
-  top: calc(10.5% - var(--hp-pw) * .6);
+  top: 12%;
   height: calc(var(--hp-pw) * .76);
   overflow: visible;
   opacity: 0;
-  transform: translateZ(-6px);
+  transform-origin: 50% 78.947368%;
+  transform: translate(-50%, -78.947368%) translateZ(-6px);
 }
 .hp-band, .hp-edge, .hp-mote { pointer-events: none; }
 
@@ -175,9 +176,10 @@
 
 /* 撕口条：沿长度切成小段，每段比上一段弯一点 */
 .hp-flap { position: absolute; inset: 0; transform-style: preserve-3d; visibility: hidden; }
+.hp-rims { position: absolute; inset: 0; transform-style: preserve-3d; }
 .hp-flap.on { visibility: visible; }
 .hp-ply { position: absolute; inset: 0; transform-style: preserve-3d; transform-origin: 0 0; }
-.hp-ply .hp-front { transform: translateZ(.4px); }
+.hp-ply .hp-skin.front { transform: translateZ(.4px); }
 .hp-skin.foil { transform: rotateY(180deg) translateZ(.4px); background: linear-gradient(97deg, #e3e8f2, #fff 12%, #cfd7e6 26%, #fff 44%, #dbe1ee 58%, #fff 76%, #d3dbe9); }
 .hp-skin.foil::before, .hp-skin.foil::after { display: none; }
 .hp-tone { position: absolute; inset: 0; z-index: 3; background: #0b0d1c; opacity: 0; }
