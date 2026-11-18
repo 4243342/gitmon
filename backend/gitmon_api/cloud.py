@@ -253,6 +253,9 @@ def _present(pet: dict[str, Any], element: str | None, source: str | None,
 
 
 def image(pet: dict[str, Any], stage: int) -> bytes:
+    # 云卡记录的是完整进化阶段（1–9），旧云立绘只存了幼体/成长/完全三档。
+    # 高阶段统一取最后一档，避免 /sprite.png?stage=6 被参数校验挡掉。
+    stage = min(3, max(1, int(stage or 1)))
     with db.connect() as conn:
         row = conn.execute(
             "SELECT sprite_stage_1, sprite_stage_2, sprite_stage_3 FROM repo_identities WHERE platform=? AND repo_id=?",

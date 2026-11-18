@@ -46,7 +46,21 @@ QUALITIES: list[dict[str, Any]] = [
 ]
 
 STAT_NAMES = ["攻击", "防御", "速度", "特攻", "特防", "HP"]
-STAGE_NAMES = {1: "幼体", 2: "成长体", 3: "完全体"}
+# 进化阶梯（文档 §6.1）：Lv.10/50/100/200/300/500/800/999 八个节点，共 9 个形态
+# Lv.500 起进入人形态（人类身体 + 种族/属性特征），500 以下是自由兽形
+STAGE_LEVELS = (1, 10, 50, 100, 200, 300, 500, 800, 999)
+STAGE_NAMES = {
+    1: "幼体",
+    2: "初生体",
+    3: "成长体",
+    4: "成熟体",
+    5: "强化体",
+    6: "完全体",
+    7: "人形态",
+    8: "人形态·觉醒",
+    9: "人形态·神话",
+}
+HUMANOID_FROM = 7
 QUALITY_BOOST = {"N": 0.7, "R": 0.85, "SR": 1.0, "SSR": 1.15}
 
 SKILL_LIB: dict[str, list[str]] = {
@@ -372,15 +386,21 @@ def level_from_engineering(score: float) -> int:
 
 
 def evolution_stage(level: int, snapshot: RepoSnapshot | None = None) -> int:
-    if snapshot is None:
-        return 3 if level >= 500 else 2 if level >= 150 else 1
-    milestone_growth = snapshot.releases_total >= 1 or snapshot.contributors >= 5
-    milestone_final = snapshot.stars >= 100 or snapshot.releases_total >= 10
-    if level >= 500:
-        return 3 if milestone_final else 2 if milestone_growth else 1
-    if level >= 150:
-        return 2 if milestone_growth else 1
-    return 1
+    """阶段只看等级（snapshot 参数保留兼容）。Lv.500+ 进入人形态。"""
+    stage = 1
+    for i, min_level in enumerate(STAGE_LEVELS):
+        if level >= min_level:
+            stage = i + 1
+    return stage
+
+
+def is_humanoid(stage: int) -> bool:
+    return int(stage) >= HUMANOID_FROM
+
+
+def next_stage_level(stage: int) -> int | None:
+    idx = int(stage)
+    return STAGE_LEVELS[idx] if 0 < idx < len(STAGE_LEVELS) else None
 
 
 # ---------------------------------------------------------------- 六维与技能

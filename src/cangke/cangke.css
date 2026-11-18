@@ -1,0 +1,317 @@
+/* 仓可梦 · 像素版 —— 掌机风外壳
+ * 画布是 320×208 的逻辑像素，这里只负责放大时保住硬边、并把 DOM 面板摆上去。
+ */
+
+.ck-root {
+  position: fixed;
+  inset: 0;
+  z-index: 320;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(120% 90% at 50% 0%, #101a2e 0%, #05080f 62%);
+  font-family: var(--font-pixel, 'PingFang SC', monospace);
+  color: #dfe7f5;
+}
+
+.ck-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 14px;
+  border-bottom: 2px solid #2a3550;
+  background: #0b1424;
+}
+
+.ck-topbar b {
+  font-size: 12px;
+  letter-spacing: .16em;
+  color: var(--st-gold, #ffcb05);
+  text-transform: uppercase;
+}
+
+.ck-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ck-ball-count {
+  font-size: 12px;
+  color: #ffd166;
+  letter-spacing: .08em;
+}
+
+/* 画布舞台：等比放大，覆盖物按百分比贴在画布上 */
+.ck-stage {
+  position: relative;
+  margin: auto;
+  aspect-ratio: 320 / 208;
+  width: min(100% - 24px, calc((100vh - 96px) * 320 / 208), 1360px);
+  border: 2px solid #2a3550;
+  box-shadow: 0 0 0 3px #05080f, 0 18px 48px rgba(0, 0, 0, .65);
+  overflow: hidden;
+  background: #0a1120;
+}
+
+.ck-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* ---------- 通用按钮 ---------- */
+.ck-btn {
+  font-family: inherit;
+  font-size: clamp(10px, 1.05vw, 14px);
+  color: #dfe7f5;
+  background: #16233c;
+  border: 2px solid #3a4a6b;
+  border-radius: 0;
+  padding: 6px 10px;
+  cursor: pointer;
+  letter-spacing: .04em;
+  transition: background .12s, transform .06s;
+}
+
+.ck-btn:hover:not(:disabled) { background: #1f3157; }
+.ck-btn:active:not(:disabled) { transform: translateY(1px); }
+.ck-btn:disabled { opacity: .45; cursor: default; }
+
+.ck-btn-ghost {
+  background: transparent;
+  border-color: #2a3550;
+  color: #93a1b8;
+}
+
+/* ---------- 队伍小条 ---------- */
+.ck-party-bar {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 46%;
+}
+
+.ck-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: inherit;
+  font-size: clamp(9px, .95vw, 12px);
+  color: #cfd9ea;
+  background: rgba(11, 20, 36, .82);
+  border: 2px solid #2a3550;
+  padding: 3px 7px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ck-chip i {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .5);
+}
+
+.ck-chip em {
+  margin-left: auto;
+  font-style: normal;
+  color: #8fa1bd;
+  font-size: .9em;
+}
+
+.ck-chip.is-active { border-color: var(--st-gold, #ffcb05); color: #fff; }
+.ck-chip.is-down { opacity: .5; text-decoration: line-through; }
+
+/* ---------- 战斗：血条 ---------- */
+.ck-hpbox {
+  position: absolute;
+  min-width: 38%;
+  padding: 6px 9px 7px;
+  background: rgba(9, 16, 29, .9);
+  border: 2px solid #3a4a6b;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, .45);
+}
+
+.ck-hpbox-enemy { top: 10px; left: 10px; }
+.ck-hpbox-ally { right: 10px; bottom: calc(34% + 10px); }
+
+.ck-hpbox-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: clamp(10px, 1.05vw, 13px);
+  color: #eef3ff;
+}
+
+.ck-hpbox-head em {
+  font-style: normal;
+  font-size: .85em;
+  color: #9fb0cc;
+}
+
+.ck-hpbar {
+  margin: 4px 0 3px;
+  height: 7px;
+  background: #1b2740;
+  border: 1px solid #0a1120;
+  overflow: hidden;
+}
+
+.ck-hpbar > div {
+  height: 100%;
+  background: linear-gradient(90deg, #f2c14e, #f2e05a);
+  transition: width .25s ease-out;
+}
+
+.ck-hpbar-ally > div {
+  background: linear-gradient(90deg, #3ecf94, #7ee787);
+}
+
+.ck-hp-num {
+  font-size: clamp(9px, .9vw, 11px);
+  color: #8fa1bd;
+  letter-spacing: .06em;
+}
+
+/* ---------- 战斗：操作面板 ---------- */
+.ck-battle-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 34%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 10px 8px;
+  background: linear-gradient(180deg, rgba(9, 16, 29, .96), #070d18);
+  border-top: 2px solid #3a4a6b;
+}
+
+.ck-log {
+  margin: 0;
+  font-size: clamp(10px, 1.05vw, 13px);
+  color: #e8eefb;
+  min-height: 1.4em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ck-moves {
+  display: grid;
+  /* 招式数按等级变化（3～4 个），用 auto-fit 让按钮自己铺满一行，不留空格 */
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.ck-move {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 5px 8px;
+}
+
+.ck-move em {
+  font-style: normal;
+  font-size: .82em;
+  color: #93a1b8;
+}
+
+.ck-actions {
+  display: flex;
+  gap: 5px;
+  justify-content: flex-end;
+}
+
+/* ---------- 对话框 ---------- */
+.ck-dialog {
+  position: absolute;
+  left: 2.5%;
+  right: 2.5%;
+  bottom: 3%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: clamp(11px, 1.15vw, 15px);
+  line-height: 1.6;
+  color: #eef3ff;
+  text-align: left;
+  background: rgba(9, 16, 29, .95);
+  border: 3px solid #4b5f86;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, .5);
+  cursor: pointer;
+}
+
+.ck-dialog i {
+  font-style: normal;
+  color: var(--st-gold, #ffcb05);
+  animation: ck-blink 1s steps(2, start) infinite;
+}
+
+@keyframes ck-blink {
+  50% { opacity: 0; }
+}
+
+/* ---------- 底部提示 ---------- */
+.ck-hint {
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  margin: 0;
+  font-size: clamp(9px, .9vw, 11px);
+  color: #8595b0;
+  letter-spacing: .04em;
+  text-shadow: 0 1px 0 #000;
+}
+
+/* ---------- 触屏方向键：只有粗指针（手机 / 平板）才出 ---------- */
+.ck-dpad { display: none; }
+
+@media (pointer: coarse) {
+  .ck-dpad {
+    display: grid;
+    grid-template-columns: repeat(3, 44px);
+    grid-template-rows: repeat(2, 44px);
+    gap: 6px;
+    justify-content: center;
+    padding: 10px 0 14px;
+  }
+
+  .ck-dpad button {
+    font-family: inherit;
+    font-size: 15px;
+    color: #cfd9ea;
+    background: #16233c;
+    border: 2px solid #3a4a6b;
+    cursor: pointer;
+  }
+
+  .ck-dpad button:nth-child(1) { grid-column: 2; grid-row: 1; }
+  .ck-dpad button:nth-child(2) { grid-column: 1; grid-row: 2; }
+  .ck-dpad button:nth-child(3) { grid-column: 2; grid-row: 2; }
+  .ck-dpad button:nth-child(4) { grid-column: 3; grid-row: 2; }
+  .ck-dpad .ck-dpad-a {
+    grid-column: 3;
+    grid-row: 1;
+    color: #ffd166;
+    border-color: #8a6a2f;
+  }
+}
+
+.ck-dex {
+  font-size: 11px;
+  color: #8fa1bd;
+  letter-spacing: .08em;
+}

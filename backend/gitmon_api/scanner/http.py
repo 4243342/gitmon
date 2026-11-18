@@ -38,7 +38,14 @@ class HttpClient:
         self.close()
 
     def get(self, url: str, *, params: dict[str, Any] | None = None,
-            headers: dict[str, str] | None = None, platform: str = "github") -> httpx.Response:
+            headers: dict[str, str] | None = None, platform: str = "github",
+            accept: tuple[int, ...] = ()) -> httpx.Response:
+        """发起 GET。
+
+        ``accept`` 里的状态码会连同响应体一起原样返回（不进异常通道）。
+        任务验真要用上这个：GitHub 的 ``GET /user/starred/{owner}/{repo}``
+        用 204 表示「已收藏」、404 表示「没收藏」，两个都是有效答案而不是错误。
+        """
         last_error: Exception | None = None
         for attempt in range(self.retries + 1):
             try:
@@ -50,7 +57,7 @@ class HttpClient:
                     continue
                 raise UpstreamError(f"无法连接 {platform}，请稍后重试") from exc
 
-            if resp.status_code == 200:
+            if resp.status_code == 200 or resp.status_code in accept:
                 return resp
             if resp.status_code == 404:
                 raise RepoNotFound("仓库不存在或已转为私有")

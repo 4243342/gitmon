@@ -2,3 +2,9 @@ fastapi>=0.110
 uvicorn[standard]>=0.27
 httpx>=0.26
 pytest>=8.0
+
+# 可选：对话语音（docs/TTS.md）
+#   sherpa-onnx  —— 本地离线合成（推荐，需先下模型：bash scripts/fetch-tts-model.sh）
+#   edge-tts     —— 免 key 的在线音色（非官方接口，默认不引入）
+# sherpa-onnx>=2.0.1
+# edge-tts>=6.1
