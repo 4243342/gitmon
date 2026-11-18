@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPackOpener } from 'pack-opener-js'
 import { packArtwork, cardArtwork } from '../sprite.js'
 import { sfx } from '../sfx.js'
+import { cardFoil, isCloudCard } from '../cardTraits.js'
 import { useI18n } from '../i18n.js'
 import RevealBurst from './RevealBurst.jsx'
 
@@ -25,6 +26,7 @@ export default function PackOpening({ pet, onReveal, muted }) {
   const [ready, setReady] = useState(false)
   const [failed, setFailed] = useState(false)
   const [burst, setBurst] = useState(false)
+  const foil = cardFoil(pet)
 
   // 揭晓只走一次：库的 revealed 事件是唯一权威入口
   const finish = () => {
@@ -50,13 +52,13 @@ export default function PackOpening({ pet, onReveal, muted }) {
         const options = {
           variant: 'slice',
           assets: { pack: { url: pack }, card: { url: card } },
-          theme: { glow: pet.quality.color },
+          theme: { glow: foil.color },
           // 礼成音轨：默认是关的，这里显式打开
           sound: {
             enabled: true,
             volume: 0.6,
             muted: mutedRef.current,
-            badge: BADGE[pet.quality.key] || null,
+            badge: BADGE[foil.effect] || null,
           },
         }
         optionsRef.current = options
@@ -161,9 +163,11 @@ export default function PackOpening({ pet, onReveal, muted }) {
   }
 
   return (
-    <div className="pack-wrap" style={{ '--q-color': pet.quality.color, '--q-glow': pet.quality.glow }}>
+    <div className="pack-wrap" style={{ '--q-color': foil.color, '--q-glow': foil.glow }}>
       <div className="pack-meta">
-        <span className={`quality-pill q-${pet.quality.key}`}>{pet.quality.key}</span>
+        <span className={`quality-pill q-${foil.effect}`} style={isCloudCard(pet) ? { color: foil.color } : undefined}>
+          {isCloudCard(pet) ? foil.label : foil.key}
+        </span>
         <span className="pack-meta-text">
           {pet.platform === 'gitee' ? 'Gitee' : 'GitHub'} · {pet.fullName}
         </span>
@@ -189,7 +193,7 @@ export default function PackOpening({ pet, onReveal, muted }) {
         {failed ? t('直接开包', 'Open Directly') : ready ? t('一键开包', 'Open in One Tap') : t('立绘准备中…', 'Preparing art…')}
       </button>
 
-      {burst && <RevealBurst color={pet.quality.color} intensity={pet.quality.key === 'SSR' ? 1.6 : pet.quality.key === 'SR' ? 1.2 : 0.8} />}
+      {burst && <RevealBurst color={foil.color} intensity={foil.effect === 'SSR' ? 1.6 : foil.effect === 'SR' ? 1.2 : 0.8} />}
     </div>
   )
 }

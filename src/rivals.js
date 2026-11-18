@@ -1600,18 +1600,3 @@ export function rivalFromSnapshot(snap) {
   const pet = judge(snap)
   return { ...pet, isRival: true, battleLevel: pet.level, source: snap.source || 'live' }
 }
-
-const MODE_TEXT = { online: '在线对手', same: '同类型', random: '随机宠物' }
-
-export function modeLabel(mode) {
-  return MODE_TEXT[mode] || MODE_TEXT.random
-}
-
-export function rivalTeamLabel(difficulty, mode = 'random', onlineSize = 'single') {
-  if (mode === 'online') return `${MODE_TEXT.online} · ${onlineSize === 'team' ? '整仓' : '单项目'}`
-  return `${MODE_TEXT[mode] || MODE_TEXT.random} · ${DIFFICULTY_TEXT[difficulty] || DIFFICULTY_TEXT.normal}`
-}
-
-export function onlineSizeLabel(size = 'single') {
-  return size === 'team' ? '整仓' : '单项目'
-}

@@ -1,7 +1,10 @@
 // 分享卡片导出（文档 §7.3）：1:1 复刻卡面（63:88），画布手绘全要素
 // 与 PetCard / game-theme.css 同一套视觉：像素切角、星级段位、六边形宝石品质标、
 // HP / 进化 / 根基条、六维雷达 + 分段条、技能剑牌、性格词条、品质五维、页脚
-import { petArtwork } from './sprite.js'
+// 云卡（PR#2）：立绘按 cardArt 选六系八档图，词条行展示属性 / 罕见度 / 品质
+import { drawCloudCardTraits, drawPetSprite, petArtwork } from './sprite.js'
+import { elementLabel } from './elementLabel.js'
+import { cardFoil, isCloudCard } from './cardTraits.js'
 import { sealData } from './modelSeal.js'
 import { starRank } from './starBadge.jsx'
 import { MAX_STAGE, nextStage, stageInfo, stageProgress } from './evolution.js'
@@ -435,10 +438,13 @@ export async function exportShareCard(pet) {
   ]).catch(() => {})
   await document.fonts.ready
 
-  const q = pet.quality
   const c = document.createElement('canvas')
   c.width = CW; c.height = CH
   const ctx = c.getContext('2d')
+  // 云卡用 rarity 派生品质（key/label/color/glow/effect），本地卡原样透传 pet.quality
+  const q = cardFoil(pet)
+  // 未评级云卡没有可展示的品质字母，六边形里画问号，避免长单词溢出宝石
+  const gemKey = q.key === 'pending' ? '?' : q.key
 
   // 卡外阴影（切角轮廓外透出）
   const clip = cardClip(ctx)
@@ -459,10 +465,11 @@ export async function exportShareCard(pet) {
   ctx.fillStyle = bg
   ctx.fillRect(0, 0, CW, CH)
 
-  // SSR / SR 全息条纹（静态帧）
-  if (q.key === 'SSR' || q.key === 'SR') {
+  // SSR / SR 全息条纹（静态帧）；云卡按 rarity 映射到的揭示档次（effect）判断
+  const holo = q.effect || q.key
+  if (holo === 'SSR' || holo === 'SR') {
     ctx.save()
-    ctx.globalAlpha = q.key === 'SSR' ? .8 : .55
+    ctx.globalAlpha = holo === 'SSR' ? .8 : .55
     const stripes = ctx.createLinearGradient(0, 0, CW, CH)
     stripes.addColorStop(0, 'rgba(255,255,255,.05)'); stripes.addColorStop(.5, 'rgba(255,255,255,.02)'); stripes.addColorStop(1, 'rgba(255,255,255,.05)')
     ctx.fillStyle = stripes
@@ -486,7 +493,8 @@ export async function exportShareCard(pet) {
   ctx.font = `${10 * S}px ${PX}`
   ctx.fillStyle = '#8e9ab1'
   const dual = pet.elementSecondary ? `/${pet.elementSecondary.name}` : ''
-  const sub = `${pet.element.name}系${dual} · ${pet.species.name} · ${stageInfo(pet.evolutionStage).name}`
+  // 云卡显示仓库原属性（卡面属性由词条行的「属性」承担），本地卡沿用 elementLabel
+  const sub = `${elementLabel(pet)}${dual} · ${pet.species.name} · ${stageInfo(pet.evolutionStage).name}`
   ctx.fillText(sub, PXD, subY)
   if (pet.aiEvaluated) {
     ctx.fillStyle = '#f5c542'
@@ -495,14 +503,14 @@ export async function exportShareCard(pet) {
   }
   if (pet.status === 'sleeping') {
     ctx.fillStyle = '#7f8ca5'
-    ctx.fillText('沉睡', PXD + ctx.measureText(`${pet.element.name}系${dual} · ${pet.species.name} · ${stageInfo(pet.evolutionStage).name}`).width + 8 * S, subY)
+    ctx.fillText('沉睡', PXD + ctx.measureText(sub).width + 8 * S, subY)
   }
 
   // 星级段位（右上，品质标左侧）
   const gemW = 42 * S, gemH = 48 * S
   const gemX = RIGHT - gemW
   drawStarBadge(ctx, pet, gemX - 8 * S, headTop, 26 * S)
-  drawQualityGem(ctx, q, gemX, headTop, gemW, gemH)
+  drawQualityGem(ctx, { ...q, key: gemKey }, gemX, headTop, gemW, gemH)
 
   // ---------- 立绘区 ----------
   const spX = PXD, spY = 66 * S, spW = RIGHT - PXD, spH = 127 * S
@@ -517,7 +525,18 @@ export async function exportShareCard(pet) {
   ctx.fillRect(spX, spY, spW, spH)
   ctx.strokeStyle = '#2a3550'; ctx.lineWidth = 3
   ctx.strokeRect(spX + 1.5, spY + 1.5, spW - 3, spH - 3)
-  const { image: pic, pixelated } = await petArtwork(pet)
+  // 云卡立绘由 petArtwork 按 cardSpriteUrl（cardArt：原属性 × 品质）选图；
+  // 加载失败时退回 PR#2 的 drawPetSprite（cardSpriteUrl > spriteUrl > 种子精灵）
+  let artwork
+  try {
+    artwork = await petArtwork(pet)
+  } catch {
+    const fallback = document.createElement('canvas')
+    fallback.width = 320; fallback.height = 320
+    await drawPetSprite(fallback, pet)
+    artwork = { image: fallback, pixelated: true }
+  }
+  const { image: pic, pixelated } = artwork
   const art = 132 * S
   ctx.imageSmoothingEnabled = !pixelated
   ctx.drawImage(pic, spX + (spW - art) / 2, spY + (spH - art) / 2, art, art)
@@ -653,34 +672,40 @@ export async function exportShareCard(pet) {
     }
   })
 
-  // ---------- 性格词条 ----------
+  // ---------- 性格词条 / 云卡 traits ----------
   const trTop = 422 * S
-  let tx = PXD
-  const chips = pet.traits?.slice(0, 3) || []
-  ctx.font = `${8.5 * S}px ${PX}`; ctx.textBaseline = 'middle'
-  chips.forEach((t) => {
-    const label = `${t.kind === 'negative' ? '▾' : '▴'} ${t.name}`
-    const tw = ctx.measureText(label).width
-    const pos = t.kind !== 'negative'
-    const pad = 5 * S
-    ctx.fillStyle = pos ? 'rgba(74,217,160,.08)' : 'rgba(255,93,93,.08)'
-    ctx.fillRect(tx, trTop, tw + pad * 2, 15 * S)
-    ctx.strokeStyle = pos ? 'rgba(74,217,160,.4)' : 'rgba(255,93,93,.45)'
-    ctx.lineWidth = 2
-    ctx.strokeRect(tx + 1, trTop + 1, tw + pad * 2 - 2, 15 * S - 2)
-    ctx.fillStyle = pos ? '#7fe3b8' : '#ff9a9a'
-    ctx.textAlign = 'left'
-    ctx.fillText(label, tx + pad, trTop + 15 * S / 2)
-    tx += tw + pad * 2 + 4 * S
-  })
-  const fixHint = pet.traitHints?.filter((h) => h.fix).length
-  if (fixHint) {
-    ctx.fillStyle = 'rgba(11,18,32,.7)'
-    ctx.fillRect(tx, trTop, 13 * S, 13 * S + 1 * S)
-    ctx.strokeStyle = 'rgba(255,203,5,.5)'; ctx.lineWidth = 2
-    ctx.strokeRect(tx + 1, trTop + 1, 13 * S - 2, 13 * S - 1)
-    ctx.fillStyle = '#ffcb05'; ctx.font = `${9 * S}px ${PX}`; ctx.textAlign = 'center'
-    ctx.fillText('?', tx + 13 * S / 2, trTop + 7 * S)
+  if (isCloudCard(pet)) {
+    // 云卡的品质 / 原属性信息比本地性格更该出现在分享图上：词条行让给 traits 三行
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    drawCloudCardTraits(ctx, pet, CW, trTop - 3 * S, 8.5 * S, 6 * S)
+  } else {
+    let tx = PXD
+    const chips = pet.traits?.slice(0, 3) || []
+    ctx.font = `${8.5 * S}px ${PX}`; ctx.textBaseline = 'middle'
+    chips.forEach((t) => {
+      const label = `${t.kind === 'negative' ? '▾' : '▴'} ${t.name}`
+      const tw = ctx.measureText(label).width
+      const pos = t.kind !== 'negative'
+      const pad = 5 * S
+      ctx.fillStyle = pos ? 'rgba(74,217,160,.08)' : 'rgba(255,93,93,.08)'
+      ctx.fillRect(tx, trTop, tw + pad * 2, 15 * S)
+      ctx.strokeStyle = pos ? 'rgba(74,217,160,.4)' : 'rgba(255,93,93,.45)'
+      ctx.lineWidth = 2
+      ctx.strokeRect(tx + 1, trTop + 1, tw + pad * 2 - 2, 15 * S - 2)
+      ctx.fillStyle = pos ? '#7fe3b8' : '#ff9a9a'
+      ctx.textAlign = 'left'
+      ctx.fillText(label, tx + pad, trTop + 15 * S / 2)
+      tx += tw + pad * 2 + 4 * S
+    })
+    const fixHint = pet.traitHints?.filter((h) => h.fix).length
+    if (fixHint) {
+      ctx.fillStyle = 'rgba(11,18,32,.7)'
+      ctx.fillRect(tx, trTop, 13 * S, 13 * S + 1 * S)
+      ctx.strokeStyle = 'rgba(255,203,5,.5)'; ctx.lineWidth = 2
+      ctx.strokeRect(tx + 1, trTop + 1, 13 * S - 2, 13 * S - 1)
+      ctx.fillStyle = '#ffcb05'; ctx.font = `${9 * S}px ${PX}`; ctx.textAlign = 'center'
+      ctx.fillText('?', tx + 13 * S / 2, trTop + 7 * S)
+    }
   }
 
   // ---------- 品质五维 ----------
@@ -730,7 +755,7 @@ export async function exportShareCard(pet) {
   ctx.restore()
 
   const link = document.createElement('a')
-  link.download = `gitmon-${pet.repo}-${pet.quality.key}.png`
+  link.download = `gitmon-${pet.repo}-${q.key}.png`
   link.href = c.toDataURL('image/png')
   link.click()
 }

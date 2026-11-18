@@ -10,10 +10,9 @@
 //
 // 全模块纯函数 + 显式种子：同一初始状态 + 同一操作序列，必然复现同一场战斗。
 
-import { ELEMENTS } from './engine.js'
-
 export const BATTLE_LEVEL = 50
 export const OTHER_SIDE = { player: 'enemy', enemy: 'player' }
+const NORMAL_ELEMENT = { key: 'normal', name: '普通', color: '#b8b8b8' }
 
 // ---------- 属性克制（攻 → 守，倍率） ----------
 // 2 = 克制，0.5 = 微弱，0 = 无效；未列出即 1 倍。双属性连乘，最高 4 倍。
@@ -117,7 +116,8 @@ export function toCombatant(pet, slot = 0) {
   }
   // 最大 HP 直接采用判定引擎算出的数值（已随等级缩放），与卡片展示保持一致
   const maxHp = Number(pet.maxHp) || Math.round(60 + statOf('HP') * 1.3)
-  const element = pet.element || ELEMENTS.normal
+  // PR#2 用本地 NORMAL_ELEMENT 兜底（该版本移除了 engine 的 ELEMENTS import）
+  const element = pet.element || NORMAL_ELEMENT
   const secondary = pet.elementSecondary || null
   const types = [element.key, secondary?.key].filter(Boolean)
 
@@ -152,11 +152,13 @@ export function toCombatant(pet, slot = 0) {
     level: Number(pet.level) || 1,
     qualityKey: pet.qualityKey || pet.quality?.key || 'N',
     spriteSeed: pet.spriteSeed || 1,
+    ...(pet.spriteUrl ? { spriteUrl: pet.spriteUrl } : {}),
     element: { key: element.key, name: element.name, color: element.color },
     elementSecondary: secondary ? { key: secondary.key, name: secondary.name, color: secondary.color } : null,
-    species: pet.species || { name: '元素型', body: 'slime' },
+    species: pet.species ? { ...pet.species } : { name: '元素型', body: 'slime' },
     evolutionStage: pet.evolutionStage || 1,
-    quality: pet.quality || { key: 'N', name: '普通', color: '#9e9e9e' },
+    // PR#2 八档品质：浅拷贝保留 quality 的扩展字段；main 追加 combatPower
+    quality: pet.quality ? { ...pet.quality } : { key: 'N', name: '普通', color: '#9e9e9e' },
     combatPower: Number(pet.combatPower) || 0,
     types,
     passive: PASSIVES[element.key] ? PASSIVES[element.key].key : 'adapt',

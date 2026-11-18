@@ -139,9 +139,11 @@ README 里直接嵌：
 
 | 维度 | 取值来源 | 实现位置 |
 |---|---|---|
-| 元素属性 | 文件树各语言体积占比 → 主语言；次语言 ≥30% 产出双属性 | `engine.derive_species` |
+| 云图鉴属性 | 以 README、交付入口和核心源码判定仓库用途；通用语言提供辅助线索 | `purpose.classify` |
+| 云卡罕见度与八档品质 | Star/Fork 计罕见度，源码、测试和文档证据与社区认可合计最多 230 分 | `card_quality` |
+| 旧版元素及对战类型 | 文件树各语言体积占比 → 主语言；次语言 ≥30% 产出双属性 | `engine.derive_species` |
 | 生态类型 | 依赖清单 + 目录结构 + topic + 描述关键词打分（Web/CLI/AI/移动/游戏/文档/库） | 同上 |
-| 品质分 | 测试 25% · 工程 20% · 文档 20% · 维护 20% · 社区 15% | `engine.quality_dimensions` |
+| 旧版养成与对战品质 | 测试 25% · 工程 20% · 文档 20% · 维护 20% · 社区 15% | `engine.quality_dimensions` |
 | 工程量分 | LOC 35% · 提交 20% · 文件 15% · 贡献者 15% · 年龄 15%，全部对数归一化 | `engine.engineering_score` |
 | 初始等级 | 工程量分分段映射到 Lv.1–999（§5.2） | `engine.level_from_engineering` |
 | 六维 | 提交频率 / CI+测试 / 活跃度 / 依赖广度 / 文档+复杂度 / 年龄 | `engine.stats_for` |
@@ -149,8 +151,13 @@ README 里直接嵌：
 | 进化 | 只看等级：Lv.10/50/100/200/300/500/800/999 八个节点共 9 阶，**Lv.500 起人形态** | `engine.evolution_stage` / `STAGE_NAMES` |
 | 沉睡 | 30 天无提交 → `sleeping`，停止成长 | `growth.status_for` |
 
-**确定性**：`seed = fnv1a("platform/owner/repo")`，`spriteSeed = fnv1a(seed + fullName)`，
-与前端 `engine.js` 完全同算法。重新扫描只更新等级/品质，品种、种子、立绘永久锁定。
+云端按平台和仓库 ID 保存已确认的用途属性。用途属性版本使用新的账号收藏空间，用户以原有会话进入空图鉴，旧收藏保留在原空间。证据不足时显示「属性待识别」，仍可收下卡片。仓库级对战类型、品种、种子和立绘沿用已有身份记录。
+
+云卡响应中的 `element` 是仓库原属性，`cardElement` 是卡面显示属性。确认的王者显示「神属性」。`cardArt` 按原属性与品质指向前端素材，例如 `water/08-king.png`。缺少任一选图条件时，`cardArt` 为 `null`，卡面使用 `spriteUrl` 返回的仓库阶段立绘。
+
+用途规则要求两类独立证据，其中至少一类来自交付入口或核心源码。配置 Agent 后，只有规则无法确认的仓库才会送去复核。Agent 获得有限的证据文本，不接收仓库访问令牌。它必须引用实际存在的两类证据，无法确认时保留待识别。
+
+品质评估共用同一个复核端点。后端先计算证据对应的上下界，跨档且有可复核片段时送出至多两个检查项和三个片段，输出上限 120 token。每个仓库版本和规则版本只尝试一次，缓存保存检查结论。未能定档的卡显示「待评估」。已有收藏在手动刷新时补齐罕见度和品质。
 
 ## 扫描是怎么做的
 
@@ -206,6 +213,10 @@ issue / PR 计数与依赖清单（最多 6 份）——单次扫描 12~17 个�
 | `GITMON_TRUST_PROXY` | `0` | 开 1 后限流按 `X-Forwarded-For` 取真实 IP，仅在可信反代后使用 |
 | `GITMON_SPRITE_STYLE` | `rich` | `rich` 32×32 分层立绘；`classic` 16×16（与旧版 canvas 逐像素一致） |
 | `GITMON_USE_SCC` | `0` | 是否浅克隆 + scc 精确统计 |
+| `GITMON_PURPOSE_AGENT_URL` / `GITMON_PURPOSE_AGENT_MODEL` | 空 | 配置 OpenAI 兼容 Chat Completions 端点和模型后启用用途复核 |
+| `GITMON_PURPOSE_AGENT_KEY` | 空 | 端点要求认证时配置 |
+| `GITMON_PURPOSE_AGENT_TIMEOUT` | `10` | 单次复核超时秒数 |
+| `GITMON_PURPOSE_AGENT_ALLOW_PRIVATE` | `0` | 设为 1 才会向配置的 Agent 发送私有仓库的证据片段 |
 | `GITMON_STATIC_DIR` | 自动探测 `../dist` | 前端构建产物目录 |
 
 `X-Gitmon-User` 头是匿名设备标识（前端 localStorage 生成），用来隔离每个人的图鉴；

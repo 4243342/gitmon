@@ -173,4 +173,3 @@ def test_search_fallback_without_token_stays_anonymous(monkeypatch) -> None:
     monkeypatch.setattr(trending, "_cache", {})
     trending.fetch_trending("weekly", "", token="")
     assert "Authorization" not in captured["headers"]
-

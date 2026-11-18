@@ -3,7 +3,7 @@ import { drawSprite } from '../sprite.js'
 import { getCustomSprite, onCustomSprite } from '../customSprite.js'
 import { speciesArtUrl } from '../speciesArt.js'
 
-export default function PixelSprite({ pet, size = 180, animate = true }) {
+export default function PixelSprite({ pet, size = 180, animate = true, src = pet?.spriteUrl }) {
   const ref = useRef(null)
   const [, bump] = useReducer((x) => x + 1, 0)
   const [blink, setBlink] = useState(false)
@@ -24,10 +24,10 @@ export default function PixelSprite({ pet, size = 180, animate = true }) {
         blink,
       })
     }
-  }, [pet, blink])
+  }, [pet, blink, src])
 
   useEffect(() => {
-    if (!animate) return
+    if (!animate || src) return
     let t
     const loop = () => {
       setBlink(true)
@@ -38,18 +38,31 @@ export default function PixelSprite({ pet, size = 180, animate = true }) {
     }
     t = setTimeout(loop, 2400)
     return () => clearTimeout(t)
-  }, [animate])
+  }, [animate, src])
+
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt=""
+        className={animate ? 'sprite sprite-float' : 'sprite'}
+        width={size}
+        height={size}
+        draggable={false}
+      />
+    )
+  }
 
   // 优先级：玩家上传的自定义形象 → 种族立绘素材 → seed 生成的像素精灵
   const custom = pet ? getCustomSprite(pet) : null
   const art = custom ? null : speciesArtUrl(pet)
-  const src = custom || art
-  if (src) {
+  const resolved = src || custom || art
+  if (resolved) {
     const cls = blink ? 'sprite sprite-blink' : animate ? 'sprite sprite-float' : 'sprite'
     return (
       <img
-        key={src}
-        src={src}
+        key={resolved}
+        src={resolved}
         alt=""
         draggable={false}
         decoding="sync"

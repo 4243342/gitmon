@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS pets (
     bond              INTEGER NOT NULL DEFAULT 0,
     status            TEXT NOT NULL DEFAULT 'active',
     metrics           TEXT NOT NULL DEFAULT '{}',
+    card_ratings      TEXT NOT NULL DEFAULT '{}',
     notes             TEXT NOT NULL DEFAULT '[]',
     degraded          INTEGER NOT NULL DEFAULT 0,
     description       TEXT NOT NULL DEFAULT '',
@@ -56,10 +57,32 @@ CREATE TABLE IF NOT EXISTS pets (
     created_at        TEXT NOT NULL,
     synced_at         TEXT NOT NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_pets_identity
-    ON pets(platform, full_name, owner_key);
 CREATE INDEX IF NOT EXISTS idx_pets_owner ON pets(owner_key, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pets_level ON pets(level DESC);
+
+CREATE TABLE IF NOT EXISTS repo_identities (
+    platform          TEXT NOT NULL,
+    repo_id           TEXT NOT NULL,
+    element_key       TEXT NOT NULL,
+    element_secondary TEXT,
+    species_key       TEXT NOT NULL,
+    sprite_seed       INTEGER NOT NULL,
+    sprite_stage_1    BLOB NOT NULL,
+    sprite_stage_2    BLOB NOT NULL,
+    sprite_stage_3    BLOB NOT NULL,
+    purpose_element   TEXT,
+    purpose_source    TEXT,
+    PRIMARY KEY (platform, repo_id)
+);
+
+CREATE TABLE IF NOT EXISTS card_quality_reviews (
+    platform TEXT NOT NULL,
+    repo_id TEXT NOT NULL,
+    revision TEXT NOT NULL,
+    rules_version INTEGER NOT NULL,
+    verdicts TEXT NOT NULL DEFAULT '{}',
+    PRIMARY KEY (platform, repo_id, revision, rules_version)
+);
 
 CREATE TABLE IF NOT EXISTS growth_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -229,6 +252,8 @@ _ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("foundation_dims", "TEXT NOT NULL DEFAULT '{}'"),
         ("traits", "TEXT NOT NULL DEFAULT '[]'"),
         ("ai_rate", "REAL"),
+        ("repo_id", "TEXT"),
+        ("card_ratings", "TEXT NOT NULL DEFAULT '{}'"),
         ("battles", "INTEGER NOT NULL DEFAULT 0"),
         ("wins", "INTEGER NOT NULL DEFAULT 0"),
         ("client_state", "TEXT NOT NULL DEFAULT '{}'"),
@@ -251,6 +276,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
             if name not in existing:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
 
+    # 用途识别：repo_identities 的两列单独补（不在 _ADDED_COLUMNS 的 pets 字典里）
+    identity_columns = {row[1] for row in conn.execute("PRAGMA table_info(repo_identities)")}
+    for name in ("purpose_element", "purpose_source"):
+        if name not in identity_columns:
+            conn.execute(f"ALTER TABLE repo_identities ADD COLUMN {name} TEXT")
+
     # 索引表达式改过就得重建：CREATE UNIQUE INDEX IF NOT EXISTS 不会替换旧索引。
     # 这里比对 sqlite_master 里记录的建表语句，表达式不同就删了重建。
     # 注意：迁移用的连接没设 row_factory，只能按下标取列。
@@ -263,6 +294,13 @@ def _migrate(conn: sqlite3.Connection) -> None:
             "CREATE UNIQUE INDEX IF NOT EXISTS ux_quest_goal "
             "ON quest_runs(owner_key, pet_key, goal_key, date(issued_at, 'unixepoch'))"
         )
+
+    # 云端图鉴按 repo_id 区分身份：旧的单索引换成的两条部分唯一索引
+    conn.execute("DROP INDEX IF EXISTS idx_pets_identity")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_pets_legacy_identity "
+                 "ON pets(platform, full_name, owner_key) WHERE repo_id IS NULL")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_pets_cloud_identity "
+                 "ON pets(platform, repo_id, owner_key) WHERE repo_id IS NOT NULL")
 
 
 class Database:
@@ -327,6 +365,7 @@ def row_to_pet(row: sqlite3.Row | None) -> dict[str, Any] | None:
     pet["stats"] = _loads(pet.get("stats"), [])
     pet["skills"] = _loads(pet.get("skills"), [])
     pet["metrics"] = _loads(pet.get("metrics"), {})
+    pet["card_ratings"] = _loads(pet.get("card_ratings"), {})
     pet["notes"] = _loads(pet.get("notes"), [])
     pet["client_state"] = _loads(pet.get("client_state"), {})
     pet["battles"] = int(pet.get("battles") or 0)
@@ -337,9 +376,10 @@ def row_to_pet(row: sqlite3.Row | None) -> dict[str, Any] | None:
 
 def save_pet(conn: sqlite3.Connection, pet: dict[str, Any]) -> None:
     payload = dict(pet)
-    json_keys = ("quality_dims", "foundation_dims", "stats", "skills", "traits", "metrics", "notes", "client_state")
+    json_keys = ("quality_dims", "foundation_dims", "stats", "skills", "traits", "metrics", "notes",
+                 "card_ratings", "client_state")
     for key in json_keys:
-        default = {} if key in ("quality_dims", "foundation_dims", "metrics", "client_state") else []
+        default = {} if key in ("quality_dims", "foundation_dims", "metrics", "card_ratings", "client_state") else []
         payload[key] = json.dumps(payload.get(key, default), ensure_ascii=False, separators=(",", ":"))
     payload["degraded"] = 1 if payload.get("degraded") else 0
     payload["battles"] = int(payload.get("battles") or 0)
@@ -351,7 +391,7 @@ def save_pet(conn: sqlite3.Connection, pet: dict[str, Any]) -> None:
         "skills", "hp", "foundation", "foundation_dims", "traits", "ai_rate", "bond",
         "status", "metrics", "notes", "degraded", "description",
         "battles", "wins", "client_state",
-        "sprite_path", "created_at", "synced_at",
+        "sprite_path", "created_at", "synced_at", "repo_id", "card_ratings",
     ]
     placeholders = ",".join("?" for _ in columns)
     values = [payload.get(col) for col in columns]
@@ -365,20 +405,24 @@ def save_pet(conn: sqlite3.Connection, pet: dict[str, Any]) -> None:
 
 def find_pet(conn: sqlite3.Connection, platform: str, full_name: str, owner_key: str) -> dict[str, Any] | None:
     row = conn.execute(
-        "SELECT * FROM pets WHERE platform=? AND full_name=? AND owner_key=?",
+        "SELECT * FROM pets WHERE platform=? AND full_name=? AND owner_key=? AND repo_id IS NULL",
         (platform, full_name, owner_key),
     ).fetchone()
     return row_to_pet(row)
 
 
-def get_pet(conn: sqlite3.Connection, pet_id: str) -> dict[str, Any] | None:
-    row = conn.execute("SELECT * FROM pets WHERE id=?", (pet_id,)).fetchone()
+def get_pet(conn: sqlite3.Connection, pet_id: str, *, cloud_owner: str | None = None) -> dict[str, Any] | None:
+    if cloud_owner is None:
+        row = conn.execute("SELECT * FROM pets WHERE id=? AND repo_id IS NULL", (pet_id,)).fetchone()
+    else:
+        row = conn.execute("SELECT * FROM pets WHERE id=? AND owner_key=? AND repo_id IS NOT NULL",
+                           (pet_id, cloud_owner)).fetchone()
     return row_to_pet(row)
 
 
 def list_pets(conn: sqlite3.Connection, owner_key: str, limit: int = 60, offset: int = 0) -> list[dict[str, Any]]:
     rows = conn.execute(
-        "SELECT * FROM pets WHERE owner_key=? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+        "SELECT * FROM pets WHERE owner_key=? ORDER BY created_at DESC, id LIMIT ? OFFSET ?",
         (owner_key, limit, offset),
     ).fetchall()
     return [row_to_pet(row) for row in rows if row is not None]  # type: ignore[misc]
@@ -386,7 +430,7 @@ def list_pets(conn: sqlite3.Connection, owner_key: str, limit: int = 60, offset:
 
 def list_active_pets(conn: sqlite3.Connection, limit: int = 50) -> list[dict[str, Any]]:
     rows = conn.execute(
-        "SELECT * FROM pets WHERE status != 'archived' ORDER BY synced_at ASC LIMIT ?",
+        "SELECT * FROM pets WHERE repo_id IS NULL AND status != 'archived' ORDER BY synced_at ASC LIMIT ?",
         (limit,),
     ).fetchall()
     return [row_to_pet(row) for row in rows if row is not None]  # type: ignore[misc]

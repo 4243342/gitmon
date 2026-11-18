@@ -9,6 +9,7 @@ from .gitee import GiteeScanner
 from .github import GitHubScanner
 from .http import HttpClient
 from .meta import check_starred, fetch_repo_meta
+from .purpose import PurposeOption
 from .snapshot import RepoSnapshot
 from .tokens import token_for
 
@@ -25,19 +26,20 @@ __all__ = [
 
 
 def scan(ref: RepoRef, *, use_scc: bool | None = None, since: str | None = None,
-         token: str | None = None) -> RepoSnapshot:
+         token: str | None = None, allow_private: bool = False, purpose: PurposeOption = False,
+         quality: bool = False) -> RepoSnapshot:
     token = token_for(token, ref.platform)
     with HttpClient(timeout=settings.http_timeout, retries=settings.http_retries) as http:
         if ref.platform == "gitee":
             scanner = GiteeScanner(http, timeout=settings.http_timeout, max_tree_entries=settings.max_tree_entries, token=token)
         else:
             scanner = GitHubScanner(http, timeout=settings.http_timeout, max_tree_entries=settings.max_tree_entries, token=token)
-        snapshot = scanner.scan(ref)
+        snapshot = scanner.scan(ref, allow_private=allow_private, purpose=purpose, quality=quality)
         if since:
             snapshot.commits_since = scanner.count_commits_since(ref, since)
 
     want_scc = settings.use_scc if use_scc is None else use_scc
-    if want_scc:
+    if want_scc and not snapshot.private:
         stats = scc.collect(ref, with_ai=settings.ai_trace)
         if stats:
             scc.merge_into_tree(snapshot.tree, stats)

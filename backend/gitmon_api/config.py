@@ -108,6 +108,12 @@ class Settings:
     sprite_style: str = "rich"
     # 单次扫描最多分析的文件条目，防止超大 monorepo 拖垮判定
     max_tree_entries: int = 20000
+    # 证据不足时可调用兼容 Chat Completions 的属性复核 agent
+    purpose_agent_url: str = ""
+    purpose_agent_model: str = ""
+    purpose_agent_key: str = field(default="", repr=False)
+    purpose_agent_timeout: int = 10
+    purpose_agent_allow_private: bool = False
     # 活动任务「给项目仓库点一颗星」的目标仓库。
     # 只有一个固定目标（就是本项目自己的仓库），玩家没有得挑 ——
     # 挑目标会让「我要不要点这个」变成「有没有别的可选」，反而稀释了任务的号召力。
@@ -170,6 +176,11 @@ def load_settings() -> Settings:
         static_dir=static_dir,
         sprite_style=(_env("GITMON_SPRITE_STYLE") or "rich").lower(),
         max_tree_entries=_env_int("GITMON_MAX_TREE_ENTRIES", 20000),
+        purpose_agent_url=_env("GITMON_PURPOSE_AGENT_URL"),
+        purpose_agent_model=_env("GITMON_PURPOSE_AGENT_MODEL"),
+        purpose_agent_key=_env("GITMON_PURPOSE_AGENT_KEY"),
+        purpose_agent_timeout=_env_int("GITMON_PURPOSE_AGENT_TIMEOUT", 10),
+        purpose_agent_allow_private=_env_bool("GITMON_PURPOSE_AGENT_ALLOW_PRIVATE"),
         quest_target=_env("GITMON_QUEST_TARGET") or "4243342/gitmon",
     )
     settings.ensure_dirs()

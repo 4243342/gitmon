@@ -2,6 +2,8 @@
 // 64×64 网格 · 8 种手绘体型部件（眼/嘴/腮红/耳/尾/四肢/配饰/花纹）· 双属性配色 · 进化阶段加配饰
 import { PRNG } from 'monstrjs/dist/core/prng.js'
 import { applySymmetry } from 'monstrjs/dist/monster/grid.js'
+import { elementLabel } from './elementLabel.js'
+import { cardFoil, cloudCardTraits, isCloudCard } from './cardTraits.js'
 import {
   accessories as ACCESSORY_PARTS,
   cheeks as CHEEK_PARTS,
@@ -141,9 +143,28 @@ export function drawSprite(canvas, { spriteSeed, colors, body, stage }) {
   }
 }
 
+export async function drawPetSprite(canvas, pet) {
+  const spriteUrl = pet.cardSpriteUrl ?? pet.spriteUrl
+  if (spriteUrl) {
+    const image = new Image()
+    image.src = spriteUrl
+    await image.decode()
+    const ctx = canvas.getContext('2d')
+    ctx.imageSmoothingEnabled = false
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
+    return
+  }
+  drawSprite(canvas, {
+    spriteSeed: pet.spriteSeed,
+    colors: [pet.element.color, pet.elementSecondary?.color || pet.element.color],
+    body: pet.species.body,
+    stage: pet.evolutionStage,
+  })
+}
+
 // ---------- 卡包 / 卡面美术（供 pack-opener-js 使用） ----------
 // 形象来源必须和 PixelSprite / 分享卡完全一致：
-//   自定义上传 > 种族立绘素材 > seed 生成的像素精灵
+//   自定义上传 > 云卡六系八档立绘（cardArt）> 种族立绘素材 > 云卡阶段立绘(spriteUrl) > seed 像素精灵
 // 以前开包卡面写死用 seed 像素精灵，卡片却已换成新立绘，
 // 抽出来的一瞬和揭晓后的卡片像两只不同角色（还像旧版形象）。
 const loadImage = (url) => new Promise((resolve, reject) => {
@@ -158,6 +179,11 @@ export async function petArtwork(pet) {
   const custom = getCustomSprite(pet)
   if (custom) {
     try { return { image: await loadImage(custom), pixelated: false } } catch { /* 加载失败继续降级 */ }
+  }
+  // 云卡：cardArt 按原属性 × 品质指向素材；缺图时后端返回 null，退回仓库阶段立绘
+  const cloudArt = pet.cardSpriteUrl ?? (isCloudCard(pet) ? pet.spriteUrl : null)
+  if (cloudArt) {
+    try { return { image: await loadImage(cloudArt), pixelated: false } } catch { /* 加载失败继续降级 */ }
   }
   const art = speciesArtUrl(pet)
   if (art) {
@@ -200,7 +226,7 @@ export function packArtwork(pet) {
   const c = document.createElement('canvas')
   c.width = W; c.height = H
   const ctx = c.getContext('2d')
-  const q = pet.quality
+  const q = cardFoil(pet)
 
   const g = ctx.createLinearGradient(0, 0, W, H)
   g.addColorStop(0, '#1e2942')
@@ -245,13 +271,22 @@ export function packArtwork(pet) {
 
   ctx.fillStyle = q.color
   ctx.font = 'bold 44px -apple-system, sans-serif'
-  ctx.fillText(q.key, W / 2, H / 2 + 132)
+  ctx.fillText(isCloudCard(pet) ? q.label : q.key, W / 2, H / 2 + 132)
 
   ctx.fillStyle = 'rgba(200,212,232,0.35)'
   ctx.font = '22px -apple-system, sans-serif'
   ctx.fillText(`${pet.platform.toUpperCase()} · ${pet.fullName}`, W / 2, H - 64)
 
   return c.toDataURL('image/png')
+}
+
+export function drawCloudCardTraits(ctx, pet, width, y, gap, fontSize) {
+  ctx.textAlign = 'center'
+  ctx.font = `bold ${fontSize}px -apple-system, "PingFang SC", sans-serif`
+  cloudCardTraits(pet).forEach(({ label, value, color }, index) => {
+    ctx.fillStyle = color
+    ctx.fillText(`${label}  ${value}`, width / 2, y + gap * index)
+  })
 }
 
 // 现在是异步的：立绘可能是一张还没解码的 PNG，必须等它就绪再交给开包库，
@@ -262,6 +297,7 @@ export async function cardArtwork(pet) {
   const c = document.createElement('canvas')
   c.width = W; c.height = H
   const ctx = c.getContext('2d')
+  const foil = cardFoil(pet)
 
   const g = ctx.createLinearGradient(0, 0, W, H)
   g.addColorStop(0, '#243252')
@@ -270,16 +306,17 @@ export async function cardArtwork(pet) {
   roundRect(ctx, 0, 0, W, H, 40); ctx.fill()
 
   ctx.lineWidth = 10
-  ctx.strokeStyle = pet.quality.color
-  ctx.shadowColor = pet.quality.glow
+  ctx.strokeStyle = foil.color
+  ctx.shadowColor = foil.glow
   ctx.shadowBlur = 36
   roundRect(ctx, 10, 10, W - 20, H - 20, 34); ctx.stroke()
   ctx.shadowBlur = 0
 
   // 与正式卡片同一只角色：卡面立绘和 PetCard 的 sprite-frame 用同一个源
+  // （云卡已由 petArtwork 按 cardSpriteUrl 选六系八档图）
   const ART_BOX = 380
   const glow = ctx.createRadialGradient(W / 2, 280, 40, W / 2, 280, 230)
-  glow.addColorStop(0, pet.quality.glow)
+  glow.addColorStop(0, foil.glow)
   glow.addColorStop(1, 'rgba(0,0,0,0)')
   ctx.fillStyle = glow
   ctx.fillRect((W - ART_BOX) / 2 - 20, 76, ART_BOX + 40, ART_BOX + 40)
@@ -292,9 +329,14 @@ export async function cardArtwork(pet) {
   ctx.textAlign = 'center'
   ctx.fillText(pet.repo, W / 2, 520)
 
+  if (isCloudCard(pet)) {
+    drawCloudCardTraits(ctx, pet, W, 600, 66, 34)
+    return c.toDataURL('image/png')
+  }
+
   ctx.fillStyle = 'rgba(190,204,226,0.75)'
   ctx.font = '28px -apple-system, "PingFang SC", sans-serif'
-  const typeText = `${pet.element.name}系${pet.elementSecondary ? '/' + pet.elementSecondary.name : ''} · ${pet.species.name}`
+  const typeText = `${elementLabel(pet)}${pet.elementSecondary ? '/' + pet.elementSecondary.name : ''} · ${pet.species.name}`
   ctx.fillText(typeText, W / 2, 570)
 
   ctx.fillStyle = pet.quality.color

@@ -115,7 +115,7 @@ export default function AdvancedPanel({
             <input
               value={config.custom?.baseUrl || ''}
               onChange={(e) => onConfigChange?.({
-                ...config, custom: { baseUrl: '', label: '', model: '', ...(config.custom || {}), baseUrl: e.target.value }, binding: null,
+                ...config, custom: { label: '', model: '', ...(config.custom || {}), baseUrl: e.target.value }, binding: null,
               })}
               placeholder="http://127.0.0.1:11434/v1"
               spellCheck={false}

@@ -34,6 +34,8 @@ class Job:
     finished_at: float | None = None
     pet_id: str | None = None
     pet: dict[str, Any] | None = None
+    box: dict[str, Any] | None = None
+    progress: dict[str, Any] | None = None
     error: str = ""
     hint: str = ""
 
@@ -85,9 +87,12 @@ class ScanQueue:
             job.status = "running"
             job.started_at = time.time()
             try:
-                pet = self._worker_fn(job)
-                job.pet = pet
-                job.pet_id = (pet or {}).get("id")
+                result = self._worker_fn(job)
+                if job.kind == "cloud-box":
+                    job.box = result
+                else:
+                    job.pet = result
+                    job.pet_id = result.get("id")
                 job.status = "done"
             except ScanError as exc:
                 job.status = "failed"
@@ -97,6 +102,7 @@ class ScanQueue:
                 job.status = "failed"
                 job.error = f"扫描失败：{exc.__class__.__name__}"
             finally:
+                job.token = ""
                 job.finished_at = time.time()
                 self._queue.task_done()
 
@@ -135,6 +141,17 @@ class ScanQueue:
 
 def _worker(job: Job) -> dict[str, Any]:
     from . import services
+
+    if job.kind == "cloud-preview":
+        from . import cloud
+
+        return cloud.preview(services.parse_repo(job.repo), job.owner_key, token=job.token)
+    if job.kind == "cloud-box":
+        from . import cloud
+
+        platform, login = job.repo.split("/", 1)
+        return cloud.preview_box(platform, login, job.owner_key, token=job.token,
+                                 on_progress=lambda progress: setattr(job, "progress", progress))
 
     if job.kind == "sync":
         return services.sync_by_ref(services.parse_repo(job.repo), job.owner_key, token=job.token or None)

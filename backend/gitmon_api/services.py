@@ -9,7 +9,7 @@ import hashlib
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from . import engine, growth, sprite
 from . import traits as trait_mod
@@ -34,9 +34,11 @@ from .scanner.snapshot import RepoSnapshot
 
 # ---------------------------------------------------------------- 快照
 
-def _scan(ref: RepoRef, since: str | None = None, token: str | None = None) -> RepoSnapshot:
+def _scan(ref: RepoRef, since: str | None = None, token: str | None = None,
+          *, allow_private: bool = False, purpose: bool | Callable[[RepoSnapshot], bool] = False,
+          quality: bool = False) -> RepoSnapshot:
     """真正的网络扫描。测试通过 monkeypatch 这个函数注入假数据。"""
-    return scan_remote(ref, since=since, token=token)
+    return scan_remote(ref, since=since, token=token, allow_private=allow_private, purpose=purpose, quality=quality)
 
 
 def scan_snapshot(conn, ref: RepoRef, *, force: bool = False, since: str | None = None,
@@ -158,12 +160,12 @@ def pet_to_api(pet: dict[str, Any]) -> dict[str, Any]:
 
 
 def _compose(existing: dict[str, Any] | None, spec: dict[str, Any], ref: RepoRef,
-             owner_key: str, snapshot: RepoSnapshot) -> dict[str, Any]:
+             owner_key: str, snapshot: RepoSnapshot, *, cloud_id: str | None = None) -> dict[str, Any]:
     now = utcnow_iso()
     pet = dict(existing or {})
     pet.update(
         {
-            "id": existing["id"] if existing else _pet_id(ref, owner_key),
+            "id": cloud_id or (existing["id"] if existing else _pet_id(ref, owner_key)),
             "platform": ref.platform,
             "owner": ref.owner,
             "repo": ref.repo,
@@ -199,7 +201,13 @@ def _compose(existing: dict[str, Any] | None, spec: dict[str, Any], ref: RepoRef
     pet.setdefault("status", growth.status_for(snapshot))
     if existing is None:
         pet["level"] = spec["level"]
-    pet["sprite_path"] = _write_sprite(pet)
+    if cloud_id:
+        pet["repo_id"] = snapshot.repo_id
+        pet["sprite_path"] = ""
+        pet["synced_at"] = datetime.fromtimestamp(snapshot.fetched_at, timezone.utc).isoformat(timespec="microseconds")
+        pet["status"] = growth.status_for(snapshot)
+    else:
+        pet["sprite_path"] = _write_sprite(pet)
     return pet
 
 
@@ -480,7 +488,7 @@ def remove(pet_id: str) -> None:
 def leaderboard(limit: int = 20) -> dict[str, Any]:
     with db.connect() as conn:
         rows = conn.execute(
-            "SELECT * FROM pets ORDER BY level DESC, quality_score DESC LIMIT ?",
+            "SELECT * FROM pets WHERE repo_id IS NULL ORDER BY level DESC, quality_score DESC LIMIT ?",
             (max(limit * 4, 40),),
         ).fetchall()
         from .db import row_to_pet

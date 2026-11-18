@@ -8,20 +8,15 @@ import {
   hpPercent,
 } from '../battle.js'
 import {
-  matchBuiltinOwnerTeam,
-  matchBuiltinRival,
   modeLabel,
   pickRandomTeam,
   pickSameTypeTeam,
-  powerOf,
-  rivalFromSnapshot,
-  rivalPets,
   rivalTeamLabel,
   sameTypePool,
-  tierLabel,
-  tierOfPet,
-} from '../rivals.js'
-import { parseRepoInput, scanOwnerBox, scanRepo } from '../scan.js'
+} from '../arenaModes.js'
+import { arenaPetKey } from '../arenaRoster.js'
+import { arenaRivals, loadArenaOpponents } from '../arenaOpponents.js'
+import { tierLabel, tierOfPet } from '../rivals.js'
 import { battleWithLLM } from '../llm.js'
 import { bgm } from '../bgm.js'
 import { sfx } from '../sfx.js'
@@ -58,19 +53,21 @@ const DIFFICULTIES = [
   { key: 'hard', name: ['强敌', 'Fierce'], desc: ['对手六维 ×1.35', 'Rival stats ×1.35'] },
 ]
 
-const XP_BASE = { easy: 90, normal: 150, hard: 240 }
-const ONLINE_XP = { single: 200, team: 280 }
-
 const ONLINE_SIZES = [
   { key: 'single', name: ['单项目', 'Single Repo'], hint: ['1v1 · 一个仓库', '1v1 · one repo'] },
   { key: 'team', name: ['整仓', 'Full Repo'], hint: ['全员 · 整个账号', 'Everyone · one account'] },
 ]
+
+// 结算经验：在线对手按对局规模给，其余按难度给；胜负再乘 1.4 / 0.6
+const XP_BASE = { easy: 120, normal: 180, hard: 260 }
+const ONLINE_XP = { single: 220, team: 320 }
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 function unitPet(unit) {
   return {
     spriteSeed: unit.spriteSeed,
+    spriteUrl: unit.spriteUrl,
     // 自定义形象按 platform + fullName 索引，必须透传
     platform: unit.platform,
     fullName: unit.fullName,
@@ -85,6 +82,16 @@ function typeChips(unit) {
   const chips = [{ key: unit.element.key, name: unit.element.name, color: unit.element.color }]
   if (unit.elementSecondary) chips.push({ key: unit.elementSecondary.key, name: unit.elementSecondary.name, color: unit.elementSecondary.color })
   return chips
+}
+
+// 同属性对手池 + main 的星级分层：同层有货就只用同层，凑不齐回落到同属性全层。
+// 池子由调用方传入（PR#2 的 arenaSession. rivals 含云端花名册），分层口径沿用 rivals.js。
+function sameTypeRivalsPool(pool, lead) {
+  const sameType = sameTypePool(pool, lead?.element?.key)
+  const tier = tierOfPet(lead)
+  if (!tier) return sameType
+  const sameTier = sameType.filter((p) => tierOfPet(p) === tier)
+  return sameTier.length ? sameTier : sameType
 }
 
 const HP_SEGMENTS = 20
@@ -355,21 +362,23 @@ function OnlineSetup({ size, setSize, repoInput, setRepoInput, onScan, scanning,
   )
 }
 
-function Setup({ mode, pets, team, setTeam, difficulty, setDifficulty, onStart, onBack, onExit, online, channel = 'classic' }) {
+function Setup({ mode, pets, rivals, team, setTeam, difficulty, setDifficulty, onStart, onBack, onExit, online, channel = 'classic' }) {
   const { t } = useI18n()
   const onlineCap = online.size === 'team' ? Math.max(1, online.ownerTeam.length) : 1
   // AI 高级竞技场恒为 1v1：只比两个项目
   const cap = channel === 'ai' ? 1 : mode === 'online' ? onlineCap : 3
   const toggle = (pet) => {
-    const exists = team.some((p) => p.fullName === pet.fullName && p.platform === pet.platform)
-    if (exists) setTeam(team.filter((p) => !(p.fullName === pet.fullName && p.platform === pet.platform)))
+    const key = arenaPetKey(pet)
+    const exists = team.some((p) => arenaPetKey(p) === key)
+    if (exists) setTeam(team.filter((p) => arenaPetKey(p) !== key))
     else if (team.length < cap) setTeam([...team, pet])
   }
 
   const lead = team[0]
+  // 同属性 + 同星级层（main 的分层）：同层有货就只排同层，凑不齐再回落到同属性全层
   const samePool = useMemo(
-    () => (mode === 'same' && lead ? sameTypePool(lead.element?.key, lead) : []),
-    [mode, lead],
+    () => (mode === 'same' && lead ? sameTypeRivalsPool(rivals, lead) : []),
+    [mode, lead, rivals],
   )
   const leadTier = lead ? tierOfPet(lead) : null
 
@@ -414,7 +423,7 @@ function Setup({ mode, pets, team, setTeam, difficulty, setDifficulty, onStart, 
       {mode === 'random' && (
         <div className="same-type-bar">
           <span className="same-label">{t('对手池', 'Rival pool')}</span>
-          <span className="same-pool">{t(`全部 ${rivalPets().length} 只知名仓库精灵随机抽取，抽到谁都事先不知道。`, `Random draw from all ${rivalPets().length} famous-repo pets — never know what’s coming.`)}</span>
+          <span className="same-pool">{t(`全部 ${rivals.length} 只知名仓库精灵随机抽取，抽到谁都事先不知道。`, `Random draw from all ${rivals.length} famous-repo pets — never know what’s coming.`)}</span>
         </div>
       )}
 
@@ -434,11 +443,12 @@ function Setup({ mode, pets, team, setTeam, difficulty, setDifficulty, onStart, 
       ) : (
         <div className="picker-list">
           {pets.map((pet) => {
-            const active = team.some((p) => p.fullName === pet.fullName && p.platform === pet.platform)
+            const key = arenaPetKey(pet)
+            const active = team.some((p) => arenaPetKey(p) === key)
             const blocked = !active && team.length >= cap
             return (
               <button
-                key={`${pet.platform}/${pet.fullName}`}
+                key={key}
                 className={`picker-card ${active ? 'picked' : ''} ${blocked ? 'blocked' : ''}`}
                 onClick={() => toggle(pet)}
               >
@@ -488,14 +498,31 @@ function Setup({ mode, pets, team, setTeam, difficulty, setDifficulty, onStart, 
   )
 }
 
-export default function Battle({ pets = [], initial = null, challenge = null, channel = 'classic', llmConfig = null, advanced = false, onChannel = null, onExit, onReward }) {
+export default function Battle({
+  pets = [],
+  initial = null,
+  rivals,
+  resolveOpponents = loadArenaOpponents,
+  challenge = null,
+  channel = 'classic',
+  llmConfig = null,
+  advanced = false,
+  onChannel = null,
+  onExit,
+  onReward,
+}) {
   const { t: tf } = useI18n()
   const candidates = useMemo(() => {
     const list = [...pets]
     if (initial && !list.some((p) => p.fullName === initial.fullName)) list.unshift(initial)
     return list
   }, [pets, initial])
-
+  // 对手池：PR#2 由 App 的 arenaSession 注入（云端花名册 + 内置池），main 直接用内置池。
+  // 没注入时回落到内置池，保证两条入口都能开战。
+  const rivalPool = useMemo(
+    () => (Array.isArray(rivals) && rivals.length ? rivals : arenaRivals()),
+    [rivals],
+  )
   const [phase, setPhase] = useState('mode') // mode | select | fight | result
   // 战斗场景池：每次进场随机换一张地图
   const [arena, setArena] = useState('volcano') // volcano | space | island | sakura
@@ -517,7 +544,7 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
     }
   }, [phase])
   const [mode, setMode] = useState('random')
-  const [team, setTeam] = useState(() => (initial ? [initial] : candidates.slice(0, 3)))
+  const [team, setTeam] = useState(() => (initial ? [initial] : pets.slice(0, 3)))
   const [difficulty, setDifficulty] = useState('normal')
   const [state, setState] = useState(null)
   const [log, setLog] = useState([])
@@ -557,7 +584,6 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
   const [ownerTeam, setOwnerTeam] = useState([])
   const [opponentNote, setOpponentNote] = useState('')
 
-  const rewardedRef = useRef(false)
   const logRef = useRef(null)
   const fxLayerRef = useRef(null)
   const playerSlotRef = useRef(null)
@@ -566,6 +592,8 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
   const vfxRef = useRef(null)
   const juiceRef = useRef(null)
   const fieldRef = useRef(null)
+  // 每场只结算一次经验（重开一局时由 start 复位）
+  const rewardedRef = useRef(false)
 
   // 特效层单独拆包：不进首屏，进竞技场时才加载（pixelfx 的 30+ 个特效模块约 240KB；
   // GSAP 手感层另拆一个 chunk，只在这里用到）
@@ -612,9 +640,9 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
   const fillTeam = (count) => {
     setTeam((prev) => {
       const out = [...prev]
-      for (const p of candidates) {
+      for (const p of pets) {
         if (out.length >= count) break
-        if (!out.some((x) => x.fullName === p.fullName && x.platform === p.platform)) out.push(p)
+        if (!out.some((x) => arenaPetKey(x) === arenaPetKey(p))) out.push(p)
       }
       return out.slice(0, count)
     })
@@ -631,50 +659,18 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
   const scanOpponent = async (rawInput) => {
     const raw = (rawInput ?? repoInput).trim()
     if (!raw) { setScanError(onlineSize === 'team' ? tf('先填一个账号或仓库地址', 'Enter an account or repo URL first') : tf('先填一个仓库地址', 'Enter a repo URL first')); return }
-    const info = parseRepoInput(raw)
-    if (!info) { setScanError(tf('无法识别的地址，请输入 GitHub / Gitee 仓库或账号链接', 'Unrecognized URL — paste a GitHub / Gitee repo or account link')); return }
 
     setScanError('')
     setScanning(true)
     try {
-      // ① 单项目：只打对方一个仓库
+      const result = await resolveOpponents(raw, onlineSize)
       if (onlineSize === 'single') {
-        if (info.kind !== 'repo') throw new Error(tf('单项目 PK 需要具体仓库地址，例如 github.com/owner/repo', 'Single-repo PK needs a concrete repo URL, e.g. github.com/owner/repo'))
-        const builtin = matchBuiltinRival(info.platform, info.fullName)
-        if (builtin) {
-          setOpponent(builtin)
-          setOpponentNote(tf('内置快照 · 离线可打', 'Built-in snapshot · offline ready'))
-          return
-        }
-        const snap = await scanRepo(raw)
-        setOpponent(rivalFromSnapshot(snap))
-        setOpponentNote(snap.cached ? tf('线上数据 · 本地缓存', 'Live data · cached locally') : tf('线上数据 · 刚刚扫描', 'Live data · just scanned'))
-        return
+        setOpponent(result.pets[0])
+      } else {
+        setOwnerTeam(result.pets)
+        fillTeam(result.pets.length)
       }
-
-      // ② 整仓：对方账号下的全部项目依次上场（填仓库时按它的账号算）
-      const owner = info.owner
-      const platform = info.platform
-      const localTeam = matchBuiltinOwnerTeam(platform, owner)
-      if (localTeam.length >= 2) {
-        setOwnerTeam(localTeam)
-        fillTeam(localTeam.length)
-        setOpponentNote(tf(`内置快照 · ${owner} 的 ${localTeam.length} 个项目`, `Built-in snapshot · ${localTeam.length} projects of ${owner}`))
-        return
-      }
-      const res = await scanOwnerBox({ kind: 'owner', platform, owner }, { limit: 30 })
-      if (!res.snaps.length) {
-        throw new Error(res.rateLimited
-          ? tf('API 触发限流，稍后再试（设置 Token 可提高额度）', 'API rate limited — try again later (set a Token for more quota)')
-          : tf('这个账号没有可挑战的公开项目', 'This account has no public projects to challenge'))
-      }
-      const pets = res.snaps
-        .map((s) => rivalFromSnapshot(s))
-        .sort((a, b) => powerOf(b) - powerOf(a))
-      if (!pets.length) throw new Error(tf('这个账号没有可挑战的公开项目', 'This account has no public projects to challenge'))
-      setOwnerTeam(pets)
-      fillTeam(pets.length)
-      setOpponentNote(tf(`线上数据 · ${owner} 的 ${pets.length} 个项目`, `Live data · ${pets.length} projects of ${owner}`))
+      setOpponentNote(result.note)
     } catch (e) {
       setScanError(e.message || tf('扫描失败，请检查地址', 'Scan failed — check the URL'))
     } finally {
@@ -698,6 +694,8 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
 
   const start = () => {
     if (!team.length) return
+    // 新的一局：经验奖励重新可结算
+    rewardedRef.current = false
     const teamMode = mode === 'online' && onlineSize === 'team' && channel !== 'ai'
     if (mode === 'online') {
       if (teamMode ? !ownerTeam.length : !opponent) return
@@ -708,8 +706,8 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
     const cap = channel === 'ai' ? 1 : mode === 'online' ? (teamMode ? Math.max(1, ownerTeam.length) : 1) : 3
     let enemies
     if (mode === 'online') enemies = teamMode ? ownerTeam : [opponent]
-    else if (mode === 'same') enemies = pickSameTypeTeam(team, seed, difficulty, cap)
-    else enemies = pickRandomTeam(team, seed, difficulty, cap)
+    else if (mode === 'same') enemies = pickSameTypeTeam(sameTypeRivalsPool(rivalPool, team[0]), team, seed, difficulty, cap)
+    else enemies = pickRandomTeam(rivalPool, team, seed, difficulty, cap)
     if (!enemies.length) return
 
     // 对手几只、我方就上几只（整仓没扫满 3 个时不会出现以多打少）
@@ -725,8 +723,6 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
       playerName: '你',
       enemyName: '对手',
     })
-    rewardedRef.current = false
-    setReward(0)
     setState(built.state)
     setLog(built.events.map((e) => e.text))
     setAiStatus('idle')
@@ -963,7 +959,8 @@ export default function Battle({ pets = [], initial = null, challenge = null, ch
       <main className="battle-wrap">
         <Setup
           mode={mode}
-          pets={candidates}
+          pets={pets}
+          rivals={rivalPool}
           team={team}
           setTeam={setTeam}
           difficulty={difficulty}
