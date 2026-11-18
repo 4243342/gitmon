@@ -1,10 +1,11 @@
 // 分享卡片导出（文档 §7.3）：1:1 复刻卡面（63:88），画布手绘全要素
 // 与 PetCard / game-theme.css 同一套视觉：像素切角、星级段位、六边形宝石品质标、
 // HP / 进化 / 根基条、六维雷达 + 分段条、技能剑牌、性格词条、品质五维、页脚
-// 云卡（PR#2）：立绘按 cardArt 选六系八档图，词条行展示属性 / 罕见度 / 品质
+// 云卡：立绘按 cardArt 选图，词条行展示属性 / 六档品质 / 源码评分。
 import { drawCloudCardTraits, drawPetSprite, petArtwork } from './sprite.js'
 import { elementLabel } from './elementLabel.js'
 import { cardFoil, isCloudCard } from './cardTraits.js'
+import { QUALITY_RANK } from './cardQuality.js'
 import { sealData } from './modelSeal.js'
 import { starRank } from './starBadge.jsx'
 import { MAX_STAGE, nextStage, stageInfo, stageProgress } from './evolution.js'
@@ -254,16 +255,22 @@ function drawQualityGem(ctx, q, x, y, w, h) {
   ctx.fillStyle = tint; ctx.fillRect(x, y, w, h)
   ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.fillRect(x, y + h * 0.82, w, h * 0.18)
   ctx.restore()
-  // 字母：纵向渐变 + 浮雕投影；SSR 走金箔
+  // 字母：金闪、银碎、镜碎分别使用对应箔面色。
   const key = q.key
   const fs = key.length === 1 ? 19 * S : key.length === 2 ? 14 * S : 11.5 * S
   ctx.font = `${fs}px ${AR}`
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
   const cx = x + w / 2, cy = y + h / 2 + 1 * S
   let fill
-  if (key === 'SSR') {
+  if (key === 'UR') {
     fill = ctx.createLinearGradient(cx - fs * 2.2, 0, cx + fs * 2.2, 0)
     ;['#a06a12', '#ffe27a', '#fffbe0', '#ffc63d', '#fff3b0', '#b87d16', '#ffe27a'].forEach((c, i) => fill.addColorStop(i / 6, c))
+  } else if (key === 'SE' || key === 'PSE') {
+    fill = ctx.createLinearGradient(cx - fs * 2.2, 0, cx + fs * 2.2, 0)
+    const colors = key === 'SE'
+      ? ['#8195a9', '#f7fbff', '#b8d4e2', '#ffffff', '#94a9bd']
+      : ['#ffb7df', '#e8edff', '#9bdfff', '#f2aaff', '#fff5bb']
+    colors.forEach((color, index) => fill.addColorStop(index / (colors.length - 1), color))
   } else if (key === 'N') {
     fill = ctx.createLinearGradient(0, cy - fs, 0, cy + fs)
     fill.addColorStop(0, '#f4f7ff'); fill.addColorStop(.48, '#c6cddb'); fill.addColorStop(1, '#7d879e')
@@ -441,7 +448,7 @@ export async function exportShareCard(pet) {
   const c = document.createElement('canvas')
   c.width = CW; c.height = CH
   const ctx = c.getContext('2d')
-  // 云卡用 rarity 派生品质（key/label/color/glow/effect），本地卡原样透传 pet.quality
+  // 所有来源都使用同一六档品质；旧 SSR 在 cardFoil 里兼容为 UR。
   const q = cardFoil(pet)
   // 未评级云卡没有可展示的品质字母，六边形里画问号，避免长单词溢出宝石
   const gemKey = q.key === 'pending' ? '?' : q.key
@@ -465,11 +472,11 @@ export async function exportShareCard(pet) {
   ctx.fillStyle = bg
   ctx.fillRect(0, 0, CW, CH)
 
-  // SSR / SR 全息条纹（静态帧）；云卡按 rarity 映射到的揭示档次（effect）判断
-  const holo = q.effect || q.key
-  if (holo === 'SSR' || holo === 'SR') {
+  // 面闪以上保留静态箔面，按真实六档 key 选材质。
+  const holoRank = QUALITY_RANK[q.key] || 0
+  if (holoRank >= QUALITY_RANK.SR) {
     ctx.save()
-    ctx.globalAlpha = holo === 'SSR' ? .8 : .55
+    ctx.globalAlpha = holoRank >= QUALITY_RANK.UR ? .8 : .55
     const stripes = ctx.createLinearGradient(0, 0, CW, CH)
     stripes.addColorStop(0, 'rgba(255,255,255,.05)'); stripes.addColorStop(.5, 'rgba(255,255,255,.02)'); stripes.addColorStop(1, 'rgba(255,255,255,.05)')
     ctx.fillStyle = stripes

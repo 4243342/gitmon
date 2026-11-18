@@ -54,7 +54,7 @@ def test_meta_lists_varieties(client: TestClient) -> None:
     payload = client.get("/api/meta").json()
     assert len(payload["elements"]) == 9
     assert len(payload["species"]) == 7
-    assert {q["key"] for q in payload["qualities"]} == {"N", "R", "SR", "SSR"}
+    assert [q["key"] for q in payload["qualities"]] == ["N", "R", "SR", "UR", "SE", "PSE"]
 
 
 def test_hatch_sync_and_cache(client: TestClient, scan_calls) -> None:
@@ -65,7 +65,8 @@ def test_hatch_sync_and_cache(client: TestClient, scan_calls) -> None:
     assert pet["platform"] == "github"
     assert pet["element"]["key"] == "thunder"
     assert pet["species"]["key"] == "beast"
-    assert pet["quality"]["key"] in {"N", "R", "SR", "SSR"}
+    assert pet["quality"]["key"] in {"N", "R", "SR", "UR", "SE", "PSE"}
+    assert pet["qualityKey"] == pet["quality"]["key"]
     assert 1 <= pet["level"] <= 999
     assert len(pet["stats"]) == 6
     assert pet["spriteUrl"].endswith("/sprite.png")

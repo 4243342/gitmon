@@ -11,8 +11,11 @@ import {
   xpMultiplier,
 } from './traits.js'
 import { stageFromLevel } from './evolution.js'
+import { QUALITIES, normalizeQualityKey, qualityForScore } from './cardQuality.js'
+import { cardFoil } from './cardTraits.js'
 
 export { EVOLUTION, MAX_STAGE, stageFromLevel, stageInfo, stageName, isHumanoid, nextStage, stageProgress } from './evolution.js'
+export { QUALITIES } from './cardQuality.js'
 
 // ---------- 种子 ----------
 export function hashSeed(str) {
@@ -73,14 +76,6 @@ export const SPECIES = {
   flying:  { key: 'flying',  name: '飞行型', type: '移动端',    body: 'winged' },
   phantom: { key: 'phantom', name: '幻兽型', type: '游戏/图形', body: 'golem' },
   fairy:   { key: 'fairy',   name: '精灵型', type: '文档/博客', body: 'spirit' },
-}
-
-// ---------- §4.2 品质 ----------
-export const QUALITIES = {
-  N:   { key: 'N',   name: '普通', color: '#9e9e9e', glow: 'rgba(158,158,158,.55)', min: 0 },
-  R:   { key: 'R',   name: '稀有', color: '#42a5f5', glow: 'rgba(66,165,245,.6)',  min: 40 },
-  SR:  { key: 'SR',  name: '史诗', color: '#ab47bc', glow: 'rgba(171,71,188,.65)', min: 60 },
-  SSR: { key: 'SSR', name: '传说', color: '#ffb300', glow: 'rgba(255,179,0,.75)',  min: 80 },
 }
 
 const SKILLS = {
@@ -263,7 +258,8 @@ export const ELEMENT_BIAS = {
 }
 
 const IV_MAX = 31
-const IV_FLOOR = { N: 0, R: 8, SR: 16, SSR: 24 } // 品质决定个体值下限，稀有度才有意义
+// 三个高档延用原 SSR 的个体值范围；品质细分不改变已有战斗数值。
+const IV_FLOOR = { N: 0, R: 8, SR: 16, UR: 24, SE: 24, PSE: 24 }
 const MAX_BASE = 130 // UI 归一化的理论上限（含属性微调后的最大值）
 
 export function baseFor(speciesKey, elementKey) {
@@ -276,7 +272,7 @@ export function baseFor(speciesKey, elementKey) {
 // 个体值：同种子必得同一组（0..31），品质抬高低限
 export function rollIVs(seed, qualityKey = 'N') {
   const rng = makeRng((seed >>> 0) ^ 0x9e3779b9)
-  const floorVal = IV_FLOOR[qualityKey] ?? 0
+  const floorVal = IV_FLOOR[normalizeQualityKey(qualityKey)]
   return STAT_ORDER.map(() => Math.min(IV_MAX, Math.floor(rng() * (IV_MAX + 1 - floorVal)) + floorVal))
 }
 
@@ -335,12 +331,14 @@ export function derivedFieldsOf(pet, level = pet?.level) {
   }
 }
 
-// 读档归一化：修掉历史上「AI 评测覆盖了六维与等级，却把规则引擎按高等级算出的
-// combatPower / statCap / ivs 留在卡里」的宠物。幂等，对正常宠物是空操作。
+// 读档归一化：旧 SSR 品质映射到 UR；保留种子、个体值与成长记录。
+// 同时修正历史 AI 评测遗留的 combatPower / statCap / ivs，重复执行结果不变。
 export function normalizePet(pet) {
-  if (!pet || !Array.isArray(pet.stats) || !pet.stats.length) return pet
-  const derived = derivedFieldsOf(pet)
-  const next = { ...pet, ...derived }
+  if (!pet || typeof pet !== 'object') return pet
+  const { effect, ...quality } = cardFoil(pet)
+  const next = { ...pet, quality, qualityKey: quality.key }
+  if (!Array.isArray(pet.stats) || !pet.stats.length) return next
+  Object.assign(next, derivedFieldsOf(pet))
   // AI 评测卡的六维由模型给（评分制），个体值来自另一次规则引擎扫描，
   // 留着会让「升级重算」用引擎公式把模型给的六维冲掉。
   if (pet.aiEvaluated && statScaleOf(pet.stats) === 'score') {
@@ -413,7 +411,7 @@ export function judge(snap) {
   const species = detectSpecies(snap)
   const quality = scoreQuality(snap)
   const engineering = scoreEngineering(snap)
-  const qualityKey = quality.score >= 80 ? 'SSR' : quality.score >= 60 ? 'SR' : quality.score >= 40 ? 'R' : 'N'
+  const qualityKey = qualityForScore(quality.score).key
   const level = levelFromEngineering(engineering.score)
   const milestones = (snap.releaseCount >= 1 ? 1 : 0) + (snap.contributors >= 5 ? 1 : 0) + (snap.stars >= 100 ? 1 : 0)
   const evolutionStage = stageFromLevel(level)

@@ -189,7 +189,7 @@ def test_quality_object_is_not_dumped_into_the_prompt(monkeypatch) -> None:
     """pet.quality 是 {key, name, color, glow} 对象，不是字符串。
 
     早先直接 f-string 进 prompt，模型读到的是一坨 Python 字典原文（带引号和颜色值），
-    既浪费 token 又容易让模型把品质名写错。这里锁死成「传说(SSR)」这种可读写法。
+    既浪费 token 又容易让模型把品质名写错。旧 SSR 在提示词里显示为「金闪(UR)」。
     """
     seen: dict[str, str] = {}
 
@@ -205,7 +205,7 @@ def test_quality_object_is_not_dumped_into_the_prompt(monkeypatch) -> None:
     pet = {"fullName": "demo/pet", "platform": "github", "level": 18,
            "quality": {"key": "SSR", "name": "传说", "color": "#ffb300", "glow": "rgba(255,179,0,.7)"}}
     asyncio.run(story.scripts(pet, BOSS_CARD, LLM, research=RESEARCH, mode="auto"))
-    assert "传说(SSR)" in seen["user"]
+    assert "金闪(UR)" in seen["user"]
     assert "{'key'" not in seen["user"]
     assert "#ffb300" not in seen["user"]
 

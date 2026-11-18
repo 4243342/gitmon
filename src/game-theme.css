@@ -835,7 +835,7 @@ body::after {
    卡箱（账号整箱抽卡）—— 一个账号 N 个项目 = N 个卡包
    ============================================================ */
 .box-stage {
-  max-width: 880px;
+  max-width: 1040px;
   margin: 0 auto;
   padding: 26px 18px 46px;
   text-align: center;
@@ -877,7 +877,7 @@ body::after {
 .box-id-text p b { color: var(--accent); font-weight: 400; }
 .box-id-text p em { font-style: normal; color: #5d6b88; }
 
-.box-tally { display: flex; gap: 7px; flex: none; }
+.box-tally { display: flex; flex-wrap: wrap; gap: 7px; }
 .tally {
   display: flex; align-items: center; gap: 5px;
   font-family: var(--font-arcade);
@@ -909,6 +909,28 @@ body::after {
 }
 .box-warn span { line-height: 1.7; }
 
+.box-showcase {
+  margin: 24px auto 32px;
+  padding: 26px 0 20px;
+  border: 1px solid #cbb18a26;
+  border-radius: 24px;
+  background: radial-gradient(ellipse at 50% 28%, #36374655, transparent 62%), linear-gradient(160deg, #19202e, #0b101a 72%);
+  box-shadow: 0 24px 64px #0005, inset 0 1px #ffffff0c;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+.box-collection-heading { padding: 0 22px; }
+.box-eyebrow { display: block; color: #c8b493; font-size: 10px; letter-spacing: .24em; font-weight: 650; }
+.box-collection-heading h2 { margin: 10px 0 8px; color: #f5ecde; font-size: clamp(24px, 4vw, 36px); font-weight: 650; letter-spacing: -.035em; }
+.box-collection-heading p { margin: 0; color: #a1a7b4; font-size: 12px; line-height: 1.7; }
+.box-showcase .pack-display-box { margin: 18px 0 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
+.box-quality-key { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; max-width: 760px; margin: 20px auto 0; padding: 0 20px; text-align: left; }
+.box-quality-key > span { display: flex; gap: 8px; align-items: flex-start; min-width: 0; color: #eee6db; font-size: 10px; }
+.box-quality-key b { padding-top: 2px; color: var(--legend-color); font-size: 11px; letter-spacing: -.03em; }
+.box-quality-key small { display: block; margin-top: 4px; font-size: 9px; color: #8f99ab; white-space: nowrap; }
+.box-rating-note { padding: 0 22px; font-size: 11px; line-height: 1.7; color: #bdaf98; }
+.box-packs { padding: 0 4px; }
+.pack-model-name { margin-top: 5px; color: #a6aabd; font: 500 10px/1.4 ui-sans-serif, system-ui, sans-serif; }
+
 /* ---------- 包装与开出的卡片独立陈列 ---------- */
 .box-section-head {
   display: flex;
@@ -916,7 +938,7 @@ body::after {
   align-items: baseline;
   flex-wrap: wrap;
   gap: 8px 16px;
-  max-width: 780px;
+  max-width: 920px;
   margin: 0 auto 18px;
   text-align: left;
 }
@@ -933,7 +955,7 @@ body::after {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 124px), 1fr));
   gap: 18px;
-  max-width: 780px;
+  max-width: 920px;
   margin: 0 auto;
 }
 .box-card-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 156px), 1fr)); }
@@ -943,28 +965,30 @@ body::after {
   flex-direction: column;
   align-items: center;
   min-width: 0;
-  padding: 10px 4px 4px;
-  border: 0;
-  background: none;
+  padding: 12px 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: #ffffff03;
   color: var(--text);
   font: inherit;
   cursor: pointer;
   transition: translate .18s ease;
 }
 .pack-tile:not(.is-open):not(:disabled):hover { translate: 0 -5px; }
+.pack-tile.is-selected { border-color: color-mix(in srgb, var(--hp-accent) 32%, transparent); background: color-mix(in srgb, var(--hp-pack) 12%, #111724); }
 .pack-tile.is-open { cursor: default; }
 .pack-state { margin-top: 4px; color: var(--q-color); font-size: 11px; }
 .pack-tile.is-open .pack-state { color: var(--dim); }
 .pack-tile > .pt-name { margin-top: 10px; }
 
-/* 与 HoloPack 共用 hp-skin / hp-orb，按网格宽度缩放；不运行拆包引擎。 */
+/* 与 HoloPack 共用角色印刷面，按网格宽度缩放；不运行拆包引擎。 */
 .pack-cover {
   position: relative;
   display: block;
   width: 100%;
   aspect-ratio: 69 / 100;
   container-type: inline-size;
-  filter: drop-shadow(3px 5px 0 rgba(0, 0, 0, .35));
+  filter: drop-shadow(0 8px 10px rgba(0, 0, 0, .4));
 }
 .pack-cover .hp-skin {
   --hp-pw: 100cqw;
@@ -1120,6 +1144,8 @@ body::after {
 }
 
 @media (max-width: 560px) {
+  .box-showcase { margin-top: 20px; padding-top: 22px; border-radius: 18px; }
+  .box-quality-key { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 10px; max-width: 350px; }
   .pack-grid, .box-card-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 112px), 1fr)); gap: 12px; }
   .box-card { padding: 7px; gap: 4px; }
   .box-card-foot { font-size: 9px; }

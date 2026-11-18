@@ -56,16 +56,31 @@ def test_parse_model_json_accepts_code_fence_and_prose():
 def test_normalize_keeps_model_scores_and_records_fallbacks():
     out, warnings = llm.normalize_evaluation(GOOD_EVAL)
     assert out["qualityScore"] == 91 and out["stats"][2] == 100
+    assert out["quality"] == "UR"  # 旧 SSR 保留原档位语义，不按旧分数重新升档
     assert out["traits"][0]["kind"] == "positive"
     assert warnings == []
 
     bad = dict(GOOD_EVAL, element="plasma", species="alien", quality="?", stats=[999, -3], qualityDims=[10])
     fixed, warnings = llm.normalize_evaluation(bad)
     assert fixed["element"] == "normal" and fixed["species"] == "beast"
-    assert fixed["quality"] == "SSR"  # 按 91 分归档
+    assert fixed["quality"] == "SE"  # 缺失/无效档位才按 91 分归档
     assert fixed["stats"] == [100, 0, 50, 50, 50, 50]
     assert len(fixed["qualityDims"]) == 5
     assert any("兜底" in w for w in warnings)
+
+
+@pytest.mark.parametrize("key", ["N", "R", "SR", "UR", "SE", "PSE"])
+def test_normalize_preserves_all_six_quality_keys(key):
+    out, warnings = llm.normalize_evaluation(dict(GOOD_EVAL, quality=key))
+    assert out["quality"] == key
+    assert warnings == []
+
+
+@pytest.mark.parametrize("score, expected", [(0, "N"), (40, "R"), (60, "SR"), (80, "UR"), (90, "SE"), (97, "PSE")])
+def test_normalize_quality_fallback_uses_six_score_tiers(score, expected):
+    out, warnings = llm.normalize_evaluation(dict(GOOD_EVAL, quality="?", qualityScore=score))
+    assert out["quality"] == expected
+    assert any("品质档位无效" in warning for warning in warnings)
 
 
 def test_normalize_clamps_traits_and_skills():
@@ -203,6 +218,7 @@ def test_api_config_lists_enums(client):
     body = client.get("/api/llm/config").json()
     assert "thunder" in body["elements"] and "beast" in body["species"]
     assert body["statNames"] == ["攻击", "防御", "速度", "特攻", "特防", "HP"]
+    assert body["qualities"] == ["N", "R", "SR", "UR", "SE", "PSE"]
 
 
 def test_api_evaluate_returns_model_evaluation(client, monkeypatch):
@@ -215,7 +231,7 @@ def test_api_evaluate_returns_model_evaluation(client, monkeypatch):
     })
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["evaluation"]["quality"] == "SSR"
+    assert body["evaluation"]["quality"] == "UR"
     assert body["evaluation"]["skills"][0]["unlockLevel"] == 12  # 模型给的门槛原样透传
     assert body["meta"]["engine"] == "none"
     assert "sk-super-secret" not in resp.text

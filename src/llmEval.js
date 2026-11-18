@@ -9,6 +9,7 @@
 import { ELEMENTS, SPECIES, QUALITIES, combatPowerOf, expForLevel, hashSeed, stageFromLevel } from './engine.js'
 import { STAT_NAMES, foundationTier, traitHints, traitSummary, xpMultiplier } from './traits.js'
 import { parseRepoInput } from './scan.js'
+import { normalizeQualityKey, qualityForScore } from './cardQuality.js'
 
 const QUALITY_DIMS = [
   { key: 'tests', name: '测试完备度', weight: 25 },
@@ -36,7 +37,9 @@ export function buildPetFromEvaluation(ev, {
   const element = ELEMENTS[ev.element] || ELEMENTS.normal
   const elementSecondary = ev.elementSecondary ? ELEMENTS[ev.elementSecondary] || null : null
   const species = SPECIES[ev.species] || SPECIES.beast
-  const quality = QUALITIES[ev.quality] || QUALITIES.N
+  const quality = typeof ev.quality === 'string' && /^(N|R|SR|SSR|UR|SE|PSE)$/i.test(ev.quality.trim())
+    ? QUALITIES[normalizeQualityKey(ev.quality)]
+    : qualityForScore(ev.qualityScore)
   const level = Math.max(1, Math.min(999, Math.round(Number(ev.level) || 1)))
   const evolutionStage = stageFromLevel(level)
 

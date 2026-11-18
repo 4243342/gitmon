@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../i18n.js'
 import { ELEMENTS, QUALITIES, SPECIES, combatPowerOf, hashSeed, stageFromLevel, statCapAtLevel } from '../engine.js'
+import { normalizeQualityKey } from '../cardQuality.js'
 import { createBattle, battleTurn, chooseAutoAction } from '../battle.js'
 import { rivalPets, sameTypePool, scaleRival } from '../rivals.js'
 import { sfx } from '../sfx.js'
@@ -105,7 +106,7 @@ function bossPetFromCard(boss, isEn = false) {
   const element = ELEMENTS[v.element_key] || ELEMENTS[elementKeys[h % elementKeys.length]] || ELEMENTS.normal
   const elementSecondary = v.element_secondary ? ELEMENTS[v.element_secondary] || null : null
   const species = SPECIES[v.species_key] || SPECIES[speciesKeys[(h >>> 3) % speciesKeys.length]] || SPECIES.beast
-  const quality = QUALITIES[v.quality] || QUALITIES[boss?.tier] || QUALITIES.N
+  const quality = QUALITIES[normalizeQualityKey(v.quality || boss?.tier)]
   const level = Number(v.level) || Number(boss?.level) || 1
   // 评分制 verdict → 该等级绝对制：六维 / HP / 战力全部与玩家卡同口径
   const { stats, maxHp } = verdictToBattleStats(v, level)
@@ -151,7 +152,7 @@ function bossPetFromRun(run) {
   const element = ELEMENTS[v.element_key] || ELEMENTS.normal
   const secondary = v.element_secondary ? ELEMENTS[v.element_secondary] : null
   const species = SPECIES[v.species_key] || SPECIES.element
-  const quality = QUALITIES[v.quality] || QUALITIES.N
+  const quality = QUALITIES[normalizeQualityKey(v.quality)]
   const level = Number(v.level) || Number(b.level) || 1
   // 与选卡界面同一套换算：评分制 verdict → 绝对制，保证「选到的」和「开打的」数值一致
   const { stats, maxHp } = verdictToBattleStats(v, level)

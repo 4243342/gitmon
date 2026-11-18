@@ -6,6 +6,7 @@ import { arenaRivals, loadArenaOpponents } from './arenaOpponents.js'
 import { prepareArenaRoster } from './arenaRoster.js'
 import { elementLabel } from './elementLabel.js'
 import { cardFoil, isCloudCard } from './cardTraits.js'
+import { QUALITY_RANK } from './cardQuality.js'
 import {
   cachedProfile, clearGuest, consumeAuthQuery, fetchMe, fetchProviders,
   guestSkipped, logout, PROVIDER_LABEL, quotaText, skipLogin,
@@ -51,7 +52,6 @@ import './training.css'
 import './vault.css'
 import './quest.css'
 
-const RANK = { SSR: 4, SR: 3, R: 2, N: 1 }
 const packKey = (pet) => pet.id || pet.fullName
 
 // 单个项目：一个卡包
@@ -994,7 +994,7 @@ export default function App() {
       setStep(3)
       const pets = res.snaps
         .map(judge)
-        .sort((a, b) => (RANK[b.qualityKey] - RANK[a.qualityKey]) || (b.level - a.level))
+        .sort((a, b) => ((QUALITY_RANK[cardFoil(b).key] || 0) - (QUALITY_RANK[cardFoil(a).key] || 0)) || (b.level - a.level))
       await new Promise((r) => setTimeout(r, 380))
       setBox({
         owner: res.owner,
@@ -1102,7 +1102,7 @@ export default function App() {
       packPets.forEach((p) => next.add(packKey(p)))
       return next
     })
-    sfx.reveal(cardFoil(packPets[0]).effect)
+    sfx.reveal(cardFoil(packPets[0]).key)
     // 单仓库只有一只，摊开后直接进揭晓页
     if (packPets.length === 1) {
       setPet(packPets[0])
@@ -1141,7 +1141,7 @@ export default function App() {
   const afterReveal = () => {
     setView('reveal')
     if (pet) {
-      sfx.reveal(cardFoil(pet).effect)
+      sfx.reveal(cardFoil(pet).key)
       if (fromBox) setOpened((s) => new Set(s).add(packKey(pet)))
     }
   }
@@ -1613,14 +1613,14 @@ export default function App() {
           </section>
           </div>
 
-          {/* 云账号的判定口径（PR#2）：属性 / 罕见度 / 品质三档说明；通用判定规则见下方 <Manual /> */}
+          {/* 云卡品质沿用公开认可度，源码证据独立显示为评分。 */}
           {cloudAccount && (
             <section className="howto">
               <h3>{t('怎么判定', 'How grading works')}</h3>
               <div className="howto-grid">
                 <div><b>{t('属性', 'Attribute')}</b><span>{t('按仓库的主要用途判定', 'Decided by the repo’s main purpose')}</span></div>
-                <div><b>{t('罕见度', 'Rarity')}</b><span>{t('按 GitHub 或 Gitee 的公开 Star 和 Fork 判定', 'Based on public Stars and Forks on GitHub or Gitee')}</span></div>
-                <div><b>{t('品质', 'Quality')}</b><span>{t('源码、测试、文档和社区证据决定黑铁至王者档位', 'Source, tests, docs and community evidence set the tier from Iron to King')}</span></div>
+                <div><b>{t('品质', 'Quality')}</b><span>{t('公开 Star 和 Fork 决定 N、R、SR、UR、SE、PSE 六档品质', 'Public Stars and Forks determine N, R, SR, UR, SE and PSE quality')}</span></div>
+                <div><b>{t('源码评分', 'Source score')}</b><span>{t('源码、测试与文档证据形成独立评分，卡包取包内最高品质', 'Source, tests and docs receive a separate score; each pack takes its highest card quality')}</span></div>
               </div>
             </section>
           )}
@@ -1865,7 +1865,7 @@ export default function App() {
           muted={muted}
           label={packSession.label}
           onSpread={afterPackSpread}
-          onPick={(p) => { setPet(p); setView('reveal'); sfx.reveal(cardFoil(p).effect) }}
+          onPick={(p) => { setPet(p); setView('reveal'); sfx.reveal(cardFoil(p).key) }}
           onCollect={box ? collectPack : null}
           onBack={box ? () => { setPackSession(null); setView('box') } : null}
         />

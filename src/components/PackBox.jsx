@@ -1,36 +1,35 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import PixelSprite from './PixelSprite.jsx'
+import PackDisplayBox from './PackDisplayBox.jsx'
 import { sfx } from '../sfx.js'
 import { elementLabel } from '../elementLabel.js'
 import { cardFoil, cloudCardTraits, isCloudCard } from '../cardTraits.js'
 import { groupIntoPacks } from '../packGroups.js'
+import { QUALITY_KEYS, QUALITIES } from '../cardQuality.js'
+import { PACK_DESIGNS, packDesign, packCss } from '../packDesign.js'
 import { useI18n } from '../i18n.js'
 import '../holoPack/holoPack.css'
 
 // 整箱卡包：账号下的项目每 5 个装一包，品质由包里最好的那个决定外观
-const palette = { SSR: '#ffb300', SR: '#ab47bc', R: '#42a5f5', N: '#9e9e9e' }
-const RANK = { N: 1, R: 2, SR: 3, SSR: 4 }
-
-// 复用开包舞台的封口、印刷面与镀铬吉祥物；卡箱只展示静态包装。
-function PackCover({ count, index, opened }) {
+// 复用开包舞台的角色印刷面；撕开的包装和卡片分别陈列。
+function PackCover({ count, index, opened, design }) {
   const { t } = useI18n()
   const print = (
     <>
-      <span className="hp-tag">Tear here ⟶</span>
+      <span className="hp-tag">MODEL COLLECTION</span>
       <b className="hp-mark">GITMON</b>
       <span className="hp-series">PACK {String(index + 1).padStart(2, '0')}</span>
-      <span className="hp-orb">
-        <i className="hp-orb-body" />
-        <i className="hp-eye l"><i className="hp-pupil" /></i>
-        <i className="hp-eye r"><i className="hp-pupil" /></i>
-        <i className="hp-smile" />
-      </span>
-      <span className="hp-foot l">Card pack</span>
+      <span className="hp-print-lines" />
+      <span className="hp-emblem">{design.mark}</span>
+      <img className="hp-character" src={design.art} alt="" draggable="false" loading="lazy" />
+      <span className="hp-quality"><b>{design.unrated ? '—' : design.key}</b><small>{design.unrated ? t('待评估', 'Unrated') : design.name}</small></span>
+      <span className="hp-model">{design.model}</span>
+      <span className="hp-foot l">{design.unrated ? 'COLLECTION' : `${design.key} / ${design.finish.toUpperCase()}`}</span>
       <span className="hp-foot r">{t(`${count} 张`, `${count} cards`)}</span>
     </>
   )
   return (
-    <span className={`pack-cover${opened ? ' is-open' : ''}`} aria-hidden="true">
+    <span className={`pack-cover${opened ? ' is-open' : ''}`} data-quality={design.key} aria-hidden="true">
       {opened && <span className="pack-cover-mouth" />}
       <span className="hp-skin front pack-cover-body">{print}</span>
       {opened && <span className="hp-skin front pack-cover-tear">{print}</span>}
@@ -54,13 +53,27 @@ export default function PackBox({
 }) {
   const { t } = useI18n()
   const { owner, pets, listed, limit, truncated, skipped, rateLimited, failed, partial } = box
-  const cloud = Boolean(box.id)
-  const packs = groupIntoPacks(pets)
+  const packs = useMemo(() => groupIntoPacks(pets), [pets])
+  const [selected, setSelected] = useState(0)
+  const packPrints = useMemo(() => packs.map((pack, index) => ({
+    ...packDesign(pack),
+    id: pack.map((pet) => pet.id || pet.fullName).join('|'),
+    index,
+    count: pack.length,
+    opened: revealedAll || pack.every((pet) => opened.has(pet.id || pet.fullName)),
+  })), [packs, opened, revealedAll])
+  const activeIndex = Math.min(selected, Math.max(0, packs.length - 1))
+  const openPack = (index) => {
+    if (saving || !packs[index] || packPrints[index].opened) return
+    setSelected(index)
+    sfx.swoosh()
+    onOpen(packs[index], index)
+  }
 
-  const tallies = new Map(cloud ? [] : Object.entries(palette).map(([key, color]) => [key, { key, color, label: key, count: 0 }]))
+  const tallies = new Map(QUALITY_KEYS.map((key) => [key, { ...QUALITIES[key], label: key, count: 0 }]))
   for (const pet of pets) {
     const foil = cardFoil(pet)
-    const key = cloud ? foil.label : foil.key
+    const key = foil.key
     const tally = tallies.get(key) || { ...foil, count: 0 }
     tallies.set(key, { ...tally, count: tally.count + 1 })
   }
@@ -102,7 +115,7 @@ export default function PackBox({
         <div className="box-tally">
           {[...tallies].map(([key, tally]) => (
             <span key={key} className="tally" style={{ '--tc': tally.color }}>
-              <b>{tally.label}</b>
+              <b title={tally.name}>{tally.key === 'pending' ? '—' : tally.key}</b>
               {tally.count}
             </span>
           ))}
@@ -110,9 +123,7 @@ export default function PackBox({
       </header>
 
       <p className="box-hint">
-        {cloud
-          ? t('点开卡包查看属性、罕见度和品质。', 'Tap a pack to see its attribute, rarity and quality.')
-          : t('每 5 个项目装一包，品质取包里最好的那个 —— 点开任意一包，看抽中什么。', 'Every 5 projects make a pack, its look comes from the best one inside — tap any pack to see what you drew.')}
+        {t('每 5 张卡装一包，卡包品质由里面最高品质的卡片决定。选一包，撕开看看。', 'Five cards per pack. Its quality matches the highest-quality card inside. Choose a pack and tear it open.')}
       </p>
 
       {(truncated || rateLimited || failed?.length > 0 || partial > 0) && (
@@ -125,6 +136,19 @@ export default function PackBox({
         </div>
       )}
 
+      <section className="box-showcase" aria-labelledby="box-collection-title">
+        <div className="box-collection-heading">
+          <span className="box-eyebrow">GITMON · MODEL COLLECTION</span>
+          <h2 id="box-collection-title">{t('模型典藏卡盒', 'The Model Collection')}</h2>
+          <p>{t('从普卡到镜碎，挑选你的下一包。', 'From classic to prismatic. Choose your next pack.')}</p>
+        </div>
+        <PackDisplayBox packs={packPrints} activeIndex={activeIndex} onSelect={setSelected} onOpen={openPack} disabled={saving} />
+        <div className="box-quality-key" aria-label={t('卡包品质与角色', 'Pack qualities and characters')}>
+          {QUALITY_KEYS.map((key) => <span key={key} style={{ '--legend-color': PACK_DESIGNS[key].accent }}><b>{key}</b><span>{QUALITIES[key].name}<small>{QUALITIES[key].model}</small></span></span>)}
+        </div>
+        {packPrints.some((pack) => pack.pending) && <p className="box-rating-note">{t('部分卡片仍待评估，卡包暂按已确认的最高品质展示。', 'Some cards are awaiting a rating. Pack covers use the highest confirmed quality for now.')}</p>}
+      </section>
+
       <section className="box-packs" aria-labelledby="box-packs-title">
         <div className="box-section-head">
           <h3 id="box-packs-title">{t('卡包', 'Packs')}</h3>
@@ -132,27 +156,26 @@ export default function PackBox({
         </div>
         <div className="pack-grid">
           {packs.map((pack, i) => {
-            let best = null
-            for (const pet of pack) {
-              const foil = cardFoil(pet)
-              if (!best || (RANK[foil.effect] || 0) > (RANK[best.effect] || 0)) best = foil
-            }
-            const revealed = revealedAll || pack.every((pet) => opened.has(pet.id || pet.fullName))
+            const design = packPrints[i]
+            const revealed = design.opened
             const Tile = revealed ? 'div' : 'button'
             return (
               <Tile
                 key={`pack-${i}`}
-                className={`pack-tile${revealed ? ' is-open' : ''}`}
-                style={{ '--q-color': best.color, '--q-glow': best.glow, '--hp-pack': palette[best.effect] || best.color }}
+                className={`pack-tile${revealed ? ' is-open' : ''}${i === activeIndex ? ' is-selected' : ''}`}
+                style={packCss(design)}
                 type={revealed ? undefined : 'button'}
-                onClick={revealed ? undefined : () => { sfx.swoosh(); onOpen(pack, i) }}
+                onClick={revealed ? undefined : () => openPack(i)}
+                onFocus={() => setSelected(i)}
+                onMouseEnter={() => setSelected(i)}
                 disabled={revealed ? undefined : saving}
                 role={revealed ? 'img' : undefined}
                 aria-label={revealed ? t(`第 ${i + 1} 包 · 已开封`, `Pack ${i + 1} · opened`) : t(`打开第 ${i + 1} 包 · ${pack.length} 张卡片`, `Open pack ${i + 1} · ${pack.length} cards`)}
                 title={pack.map((pet) => `${pet.repo} · ${cardFoil(pet).label || cardFoil(pet).name || cardFoil(pet).key}`).join('\n')}
               >
-                <PackCover count={pack.length} index={i} opened={revealed} />
+                <PackCover count={pack.length} index={i} opened={revealed} design={design} />
                 <span className="pt-name">{t(`第 ${i + 1} 包`, `Pack ${i + 1}`)}</span>
+                <span className="pack-model-name">{design.unrated ? t('待评估', 'Unrated') : `${design.key} ${design.name}`} · {design.model}</span>
                 <span className="pack-state">{revealed ? t('已开封', 'Opened') : t('点击开包', 'Open pack')}</span>
               </Tile>
             )

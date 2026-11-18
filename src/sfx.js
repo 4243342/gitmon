@@ -1,5 +1,6 @@
 // 8-bit 芯片音效：WebAudio 方波合成，零素材依赖
 // 参考 FC/GB 掌机音源风格；首次交互后自动解锁 AudioContext
+import { normalizeQualityKey, QUALITY_RANK } from './cardQuality.js'
 
 let ctx = null
 let muted = localStorage.getItem('gitmon:muted') === '1'
@@ -101,15 +102,18 @@ export const sfx = {
   },
   // 稀有度揭晓：音阶上行，品质越高越长
   reveal(quality) {
+    const key = normalizeQualityKey(quality)
     const scales = {
       N: [392, 523],
       R: [392, 523, 659],
       SR: [392, 523, 659, 784],
-      SSR: [392, 523, 659, 784, 1047, 1319],
+      UR: [392, 523, 659, 784, 1047, 1319],
+      SE: [392, 523, 659, 784, 1047, 1319, 1568],
+      PSE: [392, 523, 659, 784, 1047, 1319, 1568, 2093],
     }
-    const notes = scales[quality] || scales.R
+    const notes = scales[key]
     notes.forEach((f, i) => tone({ freq: f, dur: 0.11, vol: 0.15, delay: i * 0.09, type: 'square' }))
-    if (quality === 'SSR') {
+    if (QUALITY_RANK[key] >= QUALITY_RANK.UR) {
       tone({ freq: 1568, dur: 0.4, vol: 0.1, delay: notes.length * 0.09 + 0.05 })
       noise({ dur: 0.5, vol: 0.05, delay: notes.length * 0.09, filter: 'highpass', freq: 4200, to: 8000 })
     }

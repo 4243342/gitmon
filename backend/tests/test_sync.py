@@ -127,6 +127,22 @@ def test_put_returns_server_authoritative_version(client: TestClient) -> None:
     assert got["createdAt"] == item["createdAt"]
 
 
+@pytest.mark.parametrize("key, expected", [
+    ("N", "N"), ("R", "R"), ("SR", "SR"), ("UR", "UR"),
+    ("SE", "SE"), ("PSE", "PSE"), ("SSR", "UR"),
+])
+def test_quality_roundtrip_keeps_six_tiers_and_migrates_legacy_alias(client: TestClient, key, expected) -> None:
+    item = frontend_pet(quality={"key": key}, qualityKey="SSR")
+    body = client.put("/api/pets", json={"items": [item]}, headers=DEVICE).json()
+    assert body["saved"] == 1
+    saved = body["items"][0]
+    assert saved["quality"]["key"] == saved["qualityKey"] == expected
+    restored = client.get("/api/pets?limit=200", headers=DEVICE).json()["items"][0]
+    assert restored["quality"]["key"] == restored["qualityKey"] == expected
+    assert restored["qualityScore"] == 77.5
+    assert restored["stats"] == item["stats"]
+
+
 def test_put_skips_invalid_entries(client: TestClient) -> None:
     items = [
         frontend_pet(),
@@ -187,11 +203,12 @@ def test_pet_to_api_columns_win_over_client_state() -> None:
         "bond": 0, "battles": 7, "wins": 5, "status": "active", "metrics": {}, "notes": [],
         "degraded": False, "description": "",
         "created_at": "2026-01-01T00:00:00+00:00", "synced_at": "2026-01-02T00:00:00+00:00",
-        "client_state": {"level": 99, "battles": 77, "combatPower": 123, "ivs": {"hp": 1}},
+        "client_state": {"level": 99, "battles": 77, "combatPower": 123, "ivs": {"hp": 1}, "qualityKey": "SSR"},
     }
     out = services.pet_to_api(pet)
     assert (out["level"], out["battles"], out["wins"]) == (3, 7, 5)  # 列字段优先
     assert out["combatPower"] == 123 and out["ivs"] == {"hp": 1}  # client_state 补缺
+    assert out["quality"]["key"] == out["qualityKey"] == "R"
 
 
 def test_session_cookie_overrides_device_header(client: TestClient, monkeypatch) -> None:

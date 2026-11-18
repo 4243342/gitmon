@@ -23,11 +23,13 @@ from urllib.request import getproxies, proxy_bypass
 
 import httpx
 
+from .engine import QUALITIES, normalize_quality_key, quality_for_score
+
 logger = logging.getLogger("gitmon.llm")
 
 ELEMENT_KEYS = {"water", "thunder", "steel", "earth", "rock", "fire", "wind", "grass", "normal"}
 SPECIES_KEYS = {"beast", "bird", "element", "dragon", "flying", "phantom", "fairy"}
-QUALITY_KEYS = {"N", "R", "SR", "SSR"}
+QUALITY_KEYS = {quality["key"] for quality in QUALITIES}
 
 # 前端 qualityDims / stats 的固定槽位，模型按这个顺序给分（只给数字，省 token）
 QUALITY_DIM_KEYS = ["tests", "engineering", "docs", "health", "community"]
@@ -45,7 +47,7 @@ SYSTEM_PROMPT = """你是 GitMon 的「仓库精灵评测官」。用户给你�
 2. 所有数值都由你评测给出，不要写「未知 / 无法判断 / null」；不确定就按你对同类项目的了解给一个合理估值。
 3. 这是给游戏用的趣味推演，不必精确，但要自洽：star 高的项目品质分、社区认可应更高；
    停更多年的项目维护健康度、根基应更低。品质档位必须和 qualityScore 对得上
-   （>=80 为 SSR，>=60 为 SR，>=40 为 R，否则 N）。
+   （>=97 为 PSE 镜碎，>=90 为 SE 银碎，>=80 为 UR 金闪，>=60 为 SR 面闪，>=40 为 R 稀有，否则 N 普卡）。
 4. 等级（level）按「代码体量 / 维护历史 / 工程量」给，**不是 star 数，也不是品质分**。
    严格对照下面的锚点，这是最容易给飘的一项：
      · 个人脚本、玩具 demo、单文件工具：Lv.5–30
@@ -55,7 +57,7 @@ SYSTEM_PROMPT = """你是 GitMon 的「仓库精灵评测官」。用户给你�
      · 超大型企业级代码库（Odoo、Kubernetes、Linux 这一档）：Lv.140–170，**Odoo 取 Lv.150**
      · 只有极少数内核级项目才超过 Lv.200；普通项目一律不要超过 Lv.160
    校准示例：Dify → level 120；Odoo → level 150；awesome-xxx（纯清单仓库）→ level 12。
-   即使 quality 是 SSR，等级也按体量给：star 很高但几乎没有代码的清单项目只能给 Lv.10–30。
+   即使 quality 是 PSE，等级也按体量给：star 很高但几乎没有代码的清单项目只能给 Lv.10–30。
 5. 用简体中文写文案，风格像游戏图鉴，克制、有画面感，不要堆形容词。
 6. 不要编造你看不到的具体文件、提交哈希或 CVE 编号。
 7. 4 个技能必须由你**针对这个项目的技术栈 / 生态位现编**：名字、属性、威力、解锁等级、
@@ -71,7 +73,7 @@ JSON 字段（全部必填）：
   "element": "属性，只能是 water/thunder/steel/earth/rock/fire/wind/grass/normal 之一",
   "elementSecondary": "副属性，同上；没有就填 null",
   "species": "种族，只能是 beast/bird/element/dragon/flying/phantom/fairy 之一",
-  "quality": "品质档位，N/R/SR/SSR 之一",
+  "quality": "品质档位，N/R/SR/UR/SE/PSE 之一",
   "qualityScore": 0-100 整数,
   "qualityDims": [测试完备度, 工程质量, 文档完整度, 维护健康度, 社区认可]，5 个 0-100 整数,
   "engineeringScore": 0-100 整数（工程量）,
@@ -151,10 +153,10 @@ def normalize_evaluation(raw: dict[str, Any]) -> tuple[dict[str, Any], list[str]
     if species not in SPECIES_KEYS:
         warnings.append(f"种族 {species!r} 不在枚举里，已回退 beast")
         species = "beast"
-    quality = raw.get("quality")
+    quality = normalize_quality_key(raw.get("quality"))
     if quality not in QUALITY_KEYS:
         score_for_key = int(_clamp(raw.get("qualityScore"), 0, 100, 50))
-        quality = "SSR" if score_for_key >= 80 else "SR" if score_for_key >= 60 else "R" if score_for_key >= 40 else "N"
+        quality = quality_for_score(score_for_key)["key"]
         warnings.append(f"品质档位无效，已按分数归为 {quality}")
 
     traits_raw = raw.get("traits")
