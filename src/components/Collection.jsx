@@ -1,5 +1,5 @@
 import PixelSprite from './PixelSprite.jsx'
-import { cardFoil, cloudCardTraits, isCloudCard } from '../cardTraits.js'
+import { cardFoil } from '../cardTraits.js'
 import { StarBadge } from '../starBadge.jsx'
 import { useI18n } from '../i18n.js'
 
@@ -17,7 +17,6 @@ export default function Collection({ list, onPick, title, empty }) {
       {list.length ? <div className="collection-grid">
         {list.map((p) => {
           const foil = cardFoil(p)
-          const cloud = isCloudCard(p)
           return (
             <button
               key={p.id || `${p.platform}-${p.fullName}`}
@@ -28,20 +27,11 @@ export default function Collection({ list, onPick, title, empty }) {
               <span className="ci-star"><StarBadge stars={p.stars} size={14} compact /></span>
               <div className="ci-sprite"><PixelSprite pet={p} size={70} animate={false} src={p.cardSpriteUrl} /></div>
               <div className="ci-name">{p.repo}</div>
-              {cloud ? (
-                // 云卡：属性 / 六档品质 / 源码评分；战斗资料在详情内展示。
-                <div className="ci-meta cloud-mini-traits">
-                  {cloudCardTraits(p).map(({ key, label, value, color }) => (
-                    <span key={key} style={{ color }}><b>{label}</b>{value}</span>
-                  ))}
-                </div>
-              ) : (
-                <div className="ci-meta">
-                  <span className={`mini-q q-${foil.key}`}>{foil.key}</span>
-                  <span>Lv.{p.level}</span>
-                  <span className="ci-cp">{t('战力 ', 'Power ')}{p.combatPower ?? '—'}</span>
-                </div>
-              )}
+              <div className="ci-meta">
+                <span className={`mini-q q-${foil.key}`}>{foil.key === 'pending' ? '?' : foil.key}</span>
+                <span>Lv.{p.level}</span>
+                <span className="ci-cp">{t('战力 ', 'Power ')}{p.combatPower ?? '—'}</span>
+              </div>
             </button>
           )
         })}
