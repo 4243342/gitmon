@@ -2,6 +2,19 @@
 
 本项目引入的第三方代码及其许可证。除下表所列，其余代码均为本项目自研（MIT，见 `LICENSE`）。
 
+## Three.js（模型典藏卡盒）
+
+- 来源：<https://github.com/mrdoob/three.js>，npm 锁定 `three@0.187.0`。
+- 许可证：MIT；完整许可见 <https://github.com/mrdoob/three.js/blob/master/LICENSE>。
+- 使用范围：`src/threePack/displayBox.js` 的真实三维收藏盒、包装、棚拍光照、阴影与选包。`RoundedBoxGeometry` 和 `RoomEnvironment` 来自同包的 addons。引擎由 `PackDisplayBox.jsx` 按需加载。
+
+## 模型拟人包装立绘
+
+- 素材：`src/assets/pack-avatars/` 中六张透明 WebP，基于网上已有角色设定通过图像生成重绘。
+- 角色署名：MiMo—甶丶；DeepSeek—上善无形（原型）、ZipZipPipe（女仆二次设计）；Grok / Gemini / GPT / Claude Code—ZipZipPipe 参考设计。
+- **独立素材条件**：MiMo 来源记录 CC BY-NC（版本号未注明）；DeepSeek 为 CC BY-NC-SA 4.0，重绘保留其署名、非商业和相同方式共享条件；其他四位来源记录允许分享与再创作，未核实统一标准许可证。这些角色素材不因仓库代码采用 MIT 而改为 MIT。
+- 作者原始链接、逐图许可状态、参考档案提交和生成过程见 [`docs/PACK-ART.md`](docs/PACK-ART.md)。生成提示词见 [`docs/pack-avatar-prompts.json`](docs/pack-avatar-prompts.json)。图片不标作厂商官方拟人图。
+
 ## inkjs（ink 剧情脚本运行时）
 
 - 来源：<https://github.com/y-lohse/inkjs>（通过 `npm i inkjs` 引入，v2.4.0）

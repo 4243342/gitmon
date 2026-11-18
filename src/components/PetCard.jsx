@@ -13,8 +13,11 @@ import { useI18n } from '../i18n.js'
 // 卡面材质由 GPL-3.0 库 pokemon-cards-css（simeydotme，8.3k★）接管，
 // 拼接内置在 src/vendor/pokemon-cards.css（同目录附 LICENSE，GPL-3.0）。
 // 品质 → data-rarity 分档：N → basic（哑光）· R → rare holo（经典横纹镭射）
-// SR → rare holo cosmos（星空闪）· SSR → rare rainbow（彩虹流光）
-const RARITY_BY_QUALITY = { N: 'basic', R: 'rare holo', SR: 'rare holo cosmos', SSR: 'rare rainbow' }
+// 六档品质选基础材质，再由 data-quality 区分金闪、银碎、镜碎。
+const RARITY_BY_QUALITY = {
+  N: 'basic', R: 'rare holo', SR: 'rare holo cosmos',
+  UR: 'rare rainbow', SE: 'rare holo cosmos', PSE: 'rare rainbow',
+}
 
 // 指针离开后的静止值（等价于原库 Svelte 弹簧回中到 50/50；材质常亮由样式的 --card-opacity:1 提供）
 const REST_VARS = {
@@ -181,7 +184,7 @@ export default function PetCard({ pet, revealed = false, readOnly = false }) {
 
   const foil = cardFoil(pet)
   const cloud = isCloudCard(pet)
-  const q = pet.quality
+  const q = foil
   const evo = stageInfo(pet.evolutionStage)
   const nextEvo = nextStage(pet.evolutionStage)
   const progress = stageProgress(pet.level)
@@ -193,7 +196,8 @@ export default function PetCard({ pet, revealed = false, readOnly = false }) {
       <div
         className={`card interactive ${revealed ? 'card-flip-in' : ''}`}
         ref={rootRef}
-        data-rarity={RARITY_BY_QUALITY[foil.effect] ?? 'basic'}
+        data-rarity={RARITY_BY_QUALITY[foil.key] ?? 'basic'}
+        data-quality={foil.key}
         data-supertype="pokémon"
         data-subtypes="basic"
       >
@@ -201,11 +205,11 @@ export default function PetCard({ pet, revealed = false, readOnly = false }) {
           <div className="card__rotator">
             <div className="card__front" style={{ '--cosmosbg': cosmosBg }}>
               {cloud ? (
-                // 云端孵化：卡面只有云端给的立绘和三项事实（属性 / 罕见度 / 品质）。
+                // 云端孵化：立绘和三项事实（属性 / 六档品质 / 源码评分）。
                 // 云卡没有本地那套六维、技能、进化条，硬套本地版式会整片空白。
                 <div
                   ref={contentRef}
-                  className={`pet-card cloud-pet-card quality-${foil.effect}`}
+                  className={`pet-card cloud-pet-card quality-${foil.key}`}
                   style={{ '--q-color': foil.color, '--q-glow': foil.glow }}
                 >
                   <CloudCardFace pet={pet} />
@@ -392,7 +396,7 @@ export default function PetCard({ pet, revealed = false, readOnly = false }) {
   )
 }
 
-// 云端孵化的卡面：只有云端数据保证存在的字段（repo / 立绘 / 属性·罕见度·品质）
+// 云端孵化的卡面：repo / 立绘 / 属性·六档品质·源码评分。
 function CloudCardFace({ pet }) {
   return (
     <>

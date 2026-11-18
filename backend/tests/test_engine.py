@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from conftest import make_snapshot
 
 from gitmon_api import engine
@@ -70,15 +72,33 @@ def test_quality_good_beats_weak(good_snapshot, weak_snapshot) -> None:
     assert good_score > weak_score
     assert good_dims["tests"] > weak_dims["tests"]
     assert good_dims["docs"] >= weak_dims["docs"]
-    assert good_quality["key"] in {"SR", "SSR"}
+    assert good_quality["key"] in {"SR", "UR", "SE", "PSE"}
     assert weak_quality["key"] == "N"
 
 
 def test_quality_tiers_boundaries() -> None:
-    assert engine.quality_by_key("N")["min"] == 0
-    assert engine.quality_by_key("R")["min"] == 40
-    assert engine.quality_by_key("SR")["min"] == 60
-    assert engine.quality_by_key("SSR")["min"] == 80
+    assert [(quality["key"], quality["name"], quality["min"]) for quality in engine.QUALITIES] == [
+        ("N", "普卡", 0), ("R", "稀有", 40), ("SR", "面闪", 60),
+        ("UR", "金闪", 80), ("SE", "银碎", 90), ("PSE", "镜碎", 97),
+    ]
+    assert [quality["model"] for quality in engine.QUALITIES] == [
+        "MiMo", "DeepSeek", "Grok", "Gemini", "GPT", "Claude Code",
+    ]
+    assert engine.quality_by_key("SSR")["key"] == "UR"
+
+
+@pytest.mark.parametrize("score, expected", [
+    (0, "N"), (39.9, "N"), (40, "R"), (59.9, "R"), (60, "SR"), (79.9, "SR"),
+    (80, "UR"), (89.9, "UR"), (90, "SE"), (96.9, "SE"), (97, "PSE"), (100, "PSE"),
+])
+def test_six_quality_score_cutoffs(score, expected) -> None:
+    assert engine.quality_for_score(score)["key"] == expected
+
+
+def test_high_quality_split_keeps_existing_combat_stats(good_snapshot) -> None:
+    legacy = engine.stats_for(good_snapshot, "SSR")
+    for key in ("UR", "SE", "PSE"):
+        assert engine.stats_for(good_snapshot, key) == legacy
 
 
 def test_engineering_and_level_mapping(good_snapshot, weak_snapshot) -> None:

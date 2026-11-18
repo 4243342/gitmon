@@ -39,10 +39,12 @@ SPECIES: list[dict[str, Any]] = [
 ]
 
 QUALITIES: list[dict[str, Any]] = [
-    {"key": "N", "name": "普通", "min": 0.0, "color": "#9e9e9e", "glow": "rgba(158,158,158,.5)"},
-    {"key": "R", "name": "稀有", "min": 40.0, "color": "#42a5f5", "glow": "rgba(66,165,245,.55)"},
-    {"key": "SR", "name": "史诗", "min": 60.0, "color": "#ab47bc", "glow": "rgba(171,71,188,.6)"},
-    {"key": "SSR", "name": "传说", "min": 80.0, "color": "#ffb300", "glow": "rgba(255,179,0,.7)"},
+    {"key": "N", "name": "普卡", "min": 0.0, "color": "#a2a8b2", "glow": "#a2a8b299", "model": "MiMo"},
+    {"key": "R", "name": "稀有", "min": 40.0, "color": "#74b9ed", "glow": "#74b9ed99", "model": "DeepSeek"},
+    {"key": "SR", "name": "面闪", "min": 60.0, "color": "#c696ff", "glow": "#c696ff99", "model": "Grok"},
+    {"key": "UR", "name": "金闪", "min": 80.0, "color": "#ffce65", "glow": "#ffce6599", "model": "Gemini"},
+    {"key": "SE", "name": "银碎", "min": 90.0, "color": "#c6eafa", "glow": "#c6eafa99", "model": "GPT"},
+    {"key": "PSE", "name": "镜碎", "min": 97.0, "color": "#f2aaff", "glow": "#f2aaff99", "model": "Claude Code"},
 ]
 
 STAT_NAMES = ["攻击", "防御", "速度", "特攻", "特防", "HP"]
@@ -61,7 +63,8 @@ STAGE_NAMES = {
     9: "人形态·神话",
 }
 HUMANOID_FROM = 7
-QUALITY_BOOST = {"N": 0.7, "R": 0.85, "SR": 1.0, "SSR": 1.15}
+# 高档细分只改变卡片表现，沿用旧 SSR 的战斗倍率。
+QUALITY_BOOST = {"N": 0.7, "R": 0.85, "SR": 1.0, "UR": 1.15, "SE": 1.15, "PSE": 1.15}
 
 SKILL_LIB: dict[str, list[str]] = {
     "water": ["数据缠绕", "爬虫之网", "张量洪流", "梯度俯冲"],
@@ -179,11 +182,22 @@ def species_by_key(key: str) -> dict[str, Any]:
     return SPECIES[2]
 
 
+def normalize_quality_key(key: str) -> str:
+    value = str(key or "").strip().upper()
+    return "UR" if value == "SSR" else value
+
+
 def quality_by_key(key: str) -> dict[str, Any]:
+    key = normalize_quality_key(key)
     for quality in QUALITIES:
         if quality["key"] == key:
             return quality
     return QUALITIES[0]
+
+
+def quality_for_score(score: float) -> dict[str, Any]:
+    value = clamp(score) if math.isfinite(score) else 0.0
+    return next(quality for quality in reversed(QUALITIES) if value >= quality["min"])
 
 
 def element_for_language(language: str) -> str:
@@ -346,11 +360,7 @@ QUALITY_WEIGHTS = {"tests": 0.25, "engineering": 0.20, "docs": 0.20, "maintenanc
 def quality_score(snapshot: RepoSnapshot) -> tuple[float, dict[str, float], dict[str, Any]]:
     dims = quality_dimensions(snapshot)
     total = round(sum(dims[key] * weight for key, weight in QUALITY_WEIGHTS.items()), 1)
-    quality = quality_by_key("N")
-    for candidate in QUALITIES:
-        if total >= candidate["min"]:
-            quality = candidate
-    return total, dims, quality
+    return total, dims, quality_for_score(total)
 
 
 # ---------------------------------------------------------------- 工程量与等级
@@ -408,7 +418,7 @@ def next_stage_level(stage: int) -> int | None:
 def stats_for(snapshot: RepoSnapshot, quality_key: str) -> list[dict[str, Any]]:
     tree = snapshot.tree
     deps = snapshot.dependencies
-    boost = QUALITY_BOOST.get(quality_key, 1.0)
+    boost = QUALITY_BOOST.get(normalize_quality_key(quality_key), 1.0)
 
     atk = lognorm(snapshot.commits_90d, 300) * 70 + lognorm(len(deps), 120) * 15 + 15
     def_score = (
@@ -536,8 +546,7 @@ def presentation(spec: dict[str, Any]) -> dict[str, Any]:
         "species": {
             "key": species["key"], "name": species["name"], "type": species["type"], "body": species["body"],
         },
-        "quality": {
-            "key": quality["key"], "name": quality["name"], "color": quality["color"], "glow": quality["glow"],
-        },
+        "quality": {key: quality[key] for key in ("key", "name", "color", "glow", "model")},
+        "qualityKey": quality["key"],
         "evolutionStageName": STAGE_NAMES.get(spec["evolution_stage"], "幼体"),
     }

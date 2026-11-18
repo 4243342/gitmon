@@ -342,7 +342,7 @@ def boss_card(full_name: str, token: str, *, platform: str = "github", reason: s
 
 def _tier_from_level(level: int) -> str:
     if level >= 500:
-        return "SSR"
+        return "UR"
     if level >= 200:
         return "SR"
     if level >= 50:
@@ -799,20 +799,18 @@ def _element_label(pet: dict[str, Any]) -> str:
 
 
 def _quality_label(pet: dict[str, Any]) -> str:
-    """品质既可能是 'SSR' 字符串，也可能是 {key, name, color, glow} 对象。
-
-    早先直接把对象塞进 f-string，prompt 里就出现
-    ``{'key': 'SSR', 'name': '传说', 'color': '#ffb300', ...}`` 这种 Python 字典原文，
-    模型读到的就是一堆噪音。这里统一收成「传说(SSR)」。
-    """
+    """旧字符串与对象品质都按六档显示，只归一名称，不改历史评测数值。"""
     quality = pet.get("quality")
+    key = engine.normalize_quality_key(quality.get("key") if isinstance(quality, dict) else quality)
+    if key in llm_mod.QUALITY_KEYS:
+        canonical = engine.quality_by_key(key)
+        return f"{canonical['name']}({canonical['key']})"
     if isinstance(quality, dict):
         name = str(quality.get("name") or "").strip()
-        key = str(quality.get("key") or "").strip()
         if name and key:
             return f"{name}({key})"
         return name or key or "N"
-    return str(quality or "N").strip() or "N"
+    return key or "N"
 
 
 def _story_brief(pet: dict[str, Any], boss: dict[str, Any], research: dict[str, Any] | None) -> str:

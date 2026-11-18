@@ -1,3 +1,5 @@
+import { cardFoil } from './cardTraits.js'
+
 const API = '/api/cloud'
 const portraits = import.meta.glob('./assets/creatures/*/*.png', { eager: true, import: 'default', query: '?url' })
 const DIMENSIONS = {
@@ -9,8 +11,11 @@ const DIMENSIONS = {
 }
 
 function toPet(data) {
+  const { effect, ...quality } = cardFoil(data)
   return {
     ...data,
+    quality,
+    qualityKey: quality.key,
     cardSpriteUrl: portraits[`./assets/creatures/${data.cardArt}`] ?? data.spriteUrl,
     maxHp: data.hp,
     stars: data.metrics.stars ?? 0,

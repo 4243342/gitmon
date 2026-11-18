@@ -21,7 +21,7 @@ export default function Collection({ list, onPick, title, empty }) {
           return (
             <button
               key={p.id || `${p.platform}-${p.fullName}`}
-              className={`collection-item quality-${foil.effect}`}
+              className={`collection-item quality-${foil.key}`}
               style={{ '--q-color': foil.color, '--q-glow': foil.glow }}
               onClick={() => onPick(p)}
             >
@@ -29,7 +29,7 @@ export default function Collection({ list, onPick, title, empty }) {
               <div className="ci-sprite"><PixelSprite pet={p} size={70} animate={false} src={p.cardSpriteUrl} /></div>
               <div className="ci-name">{p.repo}</div>
               {cloud ? (
-                // 云卡：显示云端给的三项事实（属性 / 罕见度 / 品质），本地六维那套云卡没有
+                // 云卡：属性 / 六档品质 / 源码评分；战斗资料在详情内展示。
                 <div className="ci-meta cloud-mini-traits">
                   {cloudCardTraits(p).map(({ key, label, value, color }) => (
                     <span key={key} style={{ color }}><b>{label}</b>{value}</span>

@@ -3,17 +3,15 @@ import createHoloPack from '../holoPack/holoPack.js'
 import { createHoloAudio } from '../holoPack/holoAudio.js'
 import { petArtwork } from '../sprite.js'
 import { elementLabel } from '../elementLabel.js'
-import { cardFoil, isCloudCard } from '../cardTraits.js'
+import { cardFoil } from '../cardTraits.js'
+import { QUALITY_RANK } from '../cardQuality.js'
+import { PACK_DESIGNS, packDesign } from '../packDesign.js'
 import '../holoPack/holoPack.css'
 
 // 品质 → 全息卡的纸面档位
 //   N / R   ：哑光纸面，摊开就亮着
-//   SR / SSR：箔面，先背面朝上落位，再翻过来
-const TIER = { N: 'common', R: 'rare', SR: 'ultra', SSR: 'ultra' }
-const MARK = { N: '●', R: '◆', SR: '★', SSR: '✦' }
-// 卡包外观取这一包里最好的品质：品质决定卡包外观，SSR 那包金光闪闪
-const QUALITY_COLOR = { N: '#9e9e9e', R: '#42a5f5', SR: '#ab47bc', SSR: '#ffb300' }
-const QUALITY_RANK = { N: 1, R: 2, SR: 3, SSR: 4 }
+//   SR 及以上：箔面，先背面朝上落位，再翻过来；六档保留各自材质。
+const TIER = { N: 'common', R: 'rare', SR: 'surface', UR: 'gold', SE: 'silver', PSE: 'prismatic' }
 
 // 把立绘画成 dataURL，供卡面 <img> 使用
 async function portraitDataUrl(pet) {
@@ -39,26 +37,30 @@ export default function HoloPack({ pets, muted, label, onSpread, onPick, onColle
     let cancelled = false
     setReady(false)
     setSpread(false)
-    Promise.all(pets.map(async (pet, i) => {
+    setCards([])
+    const cover = new Image()
+    cover.src = packDesign(pets).art
+    const coverReady = cover.decode().catch(() => {})
+    const cardArt = Promise.all(pets.map(async (pet, i) => {
       const { url, smooth } = await portraitDataUrl(pet)
       const foil = cardFoil(pet)
-      // effect 统一成 N / R / SR / SSR 四档，云端卡的不同稀有度名也归到这四档
-      const key = foil.effect || 'N'
+      const key = foil.key === 'pending' ? 'N' : foil.key
       return {
         key: `card-${i}`,
         name: pet.repo,
         type: elementLabel(pet),
         tier: TIER[key] || 'common',
         qKey: key,
-        label: isCloudCard(pet) ? foil.label : pet.quality.name,
-        mark: MARK[key] || '●',
+        label: foil.label,
+        mark: PACK_DESIGNS[key]?.mark || '○',
         art: url,
         smooth,
         // 只有高品质才需要"翻开"这个动作
-        flip: key === 'SR' || key === 'SSR',
+        flip: QUALITY_RANK[key] >= QUALITY_RANK.SR,
         pet,
       }
-    })).then((list) => {
+    }))
+    Promise.all([cardArt, coverReady]).then(([list]) => {
       if (!cancelled) setCards(list)
     })
     return () => { cancelled = true }
@@ -69,10 +71,19 @@ export default function HoloPack({ pets, muted, label, onSpread, onPick, onColle
     if (!cards.length || !hostRef.current) return
     const audio = createHoloAudio({ muted: Boolean(muted) })
     audioRef.current = audio
+    const design = packDesign(cards.map((card) => card.pet))
     const engine = createHoloPack(hostRef.current, {
       cards,
       audio,
-      packColor: QUALITY_COLOR[bestKey(cards)] || '#2b3ff0',
+      packColor: design.color,
+      packAccent: design.accent,
+      packInk: design.ink,
+      packArt: design.art,
+      packModel: design.model,
+      packKey: design.key,
+      packName: design.unrated ? '待评估' : design.name,
+      packMark: design.mark,
+      packUnrated: design.unrated,
       series: label,
       onReady: () => setReady(true),
       onSpread: () => { setSpread(true); onSpread?.(cards.map((c) => c.pet)) },
@@ -137,13 +148,4 @@ export default function HoloPack({ pets, muted, label, onSpread, onPick, onColle
       </div>
     </div>
   )
-}
-
-// 这一包里最好的品质，决定卡包颜色
-function bestKey(cards) {
-  let best = 'N'
-  for (const c of cards) {
-    if ((QUALITY_RANK[c.qKey] || 0) > (QUALITY_RANK[best] || 0)) best = c.qKey
-  }
-  return best
 }

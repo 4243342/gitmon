@@ -42,10 +42,13 @@ const CHAPTERS = [
           <li><b>{t('主语言 → 元素属性', 'Main language → element')}</b>{t('：Python 水系 / JS 雷系 / Rust 钢系… 多语言时可能带第二属性。', ': Python 水系 / JS 雷系 / Rust 钢系… multi-language repos may gain a second attribute.')}</li>
           <li><b>{t('项目类型 → 生态型', 'Project type → habitat')}</b>{t('：AI 龙型 / CLI 鸟型 / Web 兽型… 属性决定技能池与克制关系。', ': AI 龙型 / CLI 鸟型 / Web 兽型… the element decides the skill pool and matchups.')}</li>
         </ul>
-        <h4>{t('品质：五维加权 → N / R / SR / SSR', 'Rarity: five weighted dims → N / R / SR / SSR')}</h4>
+        <h4>{t('六档品质：N / R / SR / UR / SE / PSE', 'Six qualities: N / R / SR / UR / SE / PSE')}</h4>
         <ul>
+          <li>{t('N 普卡 · R 稀有 · SR 面闪 · UR 金闪 · SE 银碎 · PSE 镜碎。卡包品质取包内最高的一张。', 'N Normal · R Rare · SR Super Rare · UR Gold · SE Silver Shatter · PSE Prismatic Shatter. A pack takes the highest card quality inside.')}</li>
+          <li>{t('卡包主题依次为 MiMo、DeepSeek、Grok、Gemini、GPT、Claude Code。', 'Pack themes, in order: MiMo, DeepSeek, Grok, Gemini, GPT, Claude Code.')}</li>
           <li>{t('测试完备度 ', 'Test coverage ')}<b>25%</b>{t(' · 工程质量 ', ' · Code quality ')}<b>20%</b>{t(' · 文档完整度 ', ' · Docs completeness ')}<b>20%</b>{t(' · 维护健康度 ', ' · Maintenance health ')}<b>20%</b>{t(' · 社区认可 ', ' · Community acclaim ')}<b>15%</b>{t('。', '.')}</li>
-          <li>{t('总分 ', 'Total ')}<b>≥80 SSR</b>{t('（传说）· ', '（传说）· ')}<b>≥60 SR</b>{t(' · ', ' · ')}<b>≥40 R</b>{t(' · 其余 N；卡面右上角六边形宝石标显示字母。', ' · the rest are N; a hex gem at the card’s top-right shows the letter.')}</li>
+          <li>{t('本地评测总分 ', 'Local evaluation score ')}<b>≥97 PSE · ≥90 SE · ≥80 UR · ≥60 SR · ≥40 R</b>{t(' · 其余 N。历史 SSR 卡保留为 UR。', ' · otherwise N. Legacy SSR cards become UR.')}</li>
+          <li>{t('云卡沿用仓库的社区认可值确定六档品质，源码评分单独展示。', 'Cloud cards retain their community-recognition quality; source-code scores are shown separately.')}</li>
         </ul>
         <h4>{t('等级 / 进化 / 六维', 'Level / Evolution / Stats')}</h4>
         <ul>

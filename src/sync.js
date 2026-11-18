@@ -6,6 +6,7 @@
 // 任何同步失败都静默降级，绝不阻塞、不回滚 UI。
 
 import { loadCollection, saveCollection, sortPets } from './storage.js'
+import { normalizePet } from './engine.js'
 
 const QUEUE_KEY = 'gitmon:sync_queue'
 const DEVICE_KEY = 'gitmon:device'
@@ -124,7 +125,7 @@ function overlay(local, serverItems) {
     const prev = map.get(key)
     map.set(key, prev ? { ...prev, ...it } : it)
   }
-  return sortPets([...map.values()])
+  return sortPets([...map.values()].map(normalizePet))
 }
 
 // 立即推送脏队列（按 60 条分批）。成功 true / 失败 false；同一时刻只有一个推送在飞
@@ -245,7 +246,7 @@ export async function startupSync() {
       const key = petKey(s)
       if (!seen.has(key)) merged.push(s)
     }
-    const next = sortPets(merged)
+    const next = sortPets(merged.map(normalizePet))
     saveCollection(next) // 合并结果只落本地，不重新入队
     return next
   } catch {

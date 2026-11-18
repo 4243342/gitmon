@@ -9,6 +9,7 @@
 // 因此用「元素特性（passive）」承担原本特性/道具的位置。
 //
 // 全模块纯函数 + 显式种子：同一初始状态 + 同一操作序列，必然复现同一场战斗。
+import { cardFoil } from './cardTraits.js'
 
 export const BATTLE_LEVEL = 50
 export const OTHER_SIDE = { player: 'enemy', enemy: 'player' }
@@ -110,6 +111,7 @@ const clone = (obj) => JSON.parse(JSON.stringify(obj))
 
 // ---------- 仓库精灵 → 战斗单位 ----------
 export function toCombatant(pet, slot = 0) {
+  const { effect, ...quality } = cardFoil(pet)
   const statOf = (name) => {
     const found = (pet.stats || []).find((s) => s.name === name)
     return Number(found?.value) || 40
@@ -150,15 +152,14 @@ export function toCombatant(pet, slot = 0) {
     fullName: pet.fullName || pet.repo || '',
     platform: pet.platform || 'github', // 自定义形象的键要用，不影响战斗数值
     level: Number(pet.level) || 1,
-    qualityKey: pet.qualityKey || pet.quality?.key || 'N',
+    qualityKey: quality.key,
     spriteSeed: pet.spriteSeed || 1,
     ...(pet.spriteUrl ? { spriteUrl: pet.spriteUrl } : {}),
     element: { key: element.key, name: element.name, color: element.color },
     elementSecondary: secondary ? { key: secondary.key, name: secondary.name, color: secondary.color } : null,
     species: pet.species ? { ...pet.species } : { name: '元素型', body: 'slime' },
     evolutionStage: pet.evolutionStage || 1,
-    // PR#2 八档品质：浅拷贝保留 quality 的扩展字段；main 追加 combatPower
-    quality: pet.quality ? { ...pet.quality } : { key: 'N', name: '普通', color: '#9e9e9e' },
+    quality,
     combatPower: Number(pet.combatPower) || 0,
     types,
     passive: PASSIVES[element.key] ? PASSIVES[element.key].key : 'adapt',

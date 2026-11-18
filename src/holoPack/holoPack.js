@@ -80,7 +80,11 @@ const shuffle = (a) => {
 }
 
 export default function createHoloPack(root, options = {}) {
-  const { cards = [], onReady, onTear, onSpread, onPick, audio = null, packColor = null, series = null } = options
+  const {
+    cards = [], onReady, onTear, onSpread, onPick, audio = null, packColor = null, series = null,
+    packArt = '', packModel = 'GITMON', packKey = 'N', packName = '普卡', packMark = '○',
+    packAccent = '#d8e6ff', packInk = '#ffffff', packUnrated = false,
+  } = options
 
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
   const handheld = matchMedia('(pointer: coarse)').matches
@@ -90,19 +94,16 @@ export default function createHoloPack(root, options = {}) {
       <div class="hp-flow" data-flow><svg class="hp-rays" data-rays viewBox="0 0 100 76"></svg></div>
       <div class="hp-pack" data-pack>
         <div class="hp-skin front" data-skin-front>
-          <span class="hp-tag">Tear anywhere</span>
+          <span class="hp-tag">MODEL COLLECTION · TEAR ANYWHERE</span>
           <span class="hp-lips"><i class="hp-lip" data-lip></i></span>
           <b class="hp-mark">GITMON</b>
           <span class="hp-series" data-series>Series 01</span>
-          <div class="hp-orb">
-            <i class="hp-orb-body"></i>
-            <i class="hp-eye l"><i class="hp-pupil"></i></i>
-            <i class="hp-eye r"><i class="hp-pupil"></i></i>
-            <i class="hp-smile"></i>
-            <i class="hp-ouch"></i>
-            <i class="hp-drip"></i>
-          </div>
-          <span class="hp-foot l">Card pack</span>
+          <span class="hp-print-lines"></span>
+          <span class="hp-emblem" data-emblem></span>
+          <img class="hp-character" data-character alt="" draggable="false">
+          <span class="hp-quality"><b data-quality-key></b><small data-quality-name></small></span>
+          <span class="hp-model" data-model></span>
+          <span class="hp-foot l" data-finish>COLLECTION</span>
           <span class="hp-foot r" data-count>${cards.length} cards</span>
         </div>
         <div class="hp-skin back" data-skin-back>
@@ -131,6 +132,19 @@ export default function createHoloPack(root, options = {}) {
   const countEl = q('[data-count]')
   const eyes = [...pack.querySelectorAll('.hp-eye')]
   const pupils = [...pack.querySelectorAll('.hp-pupil')]
+  // Set image and labels before cloning the printed foil into tear segments.
+  // DOM setters also keep user-provided series/labels out of HTML interpolation.
+  const character = q('[data-character]')
+  if (packArt) character.src = packArt
+  else character.hidden = true
+  q('[data-model]').textContent = packModel
+  q('[data-quality-key]').textContent = packUnrated ? '—' : packKey
+  q('[data-quality-name]').textContent = packName
+  q('[data-emblem]').textContent = packMark
+  q('[data-finish]').textContent = packUnrated ? 'COLLECTION' : `${packKey} / COLLECTIBLE`
+  pack.dataset.quality = packKey
+  pack.style.setProperty('--hp-accent', packAccent)
+  pack.style.setProperty('--hp-ink', packInk)
 
   const ground = document.createElement('i')
   ground.className = 'hp-ground'
@@ -794,6 +808,7 @@ export default function createHoloPack(root, options = {}) {
     cardList = shuffle([...cards]).map((d, i) => {
       const el = document.createElement('div')
       el.className = `hp-card hp-${d.tier || 'common'}${d.flip ? ' hp-flip-card' : ''}`
+      el.dataset.quality = d.qKey || 'N'
       el.innerHTML = cardHTML(d)
       el.setAttribute('role', 'img')
       el.setAttribute('aria-label', `${d.name}，${d.label}`)

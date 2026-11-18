@@ -126,7 +126,8 @@ def pet_to_api(pet: dict[str, Any]) -> dict[str, Any]:
             {"key": secondary["key"], "name": secondary["name"], "color": secondary["color"]} if secondary else None
         ),
         "species": {"key": species["key"], "name": species["name"], "type": species["type"], "body": species["body"]},
-        "quality": {"key": quality["key"], "name": quality["name"], "color": quality["color"], "glow": quality["glow"]},
+        "quality": {key: quality[key] for key in ("key", "name", "color", "glow", "model")},
+        "qualityKey": quality["key"],
         "qualityScore": float(pet["quality_score"]),
         "qualityDims": pet.get("quality_dims") or {},
         "engineeringScore": float(pet["engineering_score"]),
@@ -380,6 +381,7 @@ def _row_from_item(conn, item: dict[str, Any], owner_key: str) -> dict[str, Any]
     quality_key = _object_key(item.get("quality")) or str(item.get("qualityKey") or "")
     if not (owner_name and repo_name and element_key and species_key and quality_key):
         return None
+    quality_key = engine.quality_by_key(quality_key)["key"]
     if any(item.get(key) is None for key in _REQUIRED_INPUT):
         return None
     try:
@@ -425,6 +427,7 @@ def _row_from_item(conn, item: dict[str, Any], owner_key: str) -> dict[str, Any]
         key: value for key, value in item.items()
         if key not in _SYNC_IGNORED and key not in _SYNC_COLUMNS and key not in _SYNC_OBJECT_KEYS
     })
+    state["qualityKey"] = quality_key
     pet["client_state"] = state
     return pet
 

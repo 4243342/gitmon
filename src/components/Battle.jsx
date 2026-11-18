@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import PixelSprite from './PixelSprite.jsx'
+import { cardFoil } from '../cardTraits.js'
+import { normalizeQualityKey } from '../cardQuality.js'
 import '../battle-arena.css'
 import {
   STATUS_INFO,
@@ -43,7 +45,7 @@ const MODES = [
     index: '03',
     name: ['随机宠物', 'Random Foe'],
     tag: ['抽到谁打谁', 'Whoever you draw'],
-    desc: ['从全部对手池里随机抽。可能撞上 SSR 巨兽，也可能抽到 N 级小玩意——难度自己定。', 'Rolled from the whole rival pool. Could be an SSR giant or a no-name N — you set your own stakes.'],
+    desc: ['从全部对手池里随机抽。可能撞上 PSE 巨兽，也可能抽到 N 级小玩意——难度自己定。', 'Rolled from the whole rival pool. Could be a PSE giant or a no-name N — you set your own stakes.'],
   },
 ]
 
@@ -122,6 +124,8 @@ function battleGrade(winner, turn, alive, total) {
 }
 
 // AI 对比用的项目画像：只取事实字段交给模型做水平对比（后端截断到 4KB）
+const displayQuality = (key) => key === 'pending' ? '—' : normalizeQualityKey(key)
+
 function aiProfile(pet) {
   if (!pet) return {}
   const stats = Array.isArray(pet.stats)
@@ -132,7 +136,7 @@ function aiProfile(pet) {
     fullName: pet.fullName || '',
     platform: pet.platform || 'github',
     level: pet.level || 1,
-    quality: pet.qualityKey || pet.quality?.key || 'N',
+    quality: cardFoil(pet).key,
     qualityScore: pet.qualityScore ?? null,
     element: pet.element?.name || '',
     elementSecondary: pet.elementSecondary?.name || null,
@@ -179,7 +183,7 @@ function UnitPanel({ unit, side, fx, shaking, juiceRef }) {
         <div className="unit-name-row">
           <span className="unit-name">{unit.name}</span>
           <span className="unit-level">Lv.{unit.level}</span>
-          <span className={`mini-quality q-${unit.qualityKey}`}>{unit.qualityKey}</span>
+          <span className={`mini-quality q-${unit.qualityKey}`}>{displayQuality(unit.qualityKey)}</span>
         </div>
         <div className="unit-tags">
           {typeChips(unit).map((t) => (
@@ -324,7 +328,7 @@ function OnlineSetup({ size, setSize, repoInput, setRepoInput, onScan, scanning,
                   <div className="opponent-info">
                     <div className="opponent-name">
                       <b>{p.repo}</b>
-                      <span className={`mini-quality q-${p.qualityKey}`}>{p.qualityKey}</span>
+                      <span className={`mini-quality q-${p.qualityKey}`}>{displayQuality(p.qualityKey)}</span>
                     </div>
                     <small>Lv.{p.level} · {p.element.name}{t('系', ' type')}</small>
                   </div>
@@ -343,7 +347,7 @@ function OnlineSetup({ size, setSize, repoInput, setRepoInput, onScan, scanning,
           <div className="opponent-info">
             <div className="opponent-name">
               <b>{opponent.fullName || opponent.repo}</b>
-              <span className={`mini-quality q-${opponent.qualityKey}`}>{opponent.qualityKey}</span>
+              <span className={`mini-quality q-${opponent.qualityKey}`}>{displayQuality(opponent.qualityKey)}</span>
             </div>
             <small>
               Lv.{opponent.level} · {opponent.element.name}{t('系', ' type')}
@@ -455,7 +459,7 @@ function Setup({ mode, pets, rivals, team, setTeam, difficulty, setDifficulty, o
                 <PixelSprite pet={pet} size={64} animate={false} />
                 <span className="picker-info">
                   <b>{pet.repo}</b>
-                  <small>Lv.{pet.level} · {pet.element.name}{t('系', ' type')} · {pet.quality.key}</small>
+                  <small>Lv.{pet.level} · {pet.element.name}{t('系', ' type')} · {displayQuality(cardFoil(pet).key)}</small>
                 </span>
                 <span className="picker-check">{active ? '✓' : '+'}</span>
               </button>
@@ -1122,7 +1126,7 @@ export default function Battle({
               {mvp && (
                 <div className="result-mvp">
                   <PixelSprite pet={unitPet(mvp)} size={72} animate={false} />
-                  <span><small>MVP</small><b>{mvp.name}</b><em>Lv.{mvp.level} · {mvp.qualityKey}</em></span>
+                  <span><small>MVP</small><b>{mvp.name}</b><em>Lv.{mvp.level} · {displayQuality(mvp.qualityKey)}</em></span>
                 </div>
               )}
               <div className="actions">

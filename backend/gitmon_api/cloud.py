@@ -246,6 +246,21 @@ def _present(pet: dict[str, Any], element: str | None, source: str | None,
     data["attributeSource"] = source
     data.update(pet.get("card_ratings") or card_ratings.pending())
     data.update(_card_face(data["element"], data.get("qualityRating") or {}))
+    # 六档 rarity 是云卡唯一对外品质；八档 qualityRating 继续用于源码证据和选图。
+    rarity = data.get("rarity") or {}
+    rarity_key = rarity.get("key")
+    if rarity.get("status") == "confirmed" and rarity_key in RARITY_ORDER:
+        quality = engine.quality_by_key(rarity_key)
+        data["quality"] = {key: quality[key] for key in ("key", "name", "color", "glow", "model")}
+        data["quality"]["status"] = "confirmed"
+    else:
+        color = rarity.get("color") or "#9ca6b8"
+        status = rarity.get("status") if rarity.get("status") in {"pending", "unrated"} else "pending"
+        data["quality"] = {
+            "key": "pending", "name": rarity.get("name") or "待评估", "color": color,
+            "glow": f"{color}99", "model": "", "status": status,
+        }
+    data["qualityKey"] = data["quality"]["key"]
     data["repoId"] = pet["repo_id"]
     path = preview_path or f"pets/{pet['id']}"
     data["spriteUrl"] = f"/api/cloud/{path}/sprite.png?stage={pet['evolution_stage']}"

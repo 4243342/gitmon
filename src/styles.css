@@ -174,7 +174,8 @@ body {
 .ci-name { font-size: 11.5px; color: #cfd9ea; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ci-meta { display: flex; gap: 8px; font-size: 10.5px; color: var(--dim); align-items: center; }
 .mini-q { font-weight: 900; }
-.q-N { color: #a7a7a7; } .q-R { color: #64b5f6; } .q-SR { color: #c07ee0; } .q-SSR { color: #ffc53d; }
+.q-N { color: #a2a8b2; } .q-R { color: #74b9ed; } .q-SR { color: #c696ff; }
+.q-UR, .q-SSR { color: #ffce65; } .q-SE { color: #c6eafa; } .q-PSE { color: #f2aaff; }
 
 /* ---------- 判定说明 ---------- */
 /* ---------- 使用说明书 ---------- */
@@ -359,8 +360,9 @@ body {
 /* ---------- 登场 / 详情 ---------- */
 .reveal-stage, .detail-stage { text-align: center; }
 .reveal-title { font-size: 19px; margin-bottom: 22px; letter-spacing: .5px; animation: pop-in .45s ease-out; }
-.quality-text-N { color: #a7a7a7; } .quality-text-R { color: #64b5f6; }
-.quality-text-SR { color: #c07ee0; } .quality-text-SSR { color: #ffc53d; }
+.quality-text-N { color: #a2a8b2; } .quality-text-R { color: #74b9ed; }
+.quality-text-SR { color: #c696ff; } .quality-text-UR, .quality-text-SSR { color: #ffce65; }
+.quality-text-SE { color: #c6eafa; } .quality-text-PSE { color: #f2aaff; }
 @keyframes pop-in { from { transform: scale(.9) translateY(6px); opacity: 0; } to { transform: none; opacity: 1; } }
 
 /* ---------- 精灵卡片（内容容器；倾斜/全息由 @kongyo2/cards-css 接管） ---------- */
@@ -382,7 +384,8 @@ body {
    纯 CSS 全息闪卡效果，拼接内置在 src/vendor/pokemon-cards.css（同目录附 LICENSE）。
    品质分档（data-rarity，映射见 PetCard.jsx）：
      N → basic（哑光）· R → rare holo（经典横纹镭射）
-     SR → rare holo cosmos（星空闪）· SSR → rare rainbow（彩虹流光）
+     SR / SE → rare holo cosmos · UR / PSE → rare rainbow
+   data-quality 保留六档身份，用下方覆层区分金闪 / 银碎 / 镜碎。
    本段只管尺寸 / 静止默认值 / 内容可点；材质、tilt、指针流光全部由库负责。 */
 .gm-holo {
   width: min(360px, 92vw);   /* 卡宽权威：让 front 与卡同宽，杜绝两侧露底 */
@@ -411,6 +414,42 @@ body {
 .gm-holo .card[data-rarity] .card__shine,
 .gm-holo .card[data-rarity] .card__glare:after {
   clip-path: none;
+}
+/* 三个高档分别保持金、银和镜面色散，不再共享一个 SSR 外观。 */
+.gm-holo .card[data-quality="UR"] .card__shine {
+  --r-clr-1: #7c4f11;
+  --r-clr-2: #b88b29;
+  --r-clr-3: #e4bf5c;
+  --r-clr-4: #f6e4a5;
+  --r-clr-5: #b47a21;
+  --r-clr-6: #e0b54a;
+  --r-clr-7: #8d5c14;
+}
+.gm-holo .card[data-quality="SE"] .card__shine {
+  filter: grayscale(.96) brightness(1.14) contrast(1.22);
+}
+.gm-holo .card[data-quality="SE"] .card__shine:after {
+  background-image: repeating-conic-gradient(from 23deg, #fff0 0deg 32deg, #edf8ff99 34deg 37deg, #fff0 40deg 90deg);
+  background-size: 29px 37px;
+  background-position: var(--pointer-x) var(--pointer-y);
+  mix-blend-mode: screen;
+}
+.gm-holo .card[data-quality="PSE"] .card__shine:before {
+  background-image: repeating-conic-gradient(from 42deg, #fff0 0deg 38deg, #e9f7ffbb 42deg 48deg, #cdb7ff55 50deg 77deg, #fff0 82deg 120deg);
+  background-size: 52px 67px;
+  background-position: var(--pointer-x) var(--pointer-y);
+  mix-blend-mode: screen;
+  opacity: .4;
+}
+.gm-holo .quality-UR .quality-badge span {
+  background-image: linear-gradient(100deg, #a06a12, #ffe27a 20%, #fffbe0 40%, #ffc63d 60%, #b87d16 80%, #ffe27a);
+  background-size: 220% 100%;
+}
+.gm-holo .quality-SE .quality-badge span {
+  background-image: linear-gradient(115deg, #8195a9, #f7fbff 24%, #b8d4e2 48%, #fff 65%, #94a9bd 86%);
+}
+.gm-holo .quality-PSE .quality-badge span {
+  background-image: linear-gradient(110deg, #ffb7df, #e8edff 24%, #9bdfff 42%, #f2aaff 64%, #fff5bb 84%);
 }
 /* 指针离开后的回弹过渡（库只配了 box-shadow/opacity，补上倾斜） */
 .gm-holo .card__rotator {

@@ -96,7 +96,7 @@ def config() -> dict[str, Any]:
         "defaultModel": DEFAULT_MODEL,
         "elements": sorted(llm.ELEMENT_KEYS),
         "species": sorted(llm.SPECIES_KEYS),
-        "qualities": sorted(llm.QUALITY_KEYS),
+        "qualities": [quality["key"] for quality in llm.QUALITIES],
         "statNames": llm.STAT_NAMES,
         "qualityDimKeys": llm.QUALITY_DIM_KEYS,
         "providers": [{"id": p["id"], "label": p["label"]} for p in byok.PROVIDERS],
