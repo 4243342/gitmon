@@ -121,8 +121,10 @@ def evaluate(snapshot: Any, checks: list[Any]) -> dict[str, Any]:
     }
     score = round(sum(WEIGHTS[key] * dims[key][0] for key in WEIGHTS) / 100, 2)
     confidence = round(sum(WEIGHTS[key] * dims[key][1] for key in WEIGHTS) / 100, 3)
-    # Do not fabricate high-confidence ratings from metadata-only snapshots.
-    status = "pending" if confidence < .25 or source[1] < .30 else "confirmed"
+    # 没有源码证据（覆盖率 0）或置信度过低时才挂"待评估"。
+    # 覆盖率偏低本身已经体现在各维度的置信度里，不该让有真实源码检查的项目
+    # 因为只抽查了部分文件就永远无法评级。
+    status = "pending" if confidence < .25 or source[1] <= 0 else "confirmed"
     key = next(key for minimum, key in KEYS if score >= minimum) if status == "confirmed" else "pending"
     return {
         "version": "gpi-heuristic-v1", "score": score, "confidence": confidence,
