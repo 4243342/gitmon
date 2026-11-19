@@ -97,7 +97,7 @@ def evaluate(snapshot: Any, checks: list[Any]) -> dict[str, Any]:
     score = round(sum(WEIGHTS[key] * dims[key][0] for key in WEIGHTS) / 100, 2)
     confidence = round(sum(WEIGHTS[key] * dims[key][1] for key in WEIGHTS) / 100, 3)
     # Do not fabricate high-confidence ratings from metadata-only snapshots.
-    status = "pending" if confidence < .20 else "confirmed"
+    status = "pending" if confidence < .25 or source[1] < .30 else "confirmed"
     key = next(key for minimum, key in KEYS if score >= minimum) if status == "confirmed" else "pending"
     return {
         "version": "gpi-heuristic-v1", "score": score, "confidence": confidence,
