@@ -21,6 +21,7 @@ import AuthPage from './components/AuthPage.jsx'
 import PetCard, { CloudCombatDetails } from './components/PetCard.jsx'
 import HoloPack from './components/HoloPack.jsx'
 import PackBox from './components/PackBox.jsx'
+import HomeStage from './home/HomeStage.jsx'
 import { groupIntoPacks } from './packGroups.js'
 import Collection from './components/Collection.jsx'
 import GrowPanel from './components/GrowPanel.jsx'
@@ -247,6 +248,9 @@ export default function App() {
   const deskPet = desk.on && collection.length
     ? (collection.find((p) => petKey(p) === (deskLock || desk.key)) || collection[0])
     : null
+  // 首页中央立绘：优先桌宠，其次云图鉴最新一张，再退回本地收藏。
+  const stagePet = deskPet || cloudPets[0] || collection[0] || null
+  const stageAccent = stagePet?.element?.color || '#4a9eff'
   useEffect(() => {
     if (!storyNotice) return
     const timer = setTimeout(() => setStoryNotice(''), 3200)
@@ -1390,9 +1394,12 @@ export default function App() {
       )}
 
       {view === 'home' && (
-        <main className="home">
+        <main className="home home--stage">
+          <div className="home-stage-hero">
+            <HomeStage pet={stagePet} accent={stageAccent} />
+            <div className="home-stage-layout">
           {auth.profile?.authenticated ? (
-            <section className="account-hero">
+            <section className="account-hero home-panel">
               <div className="account-id">
                 {auth.profile.avatar
                   ? <img className="account-avatar" src={auth.profile.avatar} alt="" />
@@ -1472,7 +1479,7 @@ export default function App() {
               </p>
             </section>
           ) : (
-          <section className="hero">
+          <section className="hero home-panel">
             <DecoSprite seed="deco-thunder-01" colors={['#f5c542', '#ffdf7e']} body="biped" size={96} className="d1" />
             <DecoSprite seed="deco-water-02" colors={['#4a9eff', '#a8d8ff']} body="winged" size={72} className="d2" />
             <DecoSprite seed="deco-fire-03" colors={['#ff6b4a', '#ffb199']} body="slime" size={80} className="d3" />
@@ -1542,6 +1549,9 @@ export default function App() {
             </p>
           </section>
           )}
+            </div>
+          </div>
+          <div className="home-body">
 
           {/* 云图鉴：云账号的仓库卡（PR#2）；本地图鉴走原来的收藏列表 */}
           {cloudAccount && (
@@ -1625,6 +1635,7 @@ export default function App() {
             </section>
           )}
           <Manual />
+          </div>
         </main>
       )}
 
