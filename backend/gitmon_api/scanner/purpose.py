@@ -18,8 +18,8 @@ _MAX_TEXT_BYTES = 64 * 1024
 _PURPOSE_SOURCE_CHARS = 2200
 _QUALITY_SOURCE_CHARS = 8192
 _QUALITY_TEST_CHARS = 6000
-_SOURCE_EXTS = frozenset(ext for ext, lang in EXT_LANG.items() if lang in CODE_LANGS) | {
-    ".v", ".sv", ".vhdl", ".vhd", ".s"}
+_SOURCE_EXTS = frozenset(ext for ext, lang in EXT_LANG.items() if lang in CODE_LANGS) - {
+    ".h"} | {".v", ".sv", ".vhdl", ".vhd"}
 _SKIP_DIRS = {"docs", "doc", "example", "examples", "demo", "demos", "samples", "fixtures",
               "assets", "benchmark", "benchmarks", "scripts", "generated",
               "playground", "playgrounds", "flow-typed"}
