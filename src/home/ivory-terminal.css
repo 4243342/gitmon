@@ -66,7 +66,9 @@ body:has(.is-command-deck)::after { opacity: 0; }
 }
 .is-command-deck .nav { gap: 0; margin-left: 5px; }
 .is-command-deck .nav-tab {
-  font: 600 12px/1.2 inherit;
+  font-family: inherit;
+  font-weight: 600;
+  line-height: 1.2;
   font-size: 12px;
   color: #686d69;
   padding: 0 15px;
@@ -151,7 +153,10 @@ body:has(.is-command-deck)::after { opacity: 0; }
   z-index: 0;
   top: 28%;
   left: 38%;
-  font: 900 clamp(110px, 15vw, 260px)/1 inherit;
+  font-family: inherit;
+  font-size: clamp(110px, 15vw, 260px);
+  font-weight: 900;
+  line-height: 1;
   letter-spacing: -.1em;
   color: rgba(66, 67, 60, .055);
   white-space: nowrap;
@@ -306,7 +311,9 @@ body:has(.is-command-deck)::after { opacity: 0; }
   box-shadow: none;
   background: #fffefa;
   color: var(--terminal-ink);
-  font: 500 12px/1.4 inherit;
+  font-family: inherit;
+  font-weight: 500;
+  line-height: 1.4;
   font-size: 12px;
 }
 .is-command-deck .home-panel .input-row input::placeholder { color: #818379; }
@@ -358,7 +365,7 @@ body:has(.is-command-deck)::after { opacity: 0; }
   filter: none;
 }
 .is-command-deck .home-panel button:disabled { cursor: not-allowed; opacity: .5; }
-.is-command-deck .home-panel .examples { gap: 5px; font: 11px/1.4 inherit; font-size: 11px; }
+.is-command-deck .home-panel .examples { gap: 5px; font-family: inherit; line-height: 1.4; font-size: 11px; }
 .is-command-deck .home-panel .examples button {
   padding: 5px 8px;
   font: inherit;
@@ -377,6 +384,7 @@ body:has(.is-command-deck)::after { opacity: 0; }
 /* A compact mission menu; each tile uses the application's existing actions. */
 .command-menu {
   display: flex;
+  grid-column: 3;
   flex-direction: column;
   gap: 8px;
   min-width: 0;
@@ -445,7 +453,7 @@ body:has(.is-command-deck)::after { opacity: 0; }
   line-height: 1.2;
   letter-spacing: -.025em;
 }
-.command-menu-title em { font: normal 20px/1 inherit; opacity: .6; }
+.command-menu-title em { font-family: inherit; font-style: normal; font-size: 20px; line-height: 1; opacity: .6; }
 .command-menu-detail { color: #71766f; font-size: 10px; line-height: 1.5; }
 .command-menu-tile.is-featured .command-menu-detail { color: #c4ccc4; }
 .command-menu-footer {
@@ -596,6 +604,7 @@ body:has(.is-command-deck)::after { opacity: 0; }
     padding: 435px 22px 28px;
   }
   .is-command-deck .home-stage-hero::after { top: 12%; left: 35%; }
+  .command-menu { grid-column: 2; }
   .command-stage-readout { top: 401px; bottom: auto; left: 25%; width: 50%; }
   .is-command-deck .home-panel, .is-command-deck .home-panel.hero { width: 100%; }
 }
@@ -619,7 +628,7 @@ body:has(.is-command-deck)::after { opacity: 0; }
   .is-command-deck .home-panel, .is-command-deck .home-panel.hero { padding: 19px; }
   .is-command-deck .home-panel .input-row { display: flex; flex-direction: column; }
   .is-command-deck .home-panel .input-row button { width: 100%; }
-  .command-menu { gap: 6px; }
+.command-menu { grid-column: 1; gap: 6px; }
   .command-menu-tile { min-height: 64px; }
   .command-menu-tile.is-featured { min-height: 87px; }
   .command-menu-title { font-size: 16px; }
