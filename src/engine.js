@@ -13,6 +13,7 @@ import {
 import { stageFromLevel } from './evolution.js'
 import { QUALITIES, normalizeQualityKey, qualityForScore } from './cardQuality.js'
 import { cardFoil } from './cardTraits.js'
+import { gpiForSnapshot, cardGpiDims } from './gpiQuality.js'
 
 export { EVOLUTION, MAX_STAGE, stageFromLevel, stageInfo, stageName, isHumanoid, nextStage, stageProgress } from './evolution.js'
 export { QUALITIES } from './cardQuality.js'
@@ -145,57 +146,15 @@ function detectSpecies(snap) {
 
 // ---------- §4.1 品质评分（五维加权） ----------
 export function scoreQuality(snap) {
-  // 测试完备度 25%
-  let tests = 0
-  if (snap.hasTests) tests += 55
-  if (snap.hasCI) tests += 25
-  if (snap.hasLockfile) tests += 10
-  if (snap.releaseCount >= 3) tests += 10
-
-  // 工程质量 20%
-  let engineering = 10
-  if (snap.hasCI) engineering += 30
-  if (snap.hasTypeConfig) engineering += 20
-  if (snap.hasLockfile) engineering += 15
-  if (snap.hasDocker) engineering += 10
-  engineering += Math.min(15, snap.releaseCount * 3)
-
-  // 文档完整度 20%
-  let docs = 0
-  if (snap.description && snap.description.length > 20) docs += 20
-  if (snap.hasLicense || snap.license) docs += 25
-  if (snap.hasDocs) docs += 20
-  if (snap.hasChangelog) docs += 15
-  if (snap.hasContributing) docs += 10
-  if (snap.homepage) docs += 10
-
-  // 维护健康度 20%
-  let health = 0
-  if (snap.daysSincePush < 7) health += 45
-  else if (snap.daysSincePush < 30) health += 35
-  else if (snap.daysSincePush < 180) health += 20
-  else if (snap.daysSincePush < 365) health += 8
-  health += Math.min(30, snap.releaseCount * 6)
-  if (snap.openIssues < 20) health += 15
-  else if (snap.openIssues < 100) health += 8
-  if (snap.archived) health = 0
-
-  // 社区认可 15%
-  let community = 0
-  community += logNorm(snap.stars, 20000) * 0.55
-  community += logNorm(snap.forks, 5000) * 0.25
-  community += logNorm(snap.contributors, 300) * 0.2
-
-  const dims = [
-    { key: 'tests', name: '测试完备度', weight: 25, value: clamp(Math.round(tests)) },
-    { key: 'engineering', name: '工程质量', weight: 20, value: clamp(Math.round(engineering)) },
-    { key: 'docs', name: '文档完整度', weight: 20, value: clamp(Math.round(docs)) },
-    { key: 'health', name: '维护健康度', weight: 20, value: clamp(Math.round(health)) },
-    { key: 'community', name: '社区认可', weight: 15, value: clamp(Math.round(community)) },
-  ]
-
-  const score = Math.round(dims.reduce((a, d) => a + (d.value * d.weight) / 100, 0))
-  return { score, dims }
+  const result = gpiForSnapshot(snap)
+  return {
+    score: result.score,
+    dims: cardGpiDims(result),
+    gpiDimensions: result.dims,
+    confidence: result.confidence,
+    status: result.status,
+    version: result.version,
+  }
 }
 
 // ---------- §5.1 工程量 → 等级 ----------
@@ -442,6 +401,10 @@ export function judge(snap) {
     qualityKey,
     qualityScore: quality.score,
     qualityDims: quality.dims,
+    gpiDimensions: quality.gpiDimensions,
+    qualityConfidence: quality.confidence,
+    qualityStatus: quality.status,
+    qualityVersion: quality.version,
     engineeringScore: engineering.score,
     engineeringParts: engineering.parts,
     level,

@@ -6,18 +6,10 @@
 // 本地只做三件机械的事：枚举查表（把 key 变成带颜色/名称的对象）、展示换算
 // （grade / maxHp / 进化阶段 / 解锁态）、以及补上渲染必需的固定字段。
 
-import { ELEMENTS, SPECIES, QUALITIES, combatPowerOf, expForLevel, hashSeed, stageFromLevel } from './engine.js'
+import { ELEMENTS, SPECIES, combatPowerOf, expForLevel, hashSeed, stageFromLevel } from './engine.js'
 import { STAT_NAMES, foundationTier, traitHints, traitSummary, xpMultiplier } from './traits.js'
 import { parseRepoInput } from './scan.js'
-import { normalizeQualityKey, qualityForScore } from './cardQuality.js'
-
-const QUALITY_DIMS = [
-  { key: 'tests', name: '测试完备度', weight: 25 },
-  { key: 'engineering', name: '工程质量', weight: 20 },
-  { key: 'docs', name: '文档完整度', weight: 20 },
-  { key: 'health', name: '维护健康度', weight: 20 },
-  { key: 'community', name: '社区认可', weight: 15 },
-]
+import { gpiForAiEvidence, cardGpiDims } from './gpiQuality.js'
 
 // 展示档位：由模型给的数值机械映射，不参与评分
 const gradeOf = (v) => (v >= 90 ? 'S' : v >= 75 ? 'A' : v >= 60 ? 'B' : v >= 40 ? 'C' : 'D')
@@ -37,9 +29,10 @@ export function buildPetFromEvaluation(ev, {
   const element = ELEMENTS[ev.element] || ELEMENTS.normal
   const elementSecondary = ev.elementSecondary ? ELEMENTS[ev.elementSecondary] || null : null
   const species = SPECIES[ev.species] || SPECIES.beast
-  const quality = typeof ev.quality === 'string' && /^(N|R|SR|SSR|UR|SE|PSE)$/i.test(ev.quality.trim())
-    ? QUALITIES[normalizeQualityKey(ev.quality)]
-    : qualityForScore(ev.qualityScore)
+  // Model-supplied grade is not the quality source. Without independent verified
+  // GPI evidence, report a provisional neutral-prior score instead of granting PSE.
+  const gpi = gpiForAiEvidence(ev)
+  const quality = gpi.quality
   const level = Math.max(1, Math.min(999, Math.round(Number(ev.level) || 1)))
   const evolutionStage = stageFromLevel(level)
 
@@ -97,8 +90,12 @@ export function buildPetFromEvaluation(ev, {
     species,
     quality,
     qualityKey: quality.key,
-    qualityScore: clamp(ev.qualityScore),
-    qualityDims: QUALITY_DIMS.map((d, i) => ({ ...d, value: clamp(ev.qualityDims?.[i]) })),
+    qualityScore: gpi.score,
+    qualityDims: cardGpiDims(gpi),
+    gpiDimensions: gpi.dims,
+    qualityConfidence: gpi.confidence,
+    qualityStatus: gpi.status,
+    qualityVersion: gpi.version,
     engineeringScore: clamp(ev.engineeringScore),
     engineeringParts: [],
     level,

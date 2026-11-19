@@ -7,7 +7,7 @@ import re
 from threading import Lock
 from typing import Any
 
-from . import card_quality, card_quality_agent
+from . import card_quality, card_quality_agent, gpi_quality
 from .db import db
 from .scanner.snapshot import RepoSnapshot
 
@@ -71,4 +71,5 @@ def evaluate(snapshot: RepoSnapshot) -> dict[str, Any]:
         verdicts = _review(snapshot, checks)
         if verdicts:
             rating = card_quality.rate(checks, community, verdicts)
-    return {"rarity": rarity, "qualityRating": rating}
+    potential = gpi_quality.evaluate(snapshot, checks)
+    return {"rarity": rarity, "qualityRating": rating, "potential": potential}

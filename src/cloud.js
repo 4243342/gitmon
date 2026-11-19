@@ -8,6 +8,11 @@ const DIMENSIONS = {
   docs: '文档',
   maintenance: '维护',
   community: '社区',
+  evolution: '进化',
+  reliability: '可靠',
+  architecture: '架构',
+  innovation: '创新',
+  business: '商业',
 }
 
 function toPet(data) {
