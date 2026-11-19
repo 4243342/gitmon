@@ -252,7 +252,8 @@ def _present(pet: dict[str, Any], element: str | None, source: str | None,
     # cards without that versioned result keep their historical rarity until refresh.
     potential = data.get("potential")
     if isinstance(potential, dict) and potential.get("version") == "gpi-heuristic-v1":
-        data["communityRarity"] = data.get("rarity")
+        # 新卡片的 rarity 已由 GPI 决定；communityRarity 才保留星标档位供参考。
+        data["communityRarity"] = data.get("communityRarity") or data.get("rarity")
         data["rarity"] = {
             "key": potential.get("key", "pending"),
             "name": potential.get("name", "待评估"),

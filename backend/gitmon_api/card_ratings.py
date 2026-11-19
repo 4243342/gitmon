@@ -72,4 +72,10 @@ def evaluate(snapshot: RepoSnapshot) -> dict[str, Any]:
         if verdicts:
             rating = card_quality.rate(checks, community, verdicts)
     potential = gpi_quality.evaluate(snapshot, checks)
-    return {"rarity": rarity, "qualityRating": rating, "potential": potential}
+    # 六档罕见度只由 GPI 综合分决定；星标只留作参考字段，不再决定档位。
+    return {
+        "rarity": gpi_quality.rarity(potential),
+        "communityRarity": rarity,
+        "qualityRating": rating,
+        "potential": potential,
+    }

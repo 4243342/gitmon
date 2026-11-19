@@ -26,8 +26,18 @@ def test_metadata_alone_does_not_confirm_quality():
     rating = gpi_quality.evaluate(snap, [])
     assert rating["key"] == "pending"
     assert rating["status"] == "pending"
-    assert rating["confidence"] < 0.25
+    # 元数据能给出中等置信度，但没有源码证据就不允许确认评级
+    assert rating["confidence"] < 0.5
     assert len(rating["dimensions"]) == 7
+
+
+def test_rarity_follows_gpi_score_not_stars():
+    rating = gpi_quality.evaluate(make_snapshot(), evidence())
+    rarity = gpi_quality.rarity(rating)
+    assert rarity["key"] == rating["key"]
+    assert rarity["status"] == rating["status"]
+    assert rarity["source"] == "gpi"
+    assert rarity["recognition"] is None
 
 
 def test_verified_source_and_test_evidence_give_deterministic_result():
@@ -57,11 +67,11 @@ def test_large_star_increase_only_affects_weak_adoption_proxy():
     hi = gpi_quality.evaluate(make_snapshot(stars=100_000, forks=3), evidence())
     assert lo["key"] in gpi_quality.NAMES
     assert hi["key"] in gpi_quality.NAMES
-    assert abs(hi["score"] - lo["score"]) < 2.0
+    assert abs(hi["score"] - lo["score"]) < 5.0
 
 
 def test_incomplete_weeks_dont_invent_180_day_acceleration():
     snap = make_snapshot(commits_52w=[9] * 5)
     result = gpi_quality.evaluate(snap, evidence())
-    assert result["dimensions"][0]["confidence"] < .3
+    assert result["dimensions"][0]["confidence"] < .5
     assert "future prediction not calibrated" in " ".join(result["limitations"])

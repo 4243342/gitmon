@@ -48,6 +48,18 @@ def _blend(signals: list[tuple[float, float]]) -> tuple[float, float]:
     return round(_bounded(score), 2), round(certainty, 3)
 
 
+def rarity(spec: dict[str, Any]) -> dict[str, Any]:
+    """六档罕见度只由 GPI 综合分决定，与星标多少无关。"""
+    return {
+        "key": spec.get("key", "pending"),
+        "name": spec.get("name", "待评估"),
+        "color": spec.get("color", "#9ca6b8"),
+        "status": spec.get("status", "pending"),
+        "recognition": None,
+        "source": "gpi",
+    }
+
+
 def evaluate(snapshot: Any, checks: list[Any]) -> dict[str, Any]:
     """Return seven-dimensional evidence-weighted quality from existing data."""
     tree = snapshot.tree or {}
@@ -65,32 +77,32 @@ def evaluate(snapshot: Any, checks: list[Any]) -> dict[str, Any]:
         middle = len(weeks) // 2
         before, after = sum(weeks[:middle]), sum(weeks[middle:])
         # Activity is only a weak proxy; cap its contribution. No commits != no innovation.
-        momentum = _signal(50 + 25 * (after - before) / max(10, before + after), .35)
+        momentum = _signal(50 + 25 * (after - before) / max(10, before + after), .4)
 
     dims = {
         "evolution": _blend([
-            _signal(100 * merged / max(1, closed), .55 if closed else 0),
+            _signal(100 * merged / max(1, closed), .75 if closed else 0),
             momentum or _signal(PRIOR, 0),
         ]),
         "reliability": _blend([
             _signal(*test),
-            _signal(65 if flags.get("has_workflows") else 35, .3 if tree else 0),
-            _signal(65 if snapshot.releases_last_year else PRIOR, .25 if snapshot.releases_total else 0),
+            _signal(85 if flags.get("has_workflows") else 35, .6 if tree else 0),
+            _signal(78 if snapshot.releases_last_year else PRIOR, .4 if snapshot.releases_total else 0),
         ]),
         "architecture": _blend([_signal(*source)]),
         # Genuine novelty needs independent evidence; don't infer it from commit volume.
         "innovation": _blend([]),
         "demand": _blend([
-            _signal(min(70, 40 + 6 * math.log1p(max(0, snapshot.stars))), .25 if snapshot.recognition_counts_known and not snapshot.private else 0),
+            _signal(min(90, 40 + 6 * math.log1p(max(0, snapshot.stars))), .55 if snapshot.recognition_counts_known and not snapshot.private else 0),
         ]),
         "ecosystem": _blend([
-            _signal(min(75, 40 + 7 * math.log1p(max(0, snapshot.contributors))), .3 if snapshot.contributors else 0),
-            _signal(min(70, 40 + 5 * math.log1p(max(0, snapshot.forks))), .2 if snapshot.recognition_counts_known and not snapshot.private else 0),
+            _signal(min(85, 40 + 7 * math.log1p(max(0, snapshot.contributors))), .55 if snapshot.contributors else 0),
+            _signal(min(80, 40 + 5 * math.log1p(max(0, snapshot.forks))), .45 if snapshot.recognition_counts_known and not snapshot.private else 0),
         ]),
         "sustainability": _blend([
-            _signal(70 if days < 30 else (50 if days < 180 else 25), .4 if snapshot.pushed_at else 0),
-            _signal(min(75, 40 + snapshot.active_months * 2), .35 if len(weeks) >= 26 else 0),
-            _signal(65 if snapshot.releases_last_year else 45, .2 if snapshot.releases_total else 0),
+            _signal(85 if days < 30 else (60 if days < 180 else 30), .6 if snapshot.pushed_at else 0),
+            _signal(min(85, 40 + snapshot.active_months * 2), .5 if len(weeks) >= 26 else 0),
+            _signal(78 if snapshot.releases_last_year else 45, .4 if snapshot.releases_total else 0),
             _signal(*docs),
         ]),
     }

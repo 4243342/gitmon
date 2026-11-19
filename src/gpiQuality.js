@@ -32,27 +32,27 @@ export function gpiForSnapshot(snap = {}) {
   const active = Number.isFinite(snap.daysSincePush) && snap.daysSincePush < 30
   const dims = {
     evolution: evidence([
-      signal(ratio(merged, closed), known(closed) && closed > 0 ? .55 : 0),
+      signal(ratio(merged, closed), known(closed) && closed > 0 ? .75 : 0),
       // Commit count alone never establishes successful evolution.
     ]),
     reliability: evidence([
-      signal(snap.hasTests ? 65 : 35, hasFiles ? .25 : 0),
-      signal(snap.hasCI ? 65 : 35, hasFiles ? .3 : 0),
+      signal(snap.hasTests ? 85 : 35, hasFiles ? .55 : 0),
+      signal(snap.hasCI ? 85 : 35, hasFiles ? .6 : 0),
     ]),
     architecture: evidence([
-      signal(snap.hasTypeConfig ? 65 : 45, hasFiles ? .25 : 0),
-      signal(snap.hasLockfile ? 60 : 45, hasFiles ? .15 : 0),
+      signal(snap.hasTypeConfig ? 80 : 45, hasFiles ? .45 : 0),
+      signal(snap.hasLockfile ? 72 : 45, hasFiles ? .35 : 0),
     ]),
     innovation: evidence([]), // requires verified novelty, not activity alone
-    demand: evidence([signal(boundedLog(snap.stars, 6), hasMeta ? .25 : 0)]),
+    demand: evidence([signal(Math.min(90, boundedLog(snap.stars, 6)), hasMeta ? .55 : 0)]),
     ecosystem: evidence([
-      signal(boundedLog(snap.contributors, 7), known(snap.contributors) ? .3 : 0),
-      signal(boundedLog(snap.forks, 5), hasMeta ? .2 : 0),
+      signal(Math.min(85, boundedLog(snap.contributors, 7)), known(snap.contributors) ? .55 : 0),
+      signal(Math.min(80, boundedLog(snap.forks, 5)), hasMeta ? .45 : 0),
     ]),
     sustainability: evidence([
-      signal(active ? 70 : (snap.daysSincePush < 180 ? 50 : 25), Number.isFinite(snap.daysSincePush) ? .4 : 0),
-      signal(snap.releaseCount > 0 ? 65 : 45, known(snap.releaseCount) ? .2 : 0),
-      signal(snap.hasDocs ? 65 : 35, hasFiles ? .2 : 0),
+      signal(active ? 85 : (snap.daysSincePush < 180 ? 60 : 30), Number.isFinite(snap.daysSincePush) ? .6 : 0),
+      signal(snap.releaseCount > 0 ? 78 : 45, known(snap.releaseCount) ? .4 : 0),
+      signal(snap.hasDocs ? 82 : 35, hasFiles ? .4 : 0),
     ]),
   }
   return buildGpi(dims, 'local-static')
