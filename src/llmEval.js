@@ -9,7 +9,7 @@
 import { ELEMENTS, SPECIES, combatPowerOf, expForLevel, hashSeed, stageFromLevel } from './engine.js'
 import { STAT_NAMES, foundationTier, traitHints, traitSummary, xpMultiplier } from './traits.js'
 import { parseRepoInput } from './scan.js'
-import { gpiForAiEvidence } from './gpiQuality.js'
+import { gpiForAiEvidence, cardGpiDims } from './gpiQuality.js'
 
 // 展示档位：由模型给的数值机械映射，不参与评分
 const gradeOf = (v) => (v >= 90 ? 'S' : v >= 75 ? 'A' : v >= 60 ? 'B' : v >= 40 ? 'C' : 'D')
@@ -91,7 +91,8 @@ export function buildPetFromEvaluation(ev, {
     quality,
     qualityKey: quality.key,
     qualityScore: gpi.score,
-    qualityDims: gpi.dims,
+    qualityDims: cardGpiDims(gpi),
+    gpiDimensions: gpi.dims,
     qualityConfidence: gpi.confidence,
     qualityStatus: gpi.status,
     qualityVersion: gpi.version,
