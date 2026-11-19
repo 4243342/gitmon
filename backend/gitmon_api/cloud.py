@@ -271,7 +271,7 @@ def _present(pet: dict[str, Any], element: str | None, source: str | None,
                 **{key: dims[key] for key in ("evolution", "reliability", "architecture", "innovation")},
                 "business": round(business, 2),
             }
-    # 六档 rarity 是云卡唯一对外品质；八档 qualityRating 继续用于源码证据和选图。
+    # 六档展示品质优先使用已评估 GPI（存储于 rarity 兼容字段）；八档源码评级继续用于选图。
     rarity = data.get("rarity") or {}
     rarity_key = rarity.get("key")
     if rarity.get("status") == "confirmed" and rarity_key in RARITY_ORDER:
