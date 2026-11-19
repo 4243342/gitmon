@@ -306,7 +306,7 @@ def _present(pet: dict[str, Any], element: str | None, source: str | None,
         if potential.get("status") == "confirmed":
             # 罕见度永远按当前样本的排位比例重算，避免旧卡停在过去的分档上。
             data["rarity"] = card_ratings.gpi_quality.rarity(potential, gpi_population())
-        data["qualityScore"] = potential.get("score") if potential.get("status") == "confirmed" else None
+        data["qualityScore"] = potential.get("score")
         dims = {entry["key"]: entry["score"] for entry in potential.get("dimensions", [])}
         # Classic card face has five narrow bars: four technical areas + one
         # combined business area; all seven components remain in potential.

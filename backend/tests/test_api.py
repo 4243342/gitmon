@@ -244,7 +244,7 @@ def test_cloud_hatch_claim_and_refresh(client, monkeypatch, weak_snapshot) -> No
     assert pet["fullName"] == "acme/widget" and pet["repoId"] == "13579"
     assert pet["element"]["key"] == "purpose_dark" and pet["attributeSource"] == "rules"
     assert pet["battleElement"]["key"] == "thunder"
-    assert pet["rarity"]["status"] == "unrated"
+    assert pet["rarity"]["status"] == "pending"
     assert pet["qualityRating"]["status"] == "pending"
     assert client.get("/api/cloud/pets").json()["items"] == []
     assert client.get(f"/api/jobs/{job_id}").status_code == 404
@@ -292,7 +292,7 @@ def test_cloud_hatch_claim_and_refresh(client, monkeypatch, weak_snapshot) -> No
     assert gitee["seed"] != refreshed["seed"]
     assert gitee["id"] != refreshed["id"]
     assert gitee["attributeStatus"] == "pending"
-    assert gitee["rarity"]["key"] == "N"
+    assert gitee["rarity"]["key"] == "pending"
     repo_id = "24680"  # 原路径被另一个仓库占用，不能覆盖先前收下的精灵。
     assert client.post(f"/api/cloud/pets/{saved['id']}/refresh").status_code == 404
     assert client.get("/api/cloud/pets").json()["items"] == [refreshed]
@@ -427,7 +427,7 @@ def test_account_box_shares_single_hatch_and_collects_explicitly(client, monkeyp
 
     # A new confirmed quality picks the same portrait on previews, claim and collection.
     tier = "diamond"
-    monkeypatch.setattr(card_ratings, "evaluate", lambda _: {
+    monkeypatch.setattr(card_ratings, "evaluate", lambda *_args: {
         "rarity": widget["rarity"], "qualityRating": {"status": "confirmed", "key": tier},
     })
     single_job, single = await_preview("/api/cloud/previews", {"repo": f"{url}/alice/widget"})

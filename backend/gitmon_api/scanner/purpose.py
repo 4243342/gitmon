@@ -9,7 +9,7 @@ from collections.abc import Callable
 from pathlib import PurePosixPath
 from typing import Any
 
-from .languages import DOC_LANGS, EXT_LANG, MANIFEST_NAMES
+from .languages import CODE_LANGS, DOC_LANGS, EXT_LANG, MANIFEST_NAMES
 from .snapshot import RepoSnapshot
 from .tree import _ignored, _is_test
 
@@ -18,10 +18,15 @@ _MAX_TEXT_BYTES = 64 * 1024
 _PURPOSE_SOURCE_CHARS = 2200
 _QUALITY_SOURCE_CHARS = 8192
 _QUALITY_TEST_CHARS = 6000
-_SOURCE_EXTS = frozenset(EXT_LANG) - {".json", ".yaml", ".yml", ".toml", ".tex", ".rst", ".md",
-                                    ".markdown", ".adoc", ".ipynb"} | {".v", ".sv", ".vhdl", ".vhd", ".s"}
+_SOURCE_EXTS = frozenset(ext for ext, lang in EXT_LANG.items() if lang in CODE_LANGS) | {
+    ".v", ".sv", ".vhdl", ".vhd", ".s"}
 _SKIP_DIRS = {"docs", "doc", "example", "examples", "demo", "demos", "samples", "fixtures",
-              "assets", "benchmark", "benchmarks", "scripts", "generated"}
+              "assets", "benchmark", "benchmarks", "scripts", "generated",
+              "playground", "playgrounds", "flow-typed"}
+_IMPL_DIRS = {"src", "source", "sources", "lib", "libs", "core", "internal", "pkg", "packages", "app"}
+# 配置、声明、压缩产物不是实现代码，不参与源码抽样。
+_SOURCE_NOISE = re.compile(
+    r"(?i)(?:^|/)(?:\.[^/]+|[^/]*\.d\.[cm]?ts|[^/]*\.config\.[^/]+|[^/]*rc\.[cm]?[jt]s|[^/]*\.min\.[^/]+)$")
 _ARTIFACT_NAMES = {name.lower() for name in MANIFEST_NAMES} | {
     "dockerfile", "containerfile", "docker-compose.yml", "docker-compose.yaml", "compose.yml",
     "compose.yaml", "chart.yaml", "makefile", "kbuild", "build.sbt", "build.zig", "goreleaser.yml",
@@ -114,9 +119,11 @@ class PurposeFiles:
         source_chars = _QUALITY_SOURCE_CHARS if quality else _PURPOSE_SOURCE_CHARS
         manifest_entries = self._manifest_entries(manifests)
         candidates = self._source_candidates(manifest_entries, quality=quality)
+        # 质量评估需要足够的真实实现样本；取 6 个仍能控制在 API 配额内。
+        sample_limit = 6 if quality else 4
         for path in self._source_paths(candidates, set(manifest_entries)):
             value = ""
-            if fetched < 4 and self.can_fetch(path):
+            if fetched < sample_limit and self.can_fetch(path):
                 value = fetch(path)[:source_chars]
                 fetched += 1
             sources[path] = value if "\0" not in value else ""
@@ -184,25 +191,24 @@ class PurposeFiles:
     def _source_candidates(self, entries: list[str], *, quality: bool) -> list[str]:
         candidates = [path for path in self.files if self._eligible(path)
                       and PurePosixPath(path).suffix.lower() in _SOURCE_EXTS
-                      and PurePosixPath(path).name.lower() not in _ARTIFACT_NAMES]
-        paths = list(dict.fromkeys([*entries, *sorted(candidates, key=_source_order)]))
+                      and PurePosixPath(path).name.lower() not in _ARTIFACT_NAMES
+                      and not _SOURCE_NOISE.search(path)]
+        paths = list(dict.fromkeys([*entries, *sorted(candidates, key=self._source_order)]))
         if quality:
             paths = [path for path in paths if not self._quality_test(path) and self.files[path].get("size") != 0]
         return paths
 
-    @staticmethod
-    def _source_paths(candidates: list[str], manifest_entries: set[str]) -> list[str]:
-        counts: dict[tuple[str, ...], int] = {}
-        groups: list[list[str]] = [[], [], []]
+    def _source_paths(self, candidates: list[str], manifest_entries: set[str]) -> list[str]:
+        groups: dict[tuple[str, ...], list[str]] = {}
         for path in candidates:
-            group = PurePosixPath(path).parts[:-1][:2]
-            index = counts.get(group, 0)
-            if index < len(groups):
-                counts[group] = index + 1
-                groups[index].append(path)
-        # Keep declared entry points first, then cover different modules before sampling more files per module.
+            groups.setdefault(tuple(PurePosixPath(path).parts[:-1][:2]), []).append(path)
+        # 代码量大的模块优先，避免字母序靠前的配置/工具包挤掉真正的实现模块。
+        weight = {key: max((self.files[path].get("size") or 0) for path in paths)
+                  for key, paths in groups.items()}
+        ordered = sorted(groups, key=lambda key: (-weight[key], key))
         entries = [path for path in candidates if path in manifest_entries]
-        return list(dict.fromkeys([*entries, *(path for group in groups for path in group)]))[:32]
+        picked = [path for key in ordered for path in groups[key][:2]]
+        return list(dict.fromkeys([*entries, *picked]))[:32]
 
     def _manifest_entries(self, manifests: dict[str, str]) -> list[str]:
         entries: list[str] = []
@@ -246,10 +252,15 @@ class PurposeFiles:
     def _eligible(self, path: str) -> bool:
         return not (_ignored(path) or _is_test(path) or self._skipped_directory(path))
 
+    def _source_order(self, path: str) -> tuple[bool, bool, bool, int, str]:
+        """优先真实实现文件：先排除空壳/重导出小文件，再避开入口壳，最后偏好 src/lib 等实现目录。"""
+        size = self.files.get(path, {}).get("size")
+        thin = not (isinstance(size, int) and size >= 600)
+        entry = PurePosixPath(path).stem.lower() in _ENTRY_NAMES
+        impl = not any(part in _IMPL_DIRS for part in PurePosixPath(path).parts[:-1])
+        return thin, entry, impl, *_path_order(path)
+
 
 def _path_order(path: str) -> tuple[int, str]:
     return path.count("/"), path.casefold()
 
-
-def _source_order(path: str) -> tuple[bool, int, str]:
-    return PurePosixPath(path).stem.lower() not in _ENTRY_NAMES, *_path_order(path)

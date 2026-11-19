@@ -108,9 +108,16 @@ def rate(items: list[Check], community_range: tuple[int, int], reviews: dict[str
 
 _FUNCTION = re.compile(
     r"(?m)^\s*(?:(?:export|default|import|static|public|private|protected|async|pub|unsafe|extern)\s+)*"
-    r"(?:(?:function|fn|func)\s+(?:\([^\n]*?\)\s+)?(?P<function>[\w$]+)\s*\([^\n]*?\)[^;\n{}]*"
-    r"|(?:[\w*:&<>\[\]]+\s+)+(?P<method>[\w$]+)\s*\([^\n]*?\)\s*)\{"
+    r"(?:"
+    r"(?:function|fn|func)\s+(?:\([^\n]*?\)\s+)?(?P<function>[\w$]+)\s*\([^\n]*?\)[^;\n{}]*\{"
+    r"|(?:const|let|var)\s+(?P<arrow>[\w$]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[\w$]+)\s*=>\s*\{"
+    r"|(?:[\w*:&<>\[\]]+\s+)+(?P<method>[\w$]+)\s*\([^\n]*?\)\s*\{"
+    r")"
 )
+# JS/TS 公开导出即可视为真实入口片段，不要求像 Python 那样有 __main__。
+_JS_EXPORT = re.compile(
+    r"(?m)^\s*(?:export\s+(?:default\s+)?(?:async\s+)?(?:function|class|const|let|var)\b"
+    r"|module\.exports\s*=|exports\.[\w$]+\s*=)")
 _BRANCH = re.compile(r"\b(?:if|else if|for|while|switch|case|match|catch)\b|&&|\|\|")
 _COMMENTS = re.compile(r'/\*[\s\S]*?\*/|//[^\n]*|"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'|`(?:\\.|[^`\\])*`')
 _TEXT_LANGUAGES = {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".go", ".rs", ".c", ".h", ".cpp", ".cc",
@@ -172,7 +179,7 @@ def _function_loads(path: str, body: str, tree: ast.Module | None) -> list[tuple
             ends[brackets.pop()] = match.start()
     loads = []
     for match in _FUNCTION.finditer(text):
-        name = match["function"] or match["method"]
+        name = match["function"] or match["arrow"] or match["method"]
         start = match.end() - 1
         if name not in _GATE and start in ends and text[start + 1:ends[start]].strip():
             loads.append((name, len(_BRANCH.findall(text, start, ends[start]))))
@@ -381,6 +388,8 @@ def checks(evidence: dict[str, Any]) -> list[Check]:
         or PurePosixPath(path).stem == "__main__"
         or (path in trees and re.search(r"(?m)^\s*if\s+__name__\s*==\s*['\"]__main__['\"]\s*:", sources[path]))
     ))
+    exported = tuple(path for path, body in sources.items() if _JS_EXPORT.search(body))
+    entry_paths = tuple(dict.fromkeys([*entry_paths, *exported]))
     representative = tuple(functions) or tuple(sources)
     artifact_refs = tuple(artifacts)
     source_refs = tuple(sources)
@@ -388,7 +397,8 @@ def checks(evidence: dict[str, Any]) -> list[Check]:
     readme_refs = (evidence.get("readme_path") or "README",) if readme.strip() else ()
 
     function_loads = [cost for found in functions.values() for _, cost in found]
-    covered = len(functions) == len(sources) and bool(sources)
+    # 抽样片段不可能每个文件都有函数：过半样本可解析即足以评估结构指标。
+    covered = bool(functions) and len(functions) * 2 >= len(sources)
     complexity = round(15 * sum(max(0, min(1, (22 - load) / 13)) for load in function_loads) / len(function_loads)) if covered else None
     duplication = _duplicates({path: sources[path] for path in functions}) if covered else None
     imports = _py_imports(trees)
