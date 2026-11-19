@@ -3,15 +3,15 @@ import * as THREE from 'three'
 // 首页中央立体看板：沿用 threePack/displayBox.js 已经验证过的渲染器 / 生命周期写法，
 // 只是把收藏盒换成一个悬浮精灵 + 全息基座。素材来自 sprite.js 的 petArtwork()。
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
-const ACCENT = '#4a9eff'
+const ACCENT = '#b18c6e'
 
 function shadowTexture() {
   const canvas = document.createElement('canvas')
   canvas.width = canvas.height = 128
   const ctx = canvas.getContext('2d')
   const gradient = ctx.createRadialGradient(64, 64, 4, 64, 64, 62)
-  gradient.addColorStop(0, 'rgba(0,0,0,.55)')
-  gradient.addColorStop(.55, 'rgba(0,0,0,.22)')
+  gradient.addColorStop(0, 'rgba(0,0,0,.38)')
+  gradient.addColorStop(.55, 'rgba(0,0,0,.13)')
   gradient.addColorStop(1, 'rgba(0,0,0,0)')
   ctx.fillStyle = gradient
   ctx.fillRect(0, 0, 128, 128)
@@ -44,28 +44,29 @@ export function createHomeStage(host, { onUnavailable } = {}) {
   const root = new THREE.Group()
   scene.add(root)
 
-  scene.add(new THREE.HemisphereLight(0x9fc6ff, 0x0a101d, 1.15))
-  const key = new THREE.PointLight(0xffe6b0, 26, 16, 2)
+  // 用 Three.js 原生灯光、平面和纹理构建暖纸色的 2.5D 展示台，不新增第二套渲染器。
+  scene.add(new THREE.HemisphereLight(0xfff6e5, 0x807467, 1.35))
+  const key = new THREE.PointLight(0xffe6c5, 15, 16, 2)
   key.position.set(2.2, 3.4, 3.2)
   scene.add(key)
-  const rim = new THREE.PointLight(0x66c6ff, 22, 14, 2)
+  const rim = new THREE.PointLight(0xd3bca2, 7, 14, 2)
   rim.position.set(-2.6, 1.8, -1.8)
   scene.add(rim)
 
-  const pedestalMaterial = new THREE.MeshStandardMaterial({ color: 0x16202f, metalness: .65, roughness: .32 })
+  const pedestalMaterial = new THREE.MeshStandardMaterial({ color: 0xd4c8b7, metalness: .14, roughness: .78 })
   const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(1.16, 1.38, .16, 64), pedestalMaterial)
   pedestal.position.y = .02
   root.add(pedestal)
 
-  const ringMaterial = new THREE.MeshBasicMaterial({ color: ACCENT, transparent: true, opacity: .55 })
+  const ringMaterial = new THREE.MeshBasicMaterial({ color: ACCENT, transparent: true, opacity: .54 })
   const ring = new THREE.Mesh(new THREE.TorusGeometry(1.18, .012, 8, 120), ringMaterial)
   ring.rotation.x = Math.PI / 2
   ring.position.y = .11
   root.add(ring)
 
   const discMaterial = new THREE.MeshBasicMaterial({
-    color: ACCENT, transparent: true, opacity: .16, side: THREE.DoubleSide,
-    blending: THREE.AdditiveBlending, depthWrite: false,
+    color: ACCENT, transparent: true, opacity: .11, side: THREE.DoubleSide,
+    depthWrite: false,
   })
   const disc = new THREE.Mesh(new THREE.RingGeometry(.42, 1.14, 96), discMaterial)
   disc.rotation.x = -Math.PI / 2
@@ -81,8 +82,8 @@ export function createHomeStage(host, { onUnavailable } = {}) {
 
   // 全息背环，让精灵有“投影”感，而不是一张贴图浮在空里。
   const haloMaterial = new THREE.MeshBasicMaterial({
-    color: ACCENT, transparent: true, opacity: .18, side: THREE.DoubleSide,
-    blending: THREE.AdditiveBlending, depthWrite: false,
+    color: ACCENT, transparent: true, opacity: .14, side: THREE.DoubleSide,
+    depthWrite: false,
   })
   const halo = new THREE.Mesh(new THREE.RingGeometry(1.32, 1.36, 96), haloMaterial)
   halo.position.set(0, 1.5, -.55)
@@ -92,8 +93,8 @@ export function createHomeStage(host, { onUnavailable } = {}) {
   const shardGeometry = new THREE.PlaneGeometry(.14, .2)
   for (let i = 0; i < 10; i += 1) {
     const material = new THREE.MeshBasicMaterial({
-      color: ACCENT, transparent: true, opacity: .22, side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending, depthWrite: false,
+      color: ACCENT, transparent: true, opacity: .12, side: THREE.DoubleSide,
+      depthWrite: false,
     })
     const shard = new THREE.Mesh(shardGeometry, material)
     const angle = (i / 10) * Math.PI * 2
@@ -104,10 +105,20 @@ export function createHomeStage(host, { onUnavailable } = {}) {
     shards.push(shard)
   }
 
-  const pet = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false }))
+  // 前景立绘和后景低透明轮廓分成两层，以微小视差模拟 L2D 的空间感。
+  // 这不是 Live2D Cubism 骨骼模型，也不依赖未经授权的角色素材。
+  const petEcho = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({
+    color: 0xb5a18b, transparent: true, opacity: .14, depthWrite: false, toneMapped: false,
+  }))
+  petEcho.visible = false
+  petEcho.renderOrder = 1
+  root.add(petEcho)
+
+  const pet = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({
+    transparent: true, depthWrite: false, toneMapped: false,
+  }))
   pet.visible = false
   pet.renderOrder = 2
-  pet.material.toneMapped = false
   root.add(pet)
 
   let petTexture = null
@@ -116,7 +127,7 @@ export function createHomeStage(host, { onUnavailable } = {}) {
   function setPet(art) {
     if (petTexture) petTexture.dispose()
     petTexture = null
-    if (!art?.image) { pet.visible = false; invalidate(); return }
+    if (!art?.image) { pet.visible = false; petEcho.visible = false; invalidate(); return }
     const image = art.image
     petTexture = image instanceof HTMLCanvasElement ? new THREE.CanvasTexture(image) : new THREE.Texture(image)
     petTexture.colorSpace = THREE.SRGBColorSpace
@@ -129,22 +140,27 @@ export function createHomeStage(host, { onUnavailable } = {}) {
     petTexture.generateMipmaps = false
     pet.material.map = petTexture
     pet.material.needsUpdate = true
+    petEcho.material.map = petTexture
+    petEcho.material.needsUpdate = true
     const planeHeight = 2.35
     const planeWidth = clamp(planeHeight * (width / height), .9, 3.1)
     pet.userData.base = { width: planeWidth, height: planeHeight }
     pet.scale.set(planeWidth * scale, planeHeight * scale, 1)
     pet.position.set(0, .18 + planeHeight / 2, 0)
     pet.visible = true
+    petEcho.visible = true
     petTarget = 1
     invalidate()
   }
 
   function setAccent(value) {
     const color = /^#[\da-f]{6}$/i.test(value || '') ? value : ACCENT
-    ringMaterial.color.set(color)
-    discMaterial.color.set(color)
-    haloMaterial.color.set(color)
-    for (const shard of shards) shard.material.color.set(color)
+    // 属性颜色保留个性，但往纸张与铜色收敛，避免回到霓虹全息风。
+    const tint = new THREE.Color(color).lerp(new THREE.Color(ACCENT), .72)
+    ringMaterial.color.copy(tint)
+    discMaterial.color.copy(tint)
+    haloMaterial.color.copy(tint)
+    for (const shard of shards) shard.material.color.copy(tint)
     invalidate()
   }
 
@@ -167,8 +183,8 @@ export function createHomeStage(host, { onUnavailable } = {}) {
     if (!width || !height) return
     renderer.setSize(width, height, false)
     camera.aspect = width / height
-    // 面板在左侧时，把主体推到画面右侧，避免被 HUD 盖住。
-    root.position.x = width > 900 ? .62 : 0
+    // Canvas 在布局中独占中央列，立绘永远居中，避免宽屏偏移。 
+    root.position.x = 0
     camera.updateProjectionMatrix()
     invalidate()
   }
@@ -186,8 +202,8 @@ export function createHomeStage(host, { onUnavailable } = {}) {
 
     if (!reducedMotion) {
       pet.position.y = .18 + (pet.userData.base?.height || 2.35) / 2 + Math.sin(elapsed * 1.35) * .045
-      pet.rotation.y = Math.sin(elapsed * .55) * .1 + pointerX * .08
-      pet.rotation.z = Math.sin(elapsed * .9) * .012
+      pet.rotation.y = Math.sin(elapsed * .55) * .07 + pointerX * .07
+      pet.rotation.z = Math.sin(elapsed * .9) * .009
       halo.rotation.z = elapsed * .12
       disc.rotation.z = -elapsed * .2
       ring.rotation.z = elapsed * .35
@@ -200,6 +216,10 @@ export function createHomeStage(host, { onUnavailable } = {}) {
     scale += (petTarget - scale) * .12
     if (pet.userData.base) {
       pet.scale.set(pet.userData.base.width * scale, pet.userData.base.height * scale, 1)
+      petEcho.scale.copy(pet.scale).multiplyScalar(1.055)
+      petEcho.position.set(.12 + pointerX * .04, pet.position.y + .035, -.22)
+      petEcho.rotation.y = pet.rotation.y * .55
+      petEcho.rotation.z = -pet.rotation.z * .5
     }
 
     renderer.render(scene, camera)
