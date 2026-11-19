@@ -81,11 +81,11 @@ def evaluate(snapshot: Any, checks: list[Any]) -> dict[str, Any]:
         # Genuine novelty needs independent evidence; don't infer it from commit volume.
         "innovation": _blend([]),
         "demand": _blend([
-            _signal(min(70, 40 + 6 * math.log1p(max(0, snapshot.stars))), .25 if snapshot.recognition_counts_known else 0),
+            _signal(min(70, 40 + 6 * math.log1p(max(0, snapshot.stars))), .25 if snapshot.recognition_counts_known and not snapshot.private else 0),
         ]),
         "ecosystem": _blend([
             _signal(min(75, 40 + 7 * math.log1p(max(0, snapshot.contributors))), .3 if snapshot.contributors else 0),
-            _signal(min(70, 40 + 5 * math.log1p(max(0, snapshot.forks))), .2 if snapshot.recognition_counts_known else 0),
+            _signal(min(70, 40 + 5 * math.log1p(max(0, snapshot.forks))), .2 if snapshot.recognition_counts_known and not snapshot.private else 0),
         ]),
         "sustainability": _blend([
             _signal(70 if days < 30 else (50 if days < 180 else 25), .4 if snapshot.pushed_at else 0),
