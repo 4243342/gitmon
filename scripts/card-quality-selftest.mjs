@@ -54,8 +54,12 @@ await test('评分边界保持 0/40/60/80，并在 90/97 区分银碎和镜碎',
   ]) assert.equal(qualityForScore(score).key, expected)
   assert.equal(qualityForScore(undefined).key, 'N')
   assert.equal(qualityForScore(NaN).key, 'N')
-  assert.ok(scoreQuality(snapshot).score >= 97, '本地评分应实际可达 PSE 门槛')
-  assert.equal(judge(snapshot).qualityKey, 'PSE')
+  const assessed = scoreQuality(snapshot)
+  assert.equal(assessed.version, 'gpi-heuristic-v1')
+  assert.equal(assessed.dims.length, 5, '经典卡面仍只展示五项摘要')
+  assert.equal(assessed.gpiDimensions.length, 7)
+  assert.equal(judge(snapshot).qualityKey, qualityForScore(assessed.score).key)
+  assert.ok(assessed.score < 97, '仅凭元数据和文件存在不能得到 PSE')
 })
 
 await test('UR/SE/PSE 即使共用旧特效，也必须选出真正最高的包品质', () => {
@@ -119,15 +123,25 @@ await test('历史 SSR 读档映射 UR，保留既有种子、个体值、数值
   for (const key of ['UR', 'SE', 'PSE']) assert.deepEqual(rollIVs(9876, key), rollIVs(9876, 'SSR'))
 })
 
-await test('LLM 结果接受六档，兼容旧 SSR；无效档位按分数回退', () => {
+await test('AI 自报的高品质不能跳过 GPI 证据判定', () => {
   const evaluation = { element: 'water', species: 'element', level: 50, stats: [70, 70, 70, 70, 70, 70], traits: [], skills: [] }
-  for (const [key, score, expected] of [
-    ['UR', 85, 'UR'], ['SE', 95, 'SE'], ['PSE', 99, 'PSE'], ['SSR', 99, 'UR'], ['unknown', 97, 'PSE'],
-  ]) {
-    const pet = buildPetFromEvaluation({ ...evaluation, quality: key, qualityScore: score }, { input: 'fixture/quality' })
-    assert.equal(pet.qualityKey, expected)
-    assert.equal(pet.quality.name, QUALITIES[expected].name)
+  for (const quality of ['UR', 'SE', 'PSE', 'SSR', 'unknown']) {
+    const pet = buildPetFromEvaluation({ ...evaluation, quality, qualityScore: 99 }, { input: 'fixture/quality' })
+    assert.equal(pet.qualityKey, 'R')
+    assert.equal(pet.qualityScore, 50)
+    assert.equal(pet.qualityConfidence, 0)
+    assert.equal(pet.qualityStatus, 'provisional')
+    assert.equal(pet.gpiDimensions.length, 7)
+    assert.equal(pet.qualityDims.length, 5)
   }
+})
+
+await test('七三比例和本地证据缺口不会因 Star 暴增变成 PSE', () => {
+  const dims = scoreQuality(snapshot).gpiDimensions
+  assert.equal(dims.slice(0, 4).reduce((sum, d) => sum + d.weight, 0), 70)
+  assert.equal(dims.slice(4).reduce((sum, d) => sum + d.weight, 0), 30)
+  const high = scoreQuality({ ...snapshot, stars: 999999999, forks: 999999999 })
+  assert.ok(high.score < 90)
 })
 
 const previousStorage = globalThis.localStorage
