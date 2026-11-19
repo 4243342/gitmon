@@ -87,6 +87,31 @@ function buildGpi(dims, source) {
   }
 }
 
+// 与后端 RARITY_BANDS 保持一致的绝对分档：GPI 实际落在 45~70，按该区间校准。
+const RARITY_BANDS = [
+  [68, 'PSE', '镜碎', '#f2aaff'],
+  [64, 'SE', '银碎', '#c6eafa'],
+  [60, 'UR', '金闪', '#ffce65'],
+  [55, 'SR', '面闪', '#c696ff'],
+  [46, 'R', '稀有', '#74b9ed'],
+  [0, 'N', '普卡', '#a2a8b2'],
+]
+
+/** 本地/离线卡片没有样本池可排名时，按同一套绝对分档给出六档。 */
+export function rarityForScore(score, status = 'confirmed') {
+  const value = Number.isFinite(Number(score)) ? Number(score) : 0
+  const [, key, name, color] = RARITY_BANDS.find(([min]) => value >= min)
+  const confirmed = status === 'confirmed'
+  return {
+    key: confirmed ? key : 'pending',
+    name: confirmed ? name : '待评估',
+    color: confirmed ? color : '#9ca6b8',
+    status: confirmed ? 'confirmed' : 'pending',
+    source: 'gpi-local',
+    score: value,
+  }
+}
+
 /** Classic five-slot card summary; the full seven dimensions remain in gpiDimensions. */
 export function cardGpiDims(result) {
   const map = Object.fromEntries(result.dims.map((d) => [d.key, d.value]))

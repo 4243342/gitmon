@@ -10,7 +10,8 @@ export function isCloudCard(pet) {
 
 export function cardFoil(pet) {
   if (!isCloudCard(pet)) {
-    const raw = typeof pet?.quality === 'string' ? pet.quality : pet?.quality?.key || pet?.qualityKey
+    const confirmed = pet?.rarity?.status === 'confirmed' ? pet.rarity : null
+    const raw = confirmed?.key || (typeof pet?.quality === 'string' ? pet.quality : pet?.quality?.key || pet?.qualityKey)
     const key = normalizeQualityKey(raw)
     return { ...QUALITIES[key], effect: REVEAL_EFFECT[key] }
   }
