@@ -254,13 +254,9 @@ def _present(pet: dict[str, Any], element: str | None, source: str | None,
     if isinstance(potential, dict) and potential.get("version") == "gpi-heuristic-v1":
         # 新卡片的 rarity 已由 GPI 决定；communityRarity 才保留星标档位供参考。
         data["communityRarity"] = data.get("communityRarity") or data.get("rarity")
-        data["rarity"] = {
-            "key": potential.get("key", "pending"),
-            "name": potential.get("name", "待评估"),
-            "color": potential.get("color", "#9ca6b8"),
-            "status": potential.get("status", "pending"),
-            "recognition": None,
-        }
+        if (data.get("rarity") or {}).get("source") != "gpi":
+            # 旧卡只存了 potential：按同一套 GPI 分档补出罕见度
+            data["rarity"] = card_ratings.gpi_quality.rarity(potential)
         data["qualityScore"] = potential.get("score") if potential.get("status") == "confirmed" else None
         dims = {entry["key"]: entry["score"] for entry in potential.get("dimensions", [])}
         # Classic card face has five narrow bars: four technical areas + one

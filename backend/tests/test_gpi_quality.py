@@ -34,10 +34,19 @@ def test_metadata_alone_does_not_confirm_quality():
 def test_rarity_follows_gpi_score_not_stars():
     rating = gpi_quality.evaluate(make_snapshot(), evidence())
     rarity = gpi_quality.rarity(rating)
-    assert rarity["key"] == rating["key"]
-    assert rarity["status"] == rating["status"]
+    # 罕见度档位完全由 GPI 分决定，星标不参与
+    score = rating["score"]
+    expected = next(key for minimum, key, *_ in gpi_quality.RARITY_BANDS if score >= minimum)
+    assert rarity["key"] == expected
+    assert rarity["score"] == score
+    assert rarity["status"] == "confirmed"
     assert rarity["source"] == "gpi"
     assert rarity["recognition"] is None
+
+
+def test_pending_gpi_has_no_rarity_tier():
+    pending = gpi_quality.evaluate(make_snapshot(), [])
+    assert gpi_quality.rarity(pending)["key"] == "pending"
 
 
 def test_verified_source_and_test_evidence_give_deterministic_result():

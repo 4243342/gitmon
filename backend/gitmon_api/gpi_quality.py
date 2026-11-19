@@ -48,16 +48,29 @@ def _blend(signals: list[tuple[float, float]]) -> tuple[float, float]:
     return round(_bounded(score), 2), round(certainty, 3)
 
 
+# 罕见度完全由 GPI 综合分决定（与星标无关）。
+# GPI 是七维证据加权分，实际可达区间比"品质分"窄（中位 50 上下、优秀 60-75），
+# 所以分档线按 GPI 的实际分布单独设，而不是沿用 0/40/60/80/90/97。
+RARITY_BANDS = (
+    (85, "PSE", "镜碎", "#f2aaff"),
+    (75, "SE", "银碎", "#c6eafa"),
+    (65, "UR", "金闪", "#ffce65"),
+    (55, "SR", "面闪", "#c696ff"),
+    (40, "R", "稀有", "#74b9ed"),
+    (0, "N", "普卡", "#a2a8b2"),
+)
+
+
 def rarity(spec: dict[str, Any]) -> dict[str, Any]:
     """六档罕见度只由 GPI 综合分决定，与星标多少无关。"""
-    return {
-        "key": spec.get("key", "pending"),
-        "name": spec.get("name", "待评估"),
-        "color": spec.get("color", "#9ca6b8"),
-        "status": spec.get("status", "pending"),
-        "recognition": None,
-        "source": "gpi",
-    }
+    status = spec.get("status", "pending")
+    score = spec.get("score")
+    if status != "confirmed" or not isinstance(score, (int, float)):
+        return {"key": "pending", "name": "待评估", "color": "#9ca6b8",
+                "status": "pending", "recognition": None, "source": "gpi"}
+    _, key, name, color = next((band for band in RARITY_BANDS if score >= band[0]), RARITY_BANDS[-1])
+    return {"key": key, "name": name, "color": color,
+            "status": "confirmed", "recognition": None, "source": "gpi", "score": score}
 
 
 def evaluate(snapshot: Any, checks: list[Any]) -> dict[str, Any]:
