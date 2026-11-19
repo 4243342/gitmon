@@ -13,7 +13,7 @@ import {
 import { stageFromLevel } from './evolution.js'
 import { QUALITIES, normalizeQualityKey, qualityForScore } from './cardQuality.js'
 import { cardFoil } from './cardTraits.js'
-import { gpiForSnapshot } from './gpiQuality.js'
+import { gpiForSnapshot, cardGpiDims } from './gpiQuality.js'
 
 export { EVOLUTION, MAX_STAGE, stageFromLevel, stageInfo, stageName, isHumanoid, nextStage, stageProgress } from './evolution.js'
 export { QUALITIES } from './cardQuality.js'
@@ -149,7 +149,8 @@ export function scoreQuality(snap) {
   const result = gpiForSnapshot(snap)
   return {
     score: result.score,
-    dims: result.dims,
+    dims: cardGpiDims(result),
+    gpiDimensions: result.dims,
     confidence: result.confidence,
     status: result.status,
     version: result.version,
@@ -400,6 +401,7 @@ export function judge(snap) {
     qualityKey,
     qualityScore: quality.score,
     qualityDims: quality.dims,
+    gpiDimensions: quality.gpiDimensions,
     qualityConfidence: quality.confidence,
     qualityStatus: quality.status,
     qualityVersion: quality.version,
