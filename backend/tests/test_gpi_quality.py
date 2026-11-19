@@ -33,8 +33,8 @@ def test_metadata_alone_does_not_confirm_quality():
 
 def test_rarity_follows_gpi_score_not_stars():
     rating = gpi_quality.evaluate(make_snapshot(), evidence())
-    rarity = gpi_quality.rarity(rating)
-    # 罕见度档位完全由 GPI 分决定，星标不参与
+    rarity = gpi_quality.rarity(rating, [])
+    # 样本不足时退回绝对分档，档位仍完全由 GPI 分决定，星标不参与
     score = rating["score"]
     expected = next(key for minimum, key, *_ in gpi_quality.RARITY_BANDS if score >= minimum)
     assert rarity["key"] == expected
@@ -42,6 +42,30 @@ def test_rarity_follows_gpi_score_not_stars():
     assert rarity["status"] == "confirmed"
     assert rarity["source"] == "gpi"
     assert rarity["recognition"] is None
+
+
+def test_rarity_ranks_by_percentile_not_absolute_score():
+    rating = gpi_quality.evaluate(make_snapshot(), evidence())
+    # 100 张卡，当前卡分数排在第一（最高），应当拿到最高档
+    population = [rating["score"] - 1 - i for i in range(100)]
+    top = gpi_quality.rarity(rating, population)
+    assert top["key"] == "PSE"
+    assert top["population"] == 100
+    assert top["percentile"] >= 0.99
+    # 同样分数，但样本里有 100 张都比它高——即便分数不低也只是普卡
+    behind = [rating["score"] + 1 + i for i in range(100)]
+    assert gpi_quality.rarity(rating, behind)["key"] == "N"
+    # 样本里 70% 比它低 → 落在 65% 之后的档位，即面闪（前 35%）
+    middle = [rating["score"] - 1 - i for i in range(70)] + [rating["score"] + 1 + i for i in range(30)]
+    assert gpi_quality.rarity(rating, middle)["key"] == "SR"
+
+
+def test_rarity_population_below_minimum_uses_absolute_bands():
+    rating = gpi_quality.evaluate(make_snapshot(), evidence())
+    few = [rating["score"] + 1 + i for i in range(gpi_quality.MIN_POPULATION - 1)]
+    rarity = gpi_quality.rarity(rating, few)
+    assert "percentile" not in rarity
+    assert rarity["population"] == len(few)
 
 
 def test_pending_gpi_has_no_rarity_tier():

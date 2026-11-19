@@ -49,8 +49,17 @@ def _blend(signals: list[tuple[float, float]]) -> tuple[float, float]:
 
 
 # 罕见度完全由 GPI 综合分决定（与星标无关）。
-# GPI 是七维证据加权分，实际可达区间比"品质分"窄（中位 50 上下、优秀 60-75），
-# 所以分档线按 GPI 的实际分布单独设，而不是沿用 0/40/60/80/90/97。
+# 有足够样本时按"分数在全体卡片里的排位比例"分档：
+# 前 1% 镜碎、前 5% 银碎、前 15% 金闪、前 35% 面闪、前 65% 稀有，其余普卡。
+# 样本不足（<10 张）时退回绝对分档，避免小样本把普通项目顶到最高档。
+RARITY_QUANTILES = (
+    (0.99, "PSE", "镜碎", "#f2aaff"),
+    (0.95, "SE", "银碎", "#c6eafa"),
+    (0.85, "UR", "金闪", "#ffce65"),
+    (0.65, "SR", "面闪", "#c696ff"),
+    (0.30, "R", "稀有", "#74b9ed"),
+    (0.0, "N", "普卡", "#a2a8b2"),
+)
 RARITY_BANDS = (
     (85, "PSE", "镜碎", "#f2aaff"),
     (75, "SE", "银碎", "#c6eafa"),
@@ -59,18 +68,37 @@ RARITY_BANDS = (
     (40, "R", "稀有", "#74b9ed"),
     (0, "N", "普卡", "#a2a8b2"),
 )
+MIN_POPULATION = 10
 
 
-def rarity(spec: dict[str, Any]) -> dict[str, Any]:
+def _percentile(score: float, scores: list[float]) -> float:
+    """分数在样本中的排位（0~1）：同分算在中位，避免并列全被顶到最高档。"""
+    if not scores:
+        return 0.0
+    below = sum(1 for value in scores if value < score)
+    equal = sum(1 for value in scores if value == score)
+    return (below + equal / 2) / len(scores)
+
+
+def rarity(spec: dict[str, Any], population: list[float] | None = None) -> dict[str, Any]:
     """六档罕见度只由 GPI 综合分决定，与星标多少无关。"""
     status = spec.get("status", "pending")
     score = spec.get("score")
     if status != "confirmed" or not isinstance(score, (int, float)):
         return {"key": "pending", "name": "待评估", "color": "#9ca6b8",
                 "status": "pending", "recognition": None, "source": "gpi"}
+    scores = [value for value in (population or []) if isinstance(value, (int, float))]
+    if len(scores) >= MIN_POPULATION:
+        share = _percentile(score, scores)
+        _, key, name, color = next((tier for tier in RARITY_QUANTILES if share >= tier[0]),
+                                   RARITY_QUANTILES[-1])
+        return {"key": key, "name": name, "color": color, "status": "confirmed",
+                "recognition": None, "source": "gpi", "score": score,
+                "percentile": round(share, 4), "population": len(scores)}
     _, key, name, color = next((band for band in RARITY_BANDS if score >= band[0]), RARITY_BANDS[-1])
     return {"key": key, "name": name, "color": color,
-            "status": "confirmed", "recognition": None, "source": "gpi", "score": score}
+            "status": "confirmed", "recognition": None, "source": "gpi", "score": score,
+            "population": len(scores)}
 
 
 def evaluate(snapshot: Any, checks: list[Any]) -> dict[str, Any]:

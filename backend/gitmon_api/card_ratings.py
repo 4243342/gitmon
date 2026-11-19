@@ -56,7 +56,7 @@ def _review(snapshot: RepoSnapshot, checks: list[card_quality.Check]) -> dict[st
         return verdicts
 
 
-def evaluate(snapshot: RepoSnapshot) -> dict[str, Any]:
+def evaluate(snapshot: RepoSnapshot, population: list[float] | None = None) -> dict[str, Any]:
     stars = snapshot.stars if snapshot.recognition_counts_known else None
     forks = snapshot.forks if snapshot.recognition_counts_known else None
     rarity = card_quality.rarity(stars, forks, private=snapshot.private)
@@ -73,8 +73,9 @@ def evaluate(snapshot: RepoSnapshot) -> dict[str, Any]:
             rating = card_quality.rate(checks, community, verdicts)
     potential = gpi_quality.evaluate(snapshot, checks)
     # 六档罕见度只由 GPI 综合分决定；星标只留作参考字段，不再决定档位。
+    # 有足够样本时按分数排位比例分档（前 1% / 5% / 15% / 35% / 65%）。
     return {
-        "rarity": gpi_quality.rarity(potential),
+        "rarity": gpi_quality.rarity(potential, population),
         "communityRarity": rarity,
         "qualityRating": rating,
         "potential": potential,

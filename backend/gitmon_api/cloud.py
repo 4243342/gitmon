@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from sqlite3 import Connection
@@ -20,6 +22,34 @@ BOX_LIMIT = 30
 BOX_WORKERS = 3
 RARITY_ORDER = {key: index for index, key in enumerate(("N", "R", "SR", "UR", "SE", "PSE"))}
 DIVINE_ELEMENT = {"key": "divine", "name": "神", "color": "#f2ce79", "trait": "王者形态"}
+
+# 罕见度按 GPI 分在全体已评级卡片里的排位比例决定，样本 60 秒刷新一次
+_POPULATION_TTL = 60.0
+_population = {"at": 0.0, "scores": []}
+
+
+def gpi_population() -> list[float]:
+    now = time.monotonic()
+    if _population["scores"] and now - _population["at"] < _POPULATION_TTL:
+        return _population["scores"]
+    scores: list[float] = []
+    with db.connect() as conn:
+        rows = conn.execute("SELECT card_ratings FROM pets").fetchall()
+    for (raw,) in rows:
+        if not raw:
+            continue
+        try:
+            data = json.loads(raw) if isinstance(raw, str) else raw
+        except (TypeError, ValueError):
+            continue
+        potential = (data or {}).get("potential") or {}
+        if potential.get("version") != "gpi-heuristic-v1" or potential.get("status") != "confirmed":
+            continue
+        score = potential.get("score")
+        if isinstance(score, (int, float)):
+            scores.append(float(score))
+    _population.update(at=now, scores=scores)
+    return scores
 
 
 def _identity(snapshot: RepoSnapshot) -> tuple[tuple[str, str | None, str], tuple[int, int]]:
@@ -98,7 +128,7 @@ def preview(ref: RepoRef, owner: str, *, token: str = "", expected_id: str | Non
     pet["level"] = max(pet["level"], spec["level"])
     scanned_at = datetime.fromtimestamp(snapshot.fetched_at, timezone.utc) if snapshot.fetched_at else datetime.now(timezone.utc)
     pet["synced_at"] = scanned_at.isoformat(timespec="microseconds")
-    pet["card_ratings"] = card_ratings.evaluate(snapshot)
+    pet["card_ratings"] = card_ratings.evaluate(snapshot, gpi_population())
     return pet
 
 
@@ -149,6 +179,23 @@ def _box_repos(platform: str, login: str, repos: list[dict[str, Any]]) -> list[t
     return [(ref, repo_id) for repo_id, ref in candidates.items()]
 
 
+def _rank_in_box(pets: list[dict[str, Any]]) -> None:
+    """按 GPI 分数在本次样本里的排位比例重算六档，分数只决定名次位置。"""
+    scores = []
+    for pet in pets:
+        potential = (pet.get("card_ratings") or {}).get("potential") or {}
+        if potential.get("status") == "confirmed" and isinstance(potential.get("score"), (int, float)):
+            scores.append(float(potential["score"]))
+    if not scores:
+        return
+    population = gpi_population() + scores
+    for pet in pets:
+        ratings = pet.get("card_ratings") or {}
+        potential = ratings.get("potential") or {}
+        if potential.get("status") == "confirmed":
+            ratings["rarity"] = card_ratings.gpi_quality.rarity(potential, population)
+
+
 def preview_box(platform: str, login: str, owner: str, *, token: str,
                 on_progress: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
     repos = list_owned_repos(platform, token)
@@ -173,6 +220,8 @@ def preview_box(platform: str, login: str, owner: str, *, token: str,
                 on_progress({"done": len(pets) + len(failed), "total": len(targets), "name": ref.repo})
             if rate_limited:
                 break
+    # 稀有度按分数在"本盒 + 历史卡片"里的排位比例分档，保证每次开盒都有固定的六档分布。
+    _rank_in_box(pets)
     pets.sort(key=lambda p: (
         -RARITY_ORDER.get((p["card_ratings"].get("potential") or p["card_ratings"]["rarity"]).get("key"), -1),
         -p["level"], p["full_name"]))
@@ -254,9 +303,9 @@ def _present(pet: dict[str, Any], element: str | None, source: str | None,
     if isinstance(potential, dict) and potential.get("version") == "gpi-heuristic-v1":
         # 新卡片的 rarity 已由 GPI 决定；communityRarity 才保留星标档位供参考。
         data["communityRarity"] = data.get("communityRarity") or data.get("rarity")
-        if (data.get("rarity") or {}).get("source") != "gpi":
-            # 旧卡只存了 potential：按同一套 GPI 分档补出罕见度
-            data["rarity"] = card_ratings.gpi_quality.rarity(potential)
+        if potential.get("status") == "confirmed":
+            # 罕见度永远按当前样本的排位比例重算，避免旧卡停在过去的分档上。
+            data["rarity"] = card_ratings.gpi_quality.rarity(potential, gpi_population())
         data["qualityScore"] = potential.get("score") if potential.get("status") == "confirmed" else None
         dims = {entry["key"]: entry["score"] for entry in potential.get("dimensions", [])}
         # Classic card face has five narrow bars: four technical areas + one
