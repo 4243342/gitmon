@@ -84,3 +84,15 @@ function buildGpi(dims, source) {
     dims: values,
   }
 }
+
+/** Classic five-slot card summary; the full seven dimensions remain in gpiDimensions. */
+export function cardGpiDims(result) {
+  const map = Object.fromEntries(result.dims.map((d) => [d.key, d.value]))
+  const business = (15 * map.demand + 10 * map.ecosystem + 5 * map.sustainability) / 30
+  return [
+    ...['evolution', 'reliability', 'architecture', 'innovation'].map((key) => ({
+      key, name: GPI_NAMES[key], value: map[key],
+    })),
+    { key: 'business', name: '商业综合', value: Number(business.toFixed(2)) },
+  ]
+}
