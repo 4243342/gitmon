@@ -246,6 +246,19 @@ def _present(pet: dict[str, Any], element: str | None, source: str | None,
     data["attributeSource"] = source
     data.update(pet.get("card_ratings") or card_ratings.pending())
     data.update(_card_face(data["element"], data.get("qualityRating") or {}))
+    # New scans expose potential as the six-rank card quality. Existing collected
+    # cards without that versioned result keep their historical rarity until refresh.
+    potential = data.get("potential")
+    if isinstance(potential, dict) and potential.get("version") == "gpi-heuristic-v1":
+        data["communityRarity"] = data.get("rarity")
+        data["rarity"] = {
+            "key": potential.get("key", "pending"),
+            "name": potential.get("name", "待评估"),
+            "color": potential.get("color", "#9ca6b8"),
+            "status": potential.get("status", "pending"),
+            "recognition": None,
+        }
+        data["qualityScore"] = potential.get("score") if potential.get("status") == "confirmed" else None
     # 六档 rarity 是云卡唯一对外品质；八档 qualityRating 继续用于源码证据和选图。
     rarity = data.get("rarity") or {}
     rarity_key = rarity.get("key")
