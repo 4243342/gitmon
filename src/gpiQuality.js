@@ -58,10 +58,12 @@ export function gpiForSnapshot(snap = {}) {
   return buildGpi(dims, 'local-static')
 }
 
-export function gpiForAiEvidence(ev = {}) {
+export function gpiForAiEvidence(ev = {}, { verifiedEvidence = false } = {}) {
   // LLM self-assigned quality or legacy qualityDims are NOT independent evidence.
   // Only separately verified GPI evidence is accepted for a non-neutral grade.
-  const verified = ev.gpiEvidenceVerified === true
+  // Never trust an LLM self-asserted verification flag. The caller must supply
+  // a separate trusted attestation after independent evidence validation.
+  const verified = verifiedEvidence === true
   const source = verified && ev.gpiDimensions && typeof ev.gpiDimensions === 'object' ? ev.gpiDimensions : {}
   const dims = Object.fromEntries(Object.keys(GPI_WEIGHTS).map((key) => [
     key, evidence([signal(source[key], verified && known(source[key]) ? .8 : 0)]),
