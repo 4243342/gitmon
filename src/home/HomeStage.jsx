@@ -42,17 +42,19 @@ export default function HomeStage({ pet, accent }) {
     }
   }, [])
 
+  // 舞台模块异步加载完成后再传入素材，避免首屏素材比 Three.js 更快加载时丢失首帧。
   useEffect(() => {
+    if (status !== 'ready') return undefined
     let cancelled = false
     petArtwork(pet || DEMO_PET).then((art) => {
       if (!cancelled) engineRef.current?.setPet(art)
     }).catch(() => {})
     return () => { cancelled = true }
-  }, [pet])
+  }, [pet, status])
 
   useEffect(() => {
-    engineRef.current?.setAccent(accent)
-  }, [accent])
+    if (status === 'ready') engineRef.current?.setAccent(accent)
+  }, [accent, status])
 
   return (
     <div className={`home-stage is-${status}`} aria-hidden="true">
