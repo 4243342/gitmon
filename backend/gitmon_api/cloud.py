@@ -173,7 +173,9 @@ def preview_box(platform: str, login: str, owner: str, *, token: str,
                 on_progress({"done": len(pets) + len(failed), "total": len(targets), "name": ref.repo})
             if rate_limited:
                 break
-    pets.sort(key=lambda p: (-RARITY_ORDER.get(p["card_ratings"]["rarity"]["key"], -1), -p["level"], p["full_name"]))
+    pets.sort(key=lambda p: (
+        -RARITY_ORDER.get((p["card_ratings"].get("potential") or p["card_ratings"]["rarity"]).get("key"), -1),
+        -p["level"], p["full_name"]))
     return {
         "pets": pets, "failed": failed, "rateLimited": rate_limited,
         "listed": len(candidates), "limit": BOX_LIMIT, "truncated": len(candidates) > BOX_LIMIT,
@@ -259,6 +261,16 @@ def _present(pet: dict[str, Any], element: str | None, source: str | None,
             "recognition": None,
         }
         data["qualityScore"] = potential.get("score") if potential.get("status") == "confirmed" else None
+        dims = {entry["key"]: entry["score"] for entry in potential.get("dimensions", [])}
+        # Classic card face has five narrow bars: four technical areas + one
+        # combined business area; all seven components remain in potential.
+        if len(dims) == 7:
+            business = (15 * dims["demand"] + 10 * dims["ecosystem"]
+                        + 5 * dims["sustainability"]) / 30
+            data["qualityDims"] = {
+                **{key: dims[key] for key in ("evolution", "reliability", "architecture", "innovation")},
+                "business": round(business, 2),
+            }
     # 六档 rarity 是云卡唯一对外品质；八档 qualityRating 继续用于源码证据和选图。
     rarity = data.get("rarity") or {}
     rarity_key = rarity.get("key")
